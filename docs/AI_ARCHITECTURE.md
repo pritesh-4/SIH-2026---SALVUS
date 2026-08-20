@@ -26,25 +26,32 @@ To ensure public safety, AI in Salvus acts exclusively as a **data structuring a
 ## 2. LLM Orchestration & Fail-Safe Architecture
 
 ### Primary Engine: Gemini (models: `gemini-2.5-flash` / `gemini-1.5-flash`)
+
 - Used for high-efficiency multi-modal parsing (image inputs + text classification).
 
 ### Fallback Engine: Groq (models: `llama-3.3-70b`)
+
 - Invoked automatically if Gemini queries time out (threshold: 3000ms) or hit API rate limits.
 
 ### Hard Fallback Parser
-- If both external AI connections fail, the backend applies local Regex patterns matching key emergency keywords (e.g. *trapped*, *injured*, *fire*, *flood*) to assign a baseline classification and triage rating.
+
+- If both external AI connections fail, the backend applies local Regex patterns matching key emergency keywords (e.g. _trapped_, _injured_, _fire_, _flood_) to assign a baseline classification and triage rating.
 
 ---
 
 ## 3. Human-in-the-Loop Policy
-The allocation algorithm Suggests dispatches; it does not issue them. 
-* **Dispatch Check:** All dispatches require physical button verification by a dispatcher operator inside the dashboard.
-* **Triage Correction:** Dispatchers can manually override incident categories or severities if the LLM misclassifies an entry.
+
+The allocation algorithm Suggests dispatches; it does not issue them.
+
+- **Dispatch Check:** All dispatches require physical button verification by a dispatcher operator inside the dashboard.
+- **Triage Correction:** Dispatchers can manually override incident categories or severities if the LLM misclassifies an entry.
 
 ---
 
 ## 4. Structured Output Format
+
 All AI prompts are configured to return JSON matching this schema:
+
 ```json
 {
   "category": "Flood" | "Fire" | "Medical" | "Hazard" | "Other",
@@ -57,4 +64,5 @@ All AI prompts are configured to return JSON matching this schema:
   }
 }
 ```
+
 If the API returns unstructured text, a validator utility parses and forces mapping to this JSON footprint before inserting into PostgreSQL.

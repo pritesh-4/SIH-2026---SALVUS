@@ -1,13 +1,14 @@
 # AGENTS.md
 
-Welcome, AI Agent or Developer. This is the primary instruction file and ruleset for all AI coding agents and human contributors working on the **Salvus** project. 
+Welcome, AI Agent or Developer. This is the primary instruction file and ruleset for all AI coding agents and human contributors working on the **Salvus** project.
 
 Every modification must strictly align with this document.
 
 ---
 
 ## 1. Project Identity & Core Principle
-**Salvus** is an AI-powered Disaster Intelligence & Rescue Coordination Platform. 
+
+**Salvus** is an AI-powered Disaster Intelligence & Rescue Coordination Platform.
 
 Our core operating principle is:
 $$\text{Detect} \longrightarrow \text{Understand} \longrightarrow \text{Prioritize} \longrightarrow \text{Assign} \longrightarrow \text{Rescue} \longrightarrow \text{Resolve}$$
@@ -15,7 +16,9 @@ $$\text{Detect} \longrightarrow \text{Understand} \longrightarrow \text{Prioriti
 ---
 
 ## 2. Core Architecture Principles
+
 Conceptually, Salvus consists of:
+
 1. **Citizen Application**: High-performance, low-bandwidth portal for geo-tagged SOS reporting and shelter discovery.
 2. **Authority/Responder Dashboard**: Map-centric command center monitoring incidents, resources, and dispatches.
 3. **Backend API**: Node.js/Express server routing requests, coordinating DB, and connecting AI pipelines.
@@ -28,7 +31,9 @@ Conceptually, Salvus consists of:
 ---
 
 ## 3. Non-Negotiable Engineering Rules
+
 As an agent, you **MUST**:
+
 1. **Inspect Before You Code**: View the file list and read relevant code/definitions before modifying or creating components.
 2. **Reuse Existing Components**: Do not duplicate styling, className wrappers, helper tools, or layout systems.
 3. **Avoid Unnecessary Rewrites**: Do not overwrite complete files for simple tweaks.
@@ -43,47 +48,53 @@ As an agent, you **MUST**:
 ---
 
 ## 4. AI-Specific Rules & Safety Guards
-* **Allocation Exclusion**: AI is **NOT** allowed to make emergency dispatch assignments. Responder matches are computed deterministically (via weighted distance, capability, and workload formulas) to ensure audits are transparent.
-* **Approved AI Scope**:
-  * Incident categorization (e.g., *Flood*, *Fire*, *Medical*)
-  * Severity and confidence scoring
-  * Extraction of structured fields from conversational text
-  * Situation brief synthesis
-  * Alerts generation
-  * Visual analysis as unverified hints
-* **Resilience Framework**:
-  * Every API call must have a timeout.
-  * Implement fallback parsing if JSON structure deviates.
-  * If both Gemini and Groq fail, return a fallback regex-extracted structure.
+
+- **Allocation Exclusion**: AI is **NOT** allowed to make emergency dispatch assignments. Responder matches are computed deterministically (via weighted distance, capability, and workload formulas) to ensure audits are transparent.
+- **Approved AI Scope**:
+  - Incident categorization (e.g., _Flood_, _Fire_, _Medical_)
+  - Severity and confidence scoring
+  - Extraction of structured fields from conversational text
+  - Situation brief synthesis
+  - Alerts generation
+  - Visual analysis as unverified hints
+- **Resilience Framework**:
+  - Every API call must have a timeout.
+  - Implement fallback parsing if JSON structure deviates.
+  - If both Gemini and Groq fail, return a fallback regex-extracted structure.
 
 ---
 
 ## 5. Real vs. Simulated Telemetry
-* **Visual Labeling**: Simulated movements or mocked flood sensor data must be labeled with `[SIMULATION]` or `[MOCKED]` badges in the UI.
-* **Transparency**: Never display generated test data as live emergency telemetry.
+
+- **Visual Labeling**: Simulated movements or mocked flood sensor data must be labeled with `[SIMULATION]` or `[MOCKED]` badges in the UI.
+- **Transparency**: Never display generated test data as live emergency telemetry.
 
 ---
 
 ## 6. GPS & Privacy Controls
-* **Consent First**: Location tracking must only trigger when the user explicitly clicks the emergency toggle.
-* **Automatic Termination**: Continuous tracking must immediately stop when the incident is resolved or cancelled.
+
+- **Consent First**: Location tracking must only trigger when the user explicitly clicks the emergency toggle.
+- **Automatic Termination**: Continuous tracking must immediately stop when the incident is resolved or cancelled.
 
 ---
 
 ## 7. Agent Change Management Workflow
 
 ### Phase A: Before Coding
+
 1. Read this `AGENTS.md` file.
 2. Read the corresponding `docs/` file relating to the component (e.g. `docs/DATABASE.md` for schemas).
 3. Check for any existing modules or helper scripts.
 4. Verbally explain planned changes, including target files, packages, and side-effects.
 
 ### Phase B: While Coding
+
 1. Follow the existing ESLint flat configuration standards.
 2. Keep modifications localized.
 3. Do not modify unrelated lines or components.
 
 ### Phase C: After Coding
+
 1. Run local verification: `npm run lint` and `npm run build`.
 2. Update relevant documentation if architecture changes were approved (e.g. update `docs/API.md` when introducing routes).
 3. Summarize all files edited.

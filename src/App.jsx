@@ -12,7 +12,8 @@ const App = () => {
                 Salvus
               </h1>
               <p className="mt-2 text-sm text-slate-400 max-w-md">
-                AI Hackathon platform frontend base configured with React Router, Tailwind CSS, and Framer Motion.
+                AI Hackathon platform frontend base configured with React Router, Tailwind CSS, and
+                Framer Motion.
               </p>
             </main>
           }

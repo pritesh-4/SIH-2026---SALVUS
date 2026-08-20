@@ -5,8 +5,10 @@ This document tracks local verification scripts and the testing strategy roadmap
 ---
 
 ## 1. Implemented Quality Checks
+
 Our project enforces verification checks on both local commit and remote pull requests:
-* **Linting:** Runs ESLint on flat rules:
+
+- **Linting:** Runs ESLint on flat rules:
   ```bash
   npm run lint
   ```
@@ -14,7 +16,7 @@ Our project enforces verification checks on both local commit and remote pull re
   ```bash
   npm run lint:fix
   ```
-* **Production Build Validation:** Verifies bundler compilation:
+- **Production Build Validation:** Verifies bundler compilation:
   ```bash
   npm run build
   ```
@@ -24,9 +26,11 @@ Our project enforces verification checks on both local commit and remote pull re
 ## 2. Testing Roadmap (Planned)
 
 ### Framework: Vitest & React Testing Library
+
 We plan to introduce Vitest to run unit and logic tests.
 
 ### Target Test Suites:
+
 1. **Allocation Engine Unit Tests (`/tests/allocation.test.js`):**
    - Asserts mathematical ranking scores.
    - Verifies nearest responder is placed first.

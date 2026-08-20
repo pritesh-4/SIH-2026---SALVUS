@@ -25,6 +25,7 @@ We follow a **Feature-Branch Workflow**:
 ```
 
 ### Branch Naming Conventions
+
 - `feature/<feature-name>`: New user-facing or platform features (e.g., `feature/sos-alert-feed`)
 - `feat/<feature-name>`: Shorter alias for feature branches (e.g., `feat/triage-agent`)
 - `fix/<bug-name>`: Bug fixes or patches (e.g., `fix/router-hydration`)
@@ -32,6 +33,7 @@ We follow a **Feature-Branch Workflow**:
 - `docs/<doc-name>`: Documentation updates (e.g., `docs/api-spec`)
 
 ### Developer Workflow: Creating a Feature Branch
+
 ```bash
 # 1. Ensure your local main is up-to-date
 git checkout main
@@ -57,13 +59,16 @@ git push -u origin feature/disaster-map-view
 The continuous integration pipeline is defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
 
 ### Workflow Triggers
+
 - **Pull Requests** targeting `main`
 - **Pushes** directly to `main`
 
 ### Concurrency Management
+
 If multiple commits are pushed in rapid succession to the same PR, any active, outdated CI run is automatically cancelled (`cancel-in-progress: true`) to save GitHub Action minutes.
 
 ### Automated Checks Performed
+
 1. **Clean Installation (`npm ci`)**: Verifies strict lockfile (`package-lock.json`) integrity and resolves all dependencies.
 2. **ESLint Validation (`npm run lint`)**: Validates JavaScript/JSX syntax, React 19 hooks rules, and code quality standards.
 3. **Production Build (`npm run build`)**: Executes the Vite compiler to ensure production bundles compile with zero build errors.
@@ -78,22 +83,22 @@ Repository administrators must configure branch protection in GitHub Settings to
 
 1. Open your repository on GitHub: `https://github.com/<owner>/<repo>`
 2. Click **Settings** (top tab navigation)
-3. In the left sidebar, click **Branches** (under *Code and automation*)
+3. In the left sidebar, click **Branches** (under _Code and automation_)
 4. Click **Add branch protection rule** (or **Add rule** under Rulesets)
 5. Set **Branch name pattern**: `main`
 6. Check the following options:
 
-| Setting | Configuration | Reason |
-| :--- | :--- | :--- |
-| **Require a pull request before merging** | ✅ **Enabled** | Prevents direct pushes to `main`. |
-| **Require approvals** | ✅ Set to `1` (or `0` if solo hackathon sprint) | Ensures peer or team visibility before merging. |
-| **Dismiss stale pull request approvals when new commits are pushed** | ✅ **Enabled** | Re-verifies approval if code changes after review. |
-| **Require status checks to pass before merging** | ✅ **Enabled** | Blocks merging if CI fails. |
-| **Status check search** | Search and select `Lint & Build Validation` | Matches the job name in `ci.yml`. |
-| **Require branches to be up to date before merging** | ✅ **Enabled** | Guarantees the code was tested against current `main`. |
-| **Do not allow bypassing the above settings** | ✅ **Enabled** | Enforces rules even for repository admins. |
-| **Block force pushes** | ✅ **Enabled** | Prevents history rewrites on `main`. |
-| **Block deletions** | ✅ **Enabled** | Prevents accidental deletion of the `main` branch. |
+| Setting                                                              | Configuration                                   | Reason                                                 |
+| :------------------------------------------------------------------- | :---------------------------------------------- | :----------------------------------------------------- |
+| **Require a pull request before merging**                            | ✅ **Enabled**                                  | Prevents direct pushes to `main`.                      |
+| **Require approvals**                                                | ✅ Set to `1` (or `0` if solo hackathon sprint) | Ensures peer or team visibility before merging.        |
+| **Dismiss stale pull request approvals when new commits are pushed** | ✅ **Enabled**                                  | Re-verifies approval if code changes after review.     |
+| **Require status checks to pass before merging**                     | ✅ **Enabled**                                  | Blocks merging if CI fails.                            |
+| **Status check search**                                              | Search and select `Lint & Build Validation`     | Matches the job name in `ci.yml`.                      |
+| **Require branches to be up to date before merging**                 | ✅ **Enabled**                                  | Guarantees the code was tested against current `main`. |
+| **Do not allow bypassing the above settings**                        | ✅ **Enabled**                                  | Enforces rules even for repository admins.             |
+| **Block force pushes**                                               | ✅ **Enabled**                                  | Prevents history rewrites on `main`.                   |
+| **Block deletions**                                                  | ✅ **Enabled**                                  | Prevents accidental deletion of the `main` branch.     |
 
 7. Click **Create** / **Save changes**.
 
@@ -105,15 +110,16 @@ To avoid CI failures, developers should run the following commands locally befor
 
 ### Useful Local Commands
 
-| Command | Description |
-| :--- | :--- |
-| `npm run lint` | Run ESLint across all files. |
+| Command            | Description                                   |
+| :----------------- | :-------------------------------------------- |
+| `npm run lint`     | Run ESLint across all files.                  |
 | `npm run lint:fix` | Automatically fix auto-fixable ESLint issues. |
-| `npm run build` | Test production bundle compilation with Vite. |
-| `npm run dev` | Start the local Vite development server. |
-| `npm run preview` | Preview the local production build. |
+| `npm run build`    | Test production bundle compilation with Vite. |
+| `npm run dev`      | Start the local Vite development server.      |
+| `npm run preview`  | Preview the local production build.           |
 
 ### Pre-Commit Hooks (Husky + lint-staged)
+
 The repository is configured with **Husky** and **lint-staged**. Whenever you run `git commit`, only the modified `.js`/`.jsx` files staged for commit will automatically be checked by ESLint.
 
 ---
@@ -123,7 +129,7 @@ The repository is configured with **Husky** and **lint-staged**. Whenever you ru
 If your PR displays a red ❌ failure on the GitHub Actions check:
 
 1. Click on **Details** next to the failed check in your GitHub PR.
-2. Expand the failed step in the log output (e.g., *Run ESLint* or *Run Production Build*).
+2. Expand the failed step in the log output (e.g., _Run ESLint_ or _Run Production Build_).
 3. Identify the error:
    - **ESLint error**: Run `npm run lint:fix` locally or resolve the unused variable / missing dependency.
    - **Build error**: Run `npm run build` locally to reproduce and resolve JSX/import errors.
