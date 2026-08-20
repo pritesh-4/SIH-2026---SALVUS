@@ -314,7 +314,7 @@ Our planned presentation follows this scenario path:
 
 ## Team
 
-- **Pritesh** — Lead Platform Architect & DevOps Engineer
+- **Pritesh** — Lead Software & Systems Architect, Chief Full-Stack Engineer, DevOps & CI/CD Lead, AI Systems & Geospatial Integration Engineer
 - _Additional Hackathon Team Contributors_
 
 ---
