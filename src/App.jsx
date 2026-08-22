@@ -1,26 +1,32 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import CitizenLayout from './layouts/CitizenLayout'
+import CitizenHome from './pages/CitizenHome'
+import CitizenMap from './pages/CitizenMap'
+import CitizenAlerts from './pages/CitizenAlerts'
+import CitizenProfile from './pages/CitizenProfile'
+import CitizenEmergency from './pages/CitizenEmergency'
 
 const App = () => {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-cyan-500 selection:text-white">
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <main className="flex min-h-screen flex-col items-center justify-center p-6 text-center">
-              <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-400 via-teal-300 to-indigo-400 bg-clip-text text-transparent">
-                Salvus
-              </h1>
-              <p className="mt-2 text-sm text-slate-400 max-w-md">
-                AI Hackathon platform frontend base configured with React Router, Tailwind CSS, and
-                Framer Motion.
-              </p>
-            </main>
-          }
-        />
-        {/* Add more routes here */}
-      </Routes>
-    </div>
+    <Routes>
+      <Route path="/" element={<Navigate to="/citizen" replace />} />
+
+      {/* Citizen Persistent SPA Experience */}
+      <Route path="/citizen" element={<CitizenLayout />}>
+        <Route index element={<CitizenHome />} />
+        <Route path="home" element={<Navigate to="/citizen" replace />} />
+        <Route path="map" element={<CitizenMap />} />
+        <Route path="alerts" element={<CitizenAlerts />} />
+        <Route path="profile" element={<CitizenProfile />} />
+      </Route>
+
+      {/* Standalone Citizen Emergency Mode */}
+      <Route path="/citizen/sos" element={<CitizenEmergency />} />
+      <Route path="/citizen/emergency" element={<CitizenEmergency />} />
+
+      {/* Catch-all redirect */}
+      <Route path="*" element={<Navigate to="/citizen" replace />} />
+    </Routes>
   )
 }
 
