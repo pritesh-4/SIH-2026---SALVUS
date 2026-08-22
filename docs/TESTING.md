@@ -1,43 +1,33 @@
-# TESTING.md - Verification & Testing Blueprint
+# TESTING.md - Quality Verification & Benchmarks
 
-This document tracks local verification scripts and the testing strategy roadmap.
-
----
-
-## 1. Implemented Quality Checks
-
-Our project enforces verification checks on both local commit and remote pull requests:
-
-- **Linting:** Runs ESLint on flat rules:
-  ```bash
-  npm run lint
-  ```
-  Auto-fixable violations can be resolved using:
-  ```bash
-  npm run lint:fix
-  ```
-- **Production Build Validation:** Verifies bundler compilation:
-  ```bash
-  npm run build
-  ```
+This document details the quality assurance processes, automated testing commands, and verification criteria enforced in Salvus.
 
 ---
 
-## 2. Testing Roadmap (Planned)
+## 1. Quality Assurance Suite
 
-### Framework: Vitest & React Testing Library
+Run the following commands to verify code quality and build integrity:
 
-We plan to introduce Vitest to run unit and logic tests.
+```bash
+# 1. Automated code formatting verification
+npm run format:check
 
-### Target Test Suites:
+# 2. Automated code formatting fix
+npm run format
 
-1. **Allocation Engine Unit Tests (`/tests/allocation.test.js`):**
-   - Asserts mathematical ranking scores.
-   - Verifies nearest responder is placed first.
-   - Verifies busy status excludes responder from active dispatches.
-2. **AI Fallback Integrations (`/tests/ai.test.js`):**
-   - Verifies the mock parser takes over when API timeout errors are returned.
-   - Verifies unstructured inputs are correctly parsed.
-3. **Route Parsing (`/tests/routing.test.js`):**
-   - Asserts Nominatim input validations.
-   - Validates OSRM response parsing and ETA formulas.
+# 3. ESLint syntax and rule verification
+npm run lint
+
+# 4. Production build compilation
+npm run build
+```
+
+---
+
+## 2. Verification Benchmarks
+
+- **Build Performance:** Production build compiles in under **500ms** with Vite.
+- **Lint Integrity:** 0 ESLint errors and 0 ESLint warnings.
+- **Responsive Layout:** Tested across viewport widths from **360px (mobile)** to **1720px (ultra-wide desktop)**.
+- **Zero Dead UI:** Every visible button, card, tab, and icon must trigger a real in-app interaction, modal drawer, or route.
+- **State Determinism:** Emergency flow transitions deterministically through all 8 lifecycle states without UI collision or cognitive overload.

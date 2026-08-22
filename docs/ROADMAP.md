@@ -1,52 +1,50 @@
-# ROADMAP.md - 10-Day Development Plan
+# ROADMAP.md - Development Milestones & Status
 
-This roadmap organizes project milestones to ensure team progress during the hackathon.
-
----
-
-## 1. Priority Tiers
-
-### 🔴 Tier 1: MUST BUILD (Core MVP)
-
-- **Single-Tap SOS:** Immediate GPS beacon broadcast.
-- **Incident Queue:** Admin dashboard list displaying incoming reports.
-- **Interactive Map Overlay:** Incident pins and active shelters.
-- **Deterministic Matcher:** Basic dispatch score calculations.
-- **Clean CI/CD Pipeline:** Guard branch rules.
-
-### 🟡 Tier 2: HIGH VALUE (Rich Interactivity)
-
-- **Weather & Hazard Layer:** Meteorological maps displaying current wind and storm paths (Open-Meteo).
-- **Live Telemetry:** Active responder tracking along computed routes (OSRM).
-- **Supabase Realtime Sync:** Automatic database sync on status changes.
-- **AI Parser Integration:** Triage categorization and severity classifications.
-
-### 🟢 Tier 3: ADVANCED / STRETCH (Polish)
-
-- **Multi-Modal AI Ingestion:** Gemini analyzing image uploads for emergency cues.
-- **Dynamic Shelter Inventories:** Automated alerts when supply thresholds fall below set metrics.
-- **Offline Fallbacks:** Local browser database (IndexedDB) caching maps and reports if connection is lost.
-
-### 🔵 Tier 4: NARRATED (Future Scope)
-
-- Multi-channel SMS and satellite integrations.
-- Native mobile applications.
-- Official emergency response center integrations.
+This roadmap tracks the development progress, completed frontend deliverables, and upcoming full-stack integration phases for Salvus.
 
 ---
 
-## 2. 10-Day Milestones
+## 1. Project Phases & Status
 
-- **Days 1 - 3: Foundation**
-  - Setup core React routing and state managers.
-  - Establish base Leaflet map and center coordinate views.
-  - Setup Supabase tables and triggers.
-- **Days 4 - 6: Ingestion & AI Triage**
-  - Integrate meteorological feeds.
-  - Connect Gemini API to parse text inputs.
-- **Days 7 - 8: Dispatch & Telemetry**
-  - Write proximity allocation formulas.
-  - Wire WebSocket servers for GPS simulation updates.
-- **Days 9 - 10: Integration & Polishing**
-  - Connect client-to-server workflows.
-  - Conduct presentation demo dry-runs.
+### Phase 1: Frontend V1.0 Foundation — **COMPLETED & VALIDATED** ✅
+
+- [x] **Design System & Visual Language:** Sleek high-contrast dark theme, semantic disaster tokens (Emerald, Amber, Rose, Cyan).
+- [x] **Citizen Safety Console (`/citizen`):**
+  - [x] Citizen Home with safety status & active alert previews.
+  - [x] In-App 3-step Hazard Reporting modal (`IncidentReportModal.jsx`).
+  - [x] Situational Map with flood hydro-contours & in-app Safe Route Guidance.
+  - [x] Hazard Advisory feed with Critical/Warning/Watch filters & safety guidance.
+  - [x] Emergency Profile with verified identity, medical passport, and siren testing.
+- [x] **State-Focused Progressive Disclosure Emergency Journey (`/citizen/emergency`):**
+  - [x] Complete 8-state progression (`SOS_ACTIVE` → `TRIAGING` → `VERIFIED` → `ASSIGNED` → `EN_ROUTE` → `NEARBY` → `ON_SCENE` → `RESOLVED`).
+  - [x] Tactical Rescue Radar with animated vessel telemetry, route corridor, and ETA countdown.
+  - [x] AI Intelligence classification & Human Dispatcher verification approval stamp.
+  - [x] Urgent proximity signaling guidance (<100m) & arrival handoff protocol.
+  - [x] Safeguarded cancellation flow with instant re-trigger support.
+- [x] **Authority Command Center (`/authority`):**
+  - [x] High-density operational KPI metrics strip.
+  - [x] Incident Priority Queue with AI urgency scoring & 1-click dispatch approval.
+  - [x] Multi-layer Tactical Operational Command Map with marker telemetry inspection.
+  - [x] Responder fleet tracking matrix & shelter supply logistics.
+- [x] **Navigation & Presentation Excellence:**
+  - [x] 1-Click dual-portal switcher in top navigation bars.
+  - [x] Collapsible demo simulator dock with network health simulation (`Grid Connected`, `Limited SMS`, `Offline Cache`).
+  - [x] Zero dead buttons, placeholder UI, or console warnings.
+
+---
+
+### Phase 2: Real-time Backend & Ingestion Pipeline — **NEXT PHASE** 🚀
+
+- [ ] **Node.js / Express API Gateway:** REST endpoints for incident creation, triage ingestion, and shelter queries.
+- [ ] **Live Geospatial Database (Supabase / PostgreSQL + PostGIS):** Coordinate indexing and nearest-neighbor spatial queries.
+- [ ] **Bi-directional WebSockets (Socket.io):** Instant state synchronization between citizen emergency beacons and authority command centers.
+- [ ] **Live AI Pipeline (Gemini / Groq LLM):** Dynamic parsing of raw text messages and multi-modal photo analysis.
+- [ ] **External Disaster Feeds:** Live ingestion from USGS Earthquake API and Open-Meteo Weather API.
+
+---
+
+### Phase 3: Hardware & Offline Resilience — **FUTURE ROADMAP** 🔮
+
+- [ ] Low-bandwidth SMS & satellite mesh emergency beacon fallback.
+- [ ] Direct integration with official emergency response dispatch protocols (CAP/EDXL).
+- [ ] Mobile native applications (React Native / PWA offline caching).

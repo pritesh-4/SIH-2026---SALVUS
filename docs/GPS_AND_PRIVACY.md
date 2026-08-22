@@ -1,39 +1,39 @@
-# GPS_AND_PRIVACY.md - Location Tracking & User Privacy
+# GPS_AND_PRIVACY.md - Location Tracking Protocols & Privacy Safeguards
 
-This document defines the protocols, intervals, and data retention standards for GPS coordinates on the Salvus platform.
-
----
-
-## 1. Citizen Tracking Protocol
-
-To ensure user privacy, continuous geolocation tracking must never execute by default.
-
-- **Triggering Event:** Location tracking activates **only** when the user clicks the "Initiate SOS" button on the citizen portal.
-- **Consent:** A browser prompt must explicitly request permission:
-  > _"Salvus needs continuous access to your location to route rescue personnel directly to you during this emergency."_
-- **Access Method:** Implementation uses the HTML5 Geolocation API:
-  ```javascript
-  navigator.geolocation.watchPosition(
-    (position) => handleLocationUpdate(position),
-    (error) => handleTrackingError(error),
-    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-  )
-  ```
+This document specifies the GPS telemetry protocols, location precision safeguards, and privacy controls implemented across Salvus.
 
 ---
 
-## 2. Terminating Location Tracking
+## 1. Location Telemetry Lifecycle
 
-Once the emergency event ends, coordinates transmission must stop immediately:
-
-- **Resolution Stop:** The server terminates socket subscription of `incident:<id>` when incident status updates to `'resolved'`.
-- **Citizen-Side Reset:** The browser executes `clearWatch(watchId)` to turn off continuous tracking, returning the app state to passive monitoring.
+- **Normal Mode:** Location access is requested purely on-demand when the user views the situational map to calculate distances to nearby shelters.
+- **Active SOS Mode:** Continuous high-accuracy GPS telemetry streaming is activated immediately upon confirming the distress beacon.
+- **Resolution / Cancellation:** Location broadcast terminates automatically when the incident status changes to `RESOLVED` or `CANCELLED`.
 
 ---
 
-## 3. Telemetry Simulation for Demo
+## 2. Telemetry Metadata Structure
 
-Since real-world responder vehicles cannot be mapped on the fly during a hackathon, we apply a **telemetry simulation framework**:
+```json
+{
+  "ticketId": "SV-2048",
+  "coordinates": {
+    "latitude": 22.5726,
+    "longitude": 88.3639
+  },
+  "address": "Sector 12, Salt Lake, Bidhannagar, Kolkata",
+  "accuracyMeters": 4.2,
+  "telemetryStatus": "LIVE_BROADCASTING",
+  "gridConnectivity": "GRID_CONNECTED"
+}
+```
 
-- **Mechanism:** Telemetry routes are requested from the OSRM path engine. A local timer function iterates and publishes steps along that path.
-- **Visual Guard:** These simulated points must be marked in the code and UI with a `[SIMULATION]` status indicator to distinguish them from live telemetry inputs.
+---
+
+## 3. Network Resilience & Fallback Telemetry
+
+During catastrophic disasters, cellular grid infrastructure can become degraded:
+
+1. **`CONNECTED` (Full Grid):** Continuous high-frequency GPS coordinate sync via WebSocket telemetry.
+2. **`LIMITED_CONNECTION` (SMS Telemetry Mode):** Low-frequency delta coordinate compression simulated for SMS fallback channels.
+3. **`OFFLINE` (Local Cache Mode):** Distress timestamp and last known coordinates cached in browser storage, accompanied by an explicit warning and offline life-safety instructions.

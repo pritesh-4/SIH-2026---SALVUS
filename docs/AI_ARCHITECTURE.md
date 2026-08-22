@@ -1,68 +1,62 @@
-# AI_ARCHITECTURE.md - Artificial Intelligence & Triage Specs
+# AI_ARCHITECTURE.md - Operational AI Triage & Verification Architecture
 
-This document defines how LLMs orchestrate incident structuring, classification, and safety overrides in Salvus.
-
----
-
-## 1. Approved AI Operational Scope
-
-To ensure public safety, AI in Salvus acts exclusively as a **data structuring advisor**. It does not possess authority to execute dispatch calls.
-
-```
- Citizen Report (Text/Image)
-   │
-   ├── Ingest to Backend
-   │
-   ├── AI Triage Node (Gemini/Groq API)
-   │     ├── 1. Classify incident type
-   │     ├── 2. Extract entities (people trapped, water height)
-   │     └── 3. Score severity (Critical, High, Moderate, Low)
-   │
-   └── structured incident payload ──► Dispatcher Dashboard (Human Approval Required)
-```
+This document specifies the operational AI intelligence pipeline, classification criteria, and human-in-the-loop verification model used in Salvus.
 
 ---
 
-## 2. LLM Orchestration & Fail-Safe Architecture
+## 1. Operational Role of AI in Salvus
 
-### Primary Engine: Gemini (models: `gemini-2.5-flash` / `gemini-1.5-flash`)
+In disaster coordination, AI is utilized strictly as an **intelligence extraction and prioritization assistant**, never as an autonomous decision-maker.
 
-- Used for high-efficiency multi-modal parsing (image inputs + text classification).
+The AI Layer performs:
 
-### Fallback Engine: Groq (models: `llama-3.3-70b`)
-
-- Invoked automatically if Gemini queries time out (threshold: 3000ms) or hit API rate limits.
-
-### Hard Fallback Parser
-
-- If both external AI connections fail, the backend applies local Regex patterns matching key emergency keywords (e.g. _trapped_, _injured_, _fire_, _flood_) to assign a baseline classification and triage rating.
+1. **Unstructured Data Parsing:** Ingests raw citizen messages, audio transcripts, or distress signals.
+2. **Hazard Categorization & Entity Extraction:** Identifies specific disaster threats (e.g., Flash Flood, Downed Power Lines, Structural Collapse) and trapped victim counts.
+3. **Urgency Scoring (1–10 Scale):** Evaluates depth estimates, water flow velocity, non-ambulatory medical notes, and immediate life-safety peril.
+4. **Specialized Craft & Equipment Recommendation:** Matches required rescue capabilities (e.g., Zodiac inflatable boat Mk-II, high-clearance 4x4 ambulance).
+5. **Confidence Rating (0–100%):** Exposes model certainty to dispatchers for transparent human evaluation.
 
 ---
 
-## 3. Human-in-the-Loop Policy
-
-The allocation algorithm Suggests dispatches; it does not issue them.
-
-- **Dispatch Check:** All dispatches require physical button verification by a dispatcher operator inside the dashboard.
-- **Triage Correction:** Dispatchers can manually override incident categories or severities if the LLM misclassifies an entry.
-
----
-
-## 4. Structured Output Format
-
-All AI prompts are configured to return JSON matching this schema:
+## 2. AI Triage Data Structure
 
 ```json
 {
-  "category": "Flood" | "Fire" | "Medical" | "Hazard" | "Other",
-  "severity": "Critical" | "High" | "Moderate" | "Low",
-  "confidence": 0.0,
-  "summary": "Brief summary of the citizen report text.",
-  "entities": {
-    "injured_count": 0,
-    "hazard_detected": true
+  "incidentId": "INC-8492",
+  "citizenTicket": "SV-2048",
+  "hazardType": "Flash Flood & Surge Inundation",
+  "depthEstimate": "1.4m Rising",
+  "confidence": "94%",
+  "urgencyScore": 9.4,
+  "recommendedUnit": "NDRF Unit 4 — Alpha Team",
+  "recommendedCraft": "Zodiac Rescue Boat Mk-II",
+  "priorityReasoning": "High water velocity detected. Submerged ground floor structure with 3 individuals trapped on balcony.",
+  "reporterNotes": {
+    "name": "Aditi Roy",
+    "phone": "+91 98301 24890",
+    "medicalConditions": "Asthma (Inhaler Required)"
   }
 }
 ```
 
-If the API returns unstructured text, a validator utility parses and forces mapping to this JSON footprint before inserting into PostgreSQL.
+---
+
+## 3. Human-in-the-Loop Safeguard Protocol
+
+```
+[Citizen Distress Signal]
+         │
+         ▼
+[AI Parsing & Classification Engine]
+         │
+         ▼
+[AI Triage Recommendation + Confidence Score]
+         │
+         ▼
+[Human Dispatcher Verification at Central Command]
+   ├── [APPROVE & DISPATCH] ──► [Responder Vessel Tracks toward Coordinates]
+   └── [MANUAL OVERRIDE]    ──► [Dispatcher Modifies Unit or Priority]
+```
+
+- **Zero Autonomous Dispatch:** Rescue vessels are never deployed without explicit dispatcher authorization.
+- **Fail-Safe Processing:** If the primary LLM is unreachable, the system applies deterministic keyword matching rules and presents the raw report with a `[RULE-BASED TRIAGE]` badge.
