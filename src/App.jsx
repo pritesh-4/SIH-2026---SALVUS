@@ -5,6 +5,8 @@ import CitizenMap from './pages/CitizenMap'
 import CitizenAlerts from './pages/CitizenAlerts'
 import CitizenProfile from './pages/CitizenProfile'
 import CitizenEmergency from './pages/CitizenEmergency'
+import AuthorityLayout from './layouts/AuthorityLayout'
+import AuthorityCommandCenter from './pages/AuthorityCommandCenter'
 
 const App = () => {
   return (
@@ -23,6 +25,12 @@ const App = () => {
       {/* Standalone Citizen Emergency Mode */}
       <Route path="/citizen/sos" element={<CitizenEmergency />} />
       <Route path="/citizen/emergency" element={<CitizenEmergency />} />
+
+      {/* Authority Command Center SPA Experience */}
+      <Route path="/authority" element={<AuthorityLayout />}>
+        <Route index element={<AuthorityCommandCenter />} />
+        <Route path="command" element={<Navigate to="/authority" replace />} />
+      </Route>
 
       {/* Catch-all redirect */}
       <Route path="*" element={<Navigate to="/citizen" replace />} />

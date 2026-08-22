@@ -46,16 +46,24 @@ export const Navbar = ({ unreadAlertsCount = 1 }) => {
           ))}
         </nav>
 
-        {/* Live Status & Time */}
-        <div className="flex items-center gap-4 text-xs">
-          <div className="flex items-center gap-2 font-semibold tracking-wider text-emerald-400">
+        {/* Live Status, Time & Portal Switcher */}
+        <div className="flex items-center gap-3 sm:gap-4 text-xs">
+          <div className="hidden sm:flex items-center gap-2 font-semibold tracking-wider text-emerald-400">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
             <span>LIVE</span>
           </div>
-          <span className="text-slate-400 font-medium">14:42 IST</span>
+
+          <Link
+            to="/authority"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#111A24] hover:bg-[#1E293B] border border-[#2A3B4E] text-cyan-300 hover:text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+            title="Open Authority Command Center"
+          >
+            <span>🛡️</span>
+            <span className="hidden xs:inline">Authority Center</span>
+          </Link>
         </div>
       </div>
     </header>
