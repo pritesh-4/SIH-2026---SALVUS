@@ -6,6 +6,7 @@ export const CitizenMap = () => {
   const navigate = useNavigate()
   const [activeFilter, setActiveFilter] = useState('all')
   const [selectedMarker, setSelectedMarker] = useState(citizenMapData.markers[0]) // Default select nearest shelter
+  const [activeRouteGuide, setActiveRouteGuide] = useState(null)
 
   const { userLocation, summary, filters, markers } = citizenMapData
 
@@ -337,10 +338,8 @@ export const CitizenMap = () => {
                 {selectedMarker.type === 'shelter' && (
                   <button
                     type="button"
-                    onClick={() => {
-                      alert(`Initiating offline safe-routing directions to ${selectedMarker.name}`)
-                    }}
-                    className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer text-center"
+                    onClick={() => setActiveRouteGuide(selectedMarker)}
+                    className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer text-center shadow-lg shadow-emerald-950/40"
                   >
                     Navigate to Shelter ({selectedMarker.eta})
                   </button>
@@ -349,7 +348,7 @@ export const CitizenMap = () => {
                   <button
                     type="button"
                     onClick={() => navigate('/citizen/sos')}
-                    className="flex-1 py-3 px-4 rounded-xl bg-[#EF4444] hover:bg-rose-600 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer text-center"
+                    className="flex-1 py-3 px-4 rounded-xl bg-[#EF4444] hover:bg-rose-600 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer text-center shadow-lg shadow-rose-950/40"
                   >
                     Request Evacuation SOS
                   </button>
@@ -375,6 +374,91 @@ export const CitizenMap = () => {
           )}
         </div>
       </div>
+
+      {/* Interactive Safe Route Guidance Modal */}
+      {activeRouteGuide && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="route-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
+        >
+          <div className="bg-[#111A24] border border-emerald-500/40 rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
+                <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider font-mono">
+                  Offline Flood-Bypass Route Active
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveRouteGuide(null)}
+                className="text-slate-400 hover:text-white text-lg font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <h3 id="route-modal-title" className="text-xl font-extrabold text-white tracking-tight">
+              Safe Route to {activeRouteGuide.name}
+            </h3>
+            <p className="text-xs text-slate-300 mt-1">
+              Distance: <strong className="text-white">{activeRouteGuide.distance}</strong> ·
+              Estimated Walk Time:{' '}
+              <strong className="text-emerald-400">{activeRouteGuide.eta}</strong>
+            </p>
+
+            <div className="bg-[#0B1118] border border-[#1E293B] rounded-xl p-4 my-4 space-y-3">
+              <div className="flex items-start gap-3 text-xs text-slate-300">
+                <span className="h-5 w-5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[11px] flex items-center justify-center shrink-0">
+                  1
+                </span>
+                <div>
+                  <strong className="text-white block">Head East on Elevated Arterial Rd</strong>
+                  <span className="text-slate-400">
+                    Paved high ground with zero water logging (+3.8m elevation).
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 text-xs text-slate-300">
+                <span className="h-5 w-5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[11px] flex items-center justify-center shrink-0">
+                  2
+                </span>
+                <div>
+                  <strong className="text-white block">Bypass Sector 12 Underpass</strong>
+                  <span className="text-rose-400">
+                    Hazard avoidance: underpass submerged by 1.4m floodwater.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 text-xs text-slate-300">
+                <span className="h-5 w-5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[11px] flex items-center justify-center shrink-0">
+                  3
+                </span>
+                <div>
+                  <strong className="text-white block">Enter Shelter West Reception Gate</strong>
+                  <span className="text-slate-400">
+                    Emergency medical triage and bed intake station active.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveRouteGuide(null)}
+                className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer text-center"
+              >
+                Close Safe Route View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

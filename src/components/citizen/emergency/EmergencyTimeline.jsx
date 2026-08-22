@@ -1,14 +1,20 @@
+import { STATE_ORDER } from '../../../features/citizen/emergency/useEmergencyState'
+
 export const EmergencyTimeline = ({ timelineSteps = [], currentState = 'SOS_ACTIVE' }) => {
-  const stateKeys = ['SOS_ACTIVE', 'TRIAGING', 'ASSIGNED', 'EN_ROUTE', 'ON_SCENE', 'RESOLVED']
-  const currentIdx = stateKeys.indexOf(currentState)
+  const currentIdx = STATE_ORDER.indexOf(currentState)
 
   return (
-    <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl p-6 transition-all duration-300">
-      <span className="text-xs font-bold tracking-wider text-slate-400 uppercase block mb-4">
-        LIVE INCIDENT TIMELINE
-      </span>
+    <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl p-5 sm:p-6 transition-all duration-300">
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-xs font-bold tracking-wider text-slate-400 uppercase block">
+          LIVE INCIDENT TIMELINE
+        </span>
+        <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 px-2 py-0.5 rounded-full">
+          Salvus Dispatch Audit Log
+        </span>
+      </div>
 
-      <div className="space-y-4 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#1E293B]">
+      <div className="space-y-3.5 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#1E293B]">
         {timelineSteps.map((step, idx) => {
           const isCompleted = idx < currentIdx
           const isCurrent = idx === currentIdx
@@ -21,7 +27,7 @@ export const EmergencyTimeline = ({ timelineSteps = [], currentState = 'SOS_ACTI
                   isCompleted
                     ? 'bg-emerald-500 text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]'
                     : isCurrent
-                      ? 'bg-amber-400 text-slate-950 ring-4 ring-amber-400/20 animate-pulse'
+                      ? 'bg-amber-400 text-slate-950 ring-4 ring-amber-400/25 animate-pulse'
                       : 'bg-[#1E293B] text-slate-500'
                 }`}
               >
@@ -43,12 +49,14 @@ export const EmergencyTimeline = ({ timelineSteps = [], currentState = 'SOS_ACTI
                     {step.label}
                   </h4>
                   {isCurrent && (
-                    <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.2 rounded-full font-bold uppercase">
-                      IN PROGRESS
+                    <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.2 rounded-full font-bold uppercase shrink-0">
+                      CURRENT
                     </span>
                   )}
                   {isCompleted && (
-                    <span className="text-[10px] text-emerald-400 font-semibold">Done</span>
+                    <span className="text-[10px] text-emerald-400 font-semibold shrink-0">
+                      Done
+                    </span>
                   )}
                 </div>
                 <p className="text-[11px] text-slate-400 mt-0.5">{step.description}</p>

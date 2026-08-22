@@ -8,10 +8,12 @@ import { ShelterPreviewCard } from '../components/citizen/ShelterPreviewCard'
 import { ReportIncidentCard } from '../components/citizen/ReportIncidentCard'
 import { AreaMapCard } from '../components/citizen/AreaMapCard'
 import { EmergencyConfirmationModal } from '../components/citizen/emergency/EmergencyConfirmationModal'
+import { IncidentReportModal } from '../components/citizen/IncidentReportModal'
 
 export const CitizenHome = () => {
   const navigate = useNavigate()
   const [isConfirmingSos, setIsConfirmingSos] = useState(false)
+  const [isReportingIncident, setIsReportingIncident] = useState(false)
 
   const { user, safetyStatus, emergency, activeAlert, nearestShelter, report, areaMap } =
     citizenHomeData
@@ -36,6 +38,12 @@ export const CitizenHome = () => {
         isOpen={isConfirmingSos}
         onConfirm={handleConfirmSos}
         onCancel={handleCancelSos}
+      />
+
+      {/* Incident Reporting Modal */}
+      <IncidentReportModal
+        isOpen={isReportingIncident}
+        onClose={() => setIsReportingIncident(false)}
       />
 
       {/* Header Greeting */}
@@ -96,9 +104,7 @@ export const CitizenHome = () => {
               title={report.title}
               subtitle={report.subtitle}
               actionText={report.actionText}
-              onActionClick={() => {
-                navigate('/citizen/alerts')
-              }}
+              onActionClick={() => setIsReportingIncident(true)}
             />
           </div>
 

@@ -16,7 +16,7 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel }) => {
         }
         return prev + 5
       })
-    }, 50)
+    }, 40)
 
     return () => clearInterval(interval)
   }, [isHolding, onConfirm])
@@ -45,7 +45,7 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel }) => {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
           </span>
-          <span className="text-xs font-bold tracking-widest text-rose-400 uppercase">
+          <span className="text-xs font-bold tracking-widest text-rose-400 uppercase font-mono">
             Emergency Dispatch Confirmation
           </span>
         </div>
@@ -55,20 +55,27 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel }) => {
           id="modal-title"
           className="text-2xl font-extrabold text-white tracking-tight leading-snug"
         >
-          Activate Emergency SOS?
+          You are about to request emergency assistance.
         </h2>
-        <p className="text-sm text-slate-300 mt-2 leading-relaxed font-normal">
-          This transmits your live GPS coordinates directly to the Salvus emergency response grid
-          and initiates AI triage for immediate unit dispatch.
+        <p className="text-xs sm:text-sm text-slate-300 mt-2 leading-relaxed font-normal">
+          Activating SOS initiates priority AI triage and transmits your live telemetry directly to
+          nearby rescue teams.
         </p>
 
-        {/* Info Box */}
-        <div className="bg-[#0B1118] border border-[#1E293B] rounded-xl p-3.5 my-5 text-xs text-slate-400 flex items-start gap-3">
-          <span className="text-rose-400 text-sm font-bold mt-0.5">⚠️</span>
-          <span>
-            Only use in real emergencies. Accidental activations can be safely cancelled once
-            broadcasted.
-          </span>
+        {/* Structured Info Box */}
+        <div className="bg-[#0B1118] border border-[#1E293B] rounded-xl p-4 my-5 space-y-2 text-xs">
+          <div className="flex items-center justify-between text-slate-300">
+            <span className="text-slate-400">Location Sharing:</span>
+            <span className="font-bold text-emerald-400">Live GPS Coordinates</span>
+          </div>
+          <div className="flex items-center justify-between text-slate-300">
+            <span className="text-slate-400">Response Grid:</span>
+            <span className="font-bold text-cyan-400">Salvus Command Dispatch</span>
+          </div>
+          <div className="flex items-center justify-between text-slate-300">
+            <span className="text-slate-400">Emergency Status:</span>
+            <span className="font-bold text-rose-400">Immediate Priority</span>
+          </div>
         </div>
 
         {/* Actions */}
@@ -90,10 +97,10 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel }) => {
               onTouchStart={() => setIsHolding(true)}
               onTouchEnd={handleStopHolding}
               onClick={onConfirm}
-              className="relative w-full py-3.5 px-6 rounded-xl bg-[#EF4444] hover:bg-rose-600 active:scale-[0.99] text-white font-bold text-sm tracking-wider uppercase transition-all duration-200 cursor-pointer shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2"
+              className="relative w-full py-3.5 px-6 rounded-xl bg-[#EF4444] hover:bg-rose-600 active:scale-[0.99] text-white font-bold text-xs sm:text-sm tracking-wider uppercase transition-all duration-200 cursor-pointer shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2"
             >
               <span>
-                {isHolding ? `HOLD TO CONFIRM (${holdProgress}%)` : 'CONFIRM & TRANSMIT SOS'}
+                {isHolding ? `HOLDING TO TRANSMIT (${holdProgress}%)` : 'CONFIRM EMERGENCY SOS'}
               </span>
             </button>
           </div>
@@ -101,9 +108,9 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel }) => {
           <button
             type="button"
             onClick={onCancel}
-            className="w-full py-3 px-6 rounded-xl bg-[#1E293B]/60 hover:bg-[#1E293B] text-slate-300 hover:text-white font-medium text-xs tracking-wider uppercase transition-all duration-200 cursor-pointer"
+            className="w-full py-3 px-6 rounded-xl bg-[#1E293B]/60 hover:bg-[#1E293B] text-slate-300 hover:text-white font-medium text-xs tracking-wider uppercase transition-all duration-200 cursor-pointer text-center"
           >
-            Cancel & Return
+            Cancel Request
           </button>
         </div>
       </div>
