@@ -14,6 +14,7 @@ from httpx import ASGITransport, AsyncClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.db import close_database, init_database
+from app.db.seed import seed_database
 from app.main import app
 
 
@@ -31,6 +32,16 @@ async def test_db():
     db = await init_database(":memory:")
     yield db
     await close_database()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def reset_seed_tables(test_db):
+    """Reset and seed tables before each test to guarantee repeatable test isolation."""
+    await test_db.execute("DELETE FROM incident_events")
+    await test_db.execute("DELETE FROM incidents")
+    await test_db.commit()
+    await seed_database(test_db)
+    yield
 
 
 @pytest_asyncio.fixture

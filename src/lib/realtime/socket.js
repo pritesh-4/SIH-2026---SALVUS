@@ -4,6 +4,7 @@ const SOCKET_URL = import.meta.env.VITE_WS_URL || window.location.origin
 
 let socketInstance = null
 const connectionListeners = new Set()
+const activeRooms = new Set()
 
 /**
  * Notify all registered connection status listeners.
@@ -27,14 +28,18 @@ export const getSocket = () => {
       transports: ['websocket', 'polling'],
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 50,
+      reconnectionAttempts: 100,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionDelayMax: 4000,
       timeout: 10000,
     })
 
     socketInstance.on('connect', () => {
       console.log('[Socket.IO] Connected to Salvus Realtime Hub:', socketInstance.id)
+      // Automatically re-join all active rooms on reconnect
+      activeRooms.forEach((room) => {
+        socketInstance.emit('join_room', { room })
+      })
       notifyStatus('CONNECTED')
     })
 
@@ -53,7 +58,7 @@ export const getSocket = () => {
     })
 
     socketInstance.on('reconnect', () => {
-      console.log('[Socket.IO] Reconnected')
+      console.log('[Socket.IO] Reconnected cleanly')
       notifyStatus('CONNECTED')
     })
   }
@@ -85,6 +90,8 @@ export const disconnectSocket = () => {
  * Join a named room (e.g., 'authorities', 'incident:UUID').
  */
 export const joinRoom = (room) => {
+  if (!room) return
+  activeRooms.add(room)
   const socket = getSocket()
   if (socket.connected) {
     socket.emit('join_room', { room })
@@ -99,6 +106,8 @@ export const joinRoom = (room) => {
  * Leave a named room.
  */
 export const leaveRoom = (room) => {
+  if (!room) return
+  activeRooms.delete(room)
   const socket = getSocket()
   if (socket.connected) {
     socket.emit('leave_room', { room })
@@ -134,4 +143,19 @@ export const onSocketStatusChange = (callback) => {
   return () => {
     connectionListeners.delete(callback)
   }
+}
+
+/**
+ * Developer helper: simulate temporary connection drop for resilience testing.
+ */
+export const simulateConnectionDrop = (durationMs = 4000) => {
+  if (!socketInstance) return
+  console.log(`[Dev Demo] Simulating socket connection drop for ${durationMs}ms...`)
+  socketInstance.disconnect()
+  notifyStatus('RECONNECTING')
+
+  setTimeout(() => {
+    console.log('[Dev Demo] Restoring socket connection...')
+    socketInstance.connect()
+  }, durationMs)
 }

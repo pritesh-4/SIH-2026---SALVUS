@@ -5,6 +5,8 @@ Endpoints:
     GET    /api/incidents              — List all incidents
     GET    /api/incidents/{id}         — Get a single incident with events
     PATCH  /api/incidents/{id}/status  — Transition incident status
+    POST   /api/incidents/dev/seed     — Seed demo incidents (Dev tool)
+    POST   /api/incidents/dev/reset    — Reset demo database (Dev tool)
 """
 
 from __future__ import annotations
@@ -109,3 +111,33 @@ async def update_incident_status(incident_id: str, payload: IncidentStatusUpdate
         pass
 
     return IncidentSingleResponse(data=incident)
+
+
+@router.post("/dev/seed", response_model=IncidentListResponse)
+async def seed_dev_incidents():
+    """Developer helper: Seed standard demo incidents and broadcast."""
+    db = await get_database()
+    from app.db.seed import seed_database
+
+    await seed_database(db)
+    incidents = await incident_service.get_all_incidents(db)
+
+    # Broadcast to authority clients
+    try:
+        from app.realtime.socket_manager import emit_incident_created
+
+        for inc in incidents[:2]:
+            await emit_incident_created(inc)
+    except Exception:
+        pass
+
+    return IncidentListResponse(data=incidents, count=len(incidents))
+
+
+@router.post("/dev/reset", response_model=IncidentListResponse)
+async def reset_dev_database():
+    """Developer helper: Reset database incidents to initial demo state."""
+    db = await get_database()
+    await incident_service.reset_demo_database(db)
+    incidents = await incident_service.get_all_incidents(db)
+    return IncidentListResponse(data=incidents, count=len(incidents))

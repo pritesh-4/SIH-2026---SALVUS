@@ -40,45 +40,39 @@ python -m pytest -v
 
 ---
 
-## 2. Realtime Two-Browser Core Loop Test
+## 2. Automated Realtime & Resilience E2E Test (`scripts/test-realtime-loop.mjs`)
 
-This end-to-end verification confirms live bidirectional synchronization across Citizen and Authority clients:
+```bash
+node scripts/test-realtime-loop.mjs
+```
 
-### Test Prerequisites:
+### Test Verification Matrix (12 Steps):
 
-1. Start backend server:
-   ```bash
-   cd backend
-   venv\Scripts\uvicorn.exe app.main:combined_asgi_app --host 127.0.0.1 --port 8000 --reload
-   ```
-2. Start frontend dev server:
-   ```bash
-   npm run dev
-   ```
-
-### Verification Flow (WITHOUT PAGE RELOAD):
-
-1. **Window A (Citizen)**: Open `http://localhost:5173/citizen`.
-2. **Window B (Authority)**: Open `http://localhost:5173/authority`.
-3. In **Window A**, click "SEND SOS" and hold/confirm to transmit the beacon.
-4. Observe in **Window B** (Authority):
-   - Incident appears instantly at the top of the queue with `#SV-XXXX` ticket number.
-   - Live marker appears on the tactical radar map at the reported GPS coordinates.
-   - Active Incidents count increments.
-5. In **Window B**, select the incident and click **"Verify Incident"** (`NEW` $\rightarrow$ `VERIFIED`).
-6. Observe in **Window A** (Citizen):
-   - Emergency page status immediately switches to **"Request Reviewed & Approved"** (`VERIFIED` phase) with zero page reload.
-7. In **Window B**, click **"✓ RESOLVE & CLOSE INCIDENT"** (`VERIFIED` $\rightarrow$ `RESOLVED`).
-8. Observe in **Window A** (Citizen):
-   - Citizen screen immediately transitions to **"Rescue & Evacuation Complete"** (`RESOLVED` phase) with zero page reload.
+1. **Authority Connection**: Socket.IO connects & joins `"authorities"` room.
+2. **Citizen SOS Creation**: `POST /api/incidents` creates critical beacon.
+3. **Live WebSocket Arrival**: Authority dashboard receives `incident:new` with full payload without page reload.
+4. **Citizen Room Subscription**: Citizen client subscribes to `incident:{id}`.
+5. **Operational Triage**: Authority transitions `NEW` $\rightarrow$ `TRIAGE_PENDING`.
+6. **Realtime Triage Sync**: Both Authority and Citizen receive `TRIAGE_PENDING`.
+7. **Dispatch Verification**: Authority transitions `TRIAGE_PENDING` $\rightarrow$ `VERIFIED`.
+8. **Realtime Verification Sync**: Both Authority and Citizen receive `VERIFIED`.
+9. **Safe Resolution**: Authority transitions `VERIFIED` $\rightarrow$ `RESOLVED`.
+10. **Realtime Resolution Sync**: Both Authority and Citizen receive `RESOLVED`.
+11. **State Machine Terminal Guard**: Rejects illegal mutation on terminal state (`400 Bad Request`).
+12. **Hazard Report & Stand-Down**: Tests hazard report lifecycle $\rightarrow$ `CANCELLED`.
 
 ---
 
-## 3. Verification Benchmarks
+## 3. Two-Browser Product Failure & Recovery Scenario
 
-- **Frontend Build Performance:** Production build compiles in under **500ms** with Vite.
-- **Frontend Lint Integrity:** 0 ESLint errors and 0 ESLint warnings.
-- **Backend Lint Integrity:** 0 Ruff errors, 100% formatted.
-- **Backend Test Suite:** 100% pass rate across state machine and REST API tests (35/35 passing).
-- **Zero Page Reload:** Realtime incident creation, map marker plotting, and status lifecycle progression update across browsers in sub-second time.
-- **Offline Gracefulness:** Connection health transitions between `CONNECTED`, `RECONNECTING`, and `OFFLINE` without dashboard disruption.
+1. **Window A (Citizen)**: Open `http://localhost:5173/citizen`, confirm location (accuracy `High Precision ±4m`), trigger SOS.
+2. **Window B (Authority)**: Open `http://localhost:5173/authority`, observe instant queue entry & OpenStreetMap pin.
+3. **Simulate Connection Outage**: In Authority or Citizen, click `🛠️ DEV TOOLS` $\rightarrow$ `📶 Drop Socket (5s)`.
+   - Observe indicator switches to `RECONNECTING...`.
+   - In Citizen SOS, observe reassurance banner: _"Emergency request remains active in dispatcher queue."_
+4. **Automatic Reconnection**:
+   - Connection restores, indicator flips to `LIVE`.
+   - Status updates synchronize without requiring a page refresh.
+5. **Resolve & Clean Close**:
+   - Authority operator verifies and resolves the incident.
+   - Citizen view transitions to completed evacuation celebration.

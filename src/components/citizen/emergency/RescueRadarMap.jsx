@@ -1,3 +1,5 @@
+import { SimulatedBadge } from '../../common/SimulatedBadge'
+
 export const RescueRadarMap = ({
   currentState = 'SOS_ACTIVE',
   responderPos = { x: 22, y: 76 },
@@ -46,8 +48,9 @@ export const RescueRadarMap = ({
           </span>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2 font-mono text-[11px] text-slate-400">
-          <span>{userLocation.coordinates}</span>
+        <div className="flex items-center gap-2 font-mono text-[11px] text-slate-400">
+          <SimulatedBadge label="SIMULATED RADAR VECTOR" />
+          <span className="hidden sm:inline">{userLocation.coordinates}</span>
         </div>
       </div>
 

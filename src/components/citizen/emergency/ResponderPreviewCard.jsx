@@ -1,3 +1,5 @@
+import { SimulatedBadge } from '../../common/SimulatedBadge'
+
 export const ResponderPreviewCard = ({
   currentState = 'EN_ROUTE',
   responder = {},
@@ -42,9 +44,12 @@ export const ResponderPreviewCard = ({
       <div>
         {/* Header with ETA / Arrival Badge */}
         <div className="flex items-center justify-between gap-3 mb-4">
-          <span className="text-xs font-bold tracking-wider text-slate-400 uppercase">
-            ASSIGNED RESCUE TEAM
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold tracking-wider text-slate-400 uppercase">
+              ASSIGNED RESCUE TEAM
+            </span>
+            <SimulatedBadge label="SIMULATED ASSET" />
+          </div>
           <div
             className={`px-3 py-1 rounded-full text-xs font-extrabold tracking-wider font-mono border ${
               isOnScene

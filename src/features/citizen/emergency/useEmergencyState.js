@@ -84,18 +84,33 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     const roomName = `incident:${incidentId}`
     joinRoom(roomName)
 
-    // Listen for live status change broadcasts
+    // Listen for live status change broadcasts with ordering guard
     const unsubscribeStatus = subscribeToEvent('incident:status_changed', (payload) => {
       if (!isMounted) return
       if (payload.incident_id === incidentId || payload.id === incidentId) {
         console.log(`[Citizen Realtime] Status updated for ${incidentId} -> ${payload.status}`)
         const mappedState = STATUS_TO_STATE_MAP[payload.status] || 'SOS_ACTIVE'
-        setCurrentState(mappedState)
-        if (payload.incident) {
-          setLiveIncident(payload.incident)
-        } else {
-          setLiveIncident((prev) => (prev ? { ...prev, status: payload.status } : null))
+
+        const STATUS_RANKS = {
+          NEW: 1,
+          TRIAGE_PENDING: 2,
+          VERIFIED: 3,
+          RESOLVED: 4,
+          CANCELLED: 4,
         }
+
+        setLiveIncident((prev) => {
+          if (prev) {
+            const currentRank = STATUS_RANKS[prev.status] || 0
+            const incomingRank = STATUS_RANKS[payload.status] || 0
+            if (incomingRank < currentRank && prev.status !== 'CANCELLED') {
+              console.warn(`[Citizen Guard] Ignored out-of-order status: ${payload.status}`)
+              return prev
+            }
+          }
+          setCurrentState(mappedState)
+          return payload.incident || (prev ? { ...prev, status: payload.status } : null)
+        })
       }
     })
 

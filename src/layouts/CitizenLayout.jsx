@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { Navbar } from '../components/citizen/Navbar'
 import { BottomNav } from '../components/citizen/BottomNav'
+import { DevDemoControls } from '../components/common/DevDemoControls'
 
 export const CitizenLayout = () => {
   return (
@@ -15,6 +16,9 @@ export const CitizenLayout = () => {
 
       {/* Mobile Persistent Bottom Navigation */}
       <BottomNav unreadAlertsCount={1} />
+
+      {/* Developer Demo & Resilience Panel */}
+      <DevDemoControls />
     </div>
   )
 }

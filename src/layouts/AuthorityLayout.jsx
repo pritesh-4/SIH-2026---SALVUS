@@ -1,4 +1,5 @@
 import { Outlet, Link } from 'react-router-dom'
+import { DevDemoControls } from '../components/common/DevDemoControls'
 
 export const AuthorityLayout = () => {
   return (
@@ -59,6 +60,9 @@ export const AuthorityLayout = () => {
       <main className="flex-1 w-full max-w-[1720px] mx-auto p-4 sm:p-6">
         <Outlet />
       </main>
+
+      {/* Developer Demo & Resilience Panel */}
+      <DevDemoControls />
     </div>
   )
 }

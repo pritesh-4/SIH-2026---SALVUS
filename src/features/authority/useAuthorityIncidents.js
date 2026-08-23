@@ -7,6 +7,14 @@ import {
   onSocketStatusChange,
 } from '../../lib/realtime/socket'
 
+const STATUS_RANKS = {
+  NEW: 1,
+  TRIAGE_PENDING: 2,
+  VERIFIED: 3,
+  RESOLVED: 4,
+  CANCELLED: 4,
+}
+
 export const useAuthorityIncidents = () => {
   const [incidents, setIncidents] = useState([])
   const [selectedIncidentId, setSelectedIncidentId] = useState(null)
@@ -17,10 +25,10 @@ export const useAuthorityIncidents = () => {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
 
   // -------------------------------------------------------------------------
-  // 1. Initial Incidents Fetch
+  // 1. Initial & Refresh Incidents Fetch
   // -------------------------------------------------------------------------
-  const refetch = useCallback(async () => {
-    setIsLoading(true)
+  const refetch = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true)
     setError(null)
     const result = await fetchIncidents()
 
@@ -30,9 +38,11 @@ export const useAuthorityIncidents = () => {
         setSelectedIncidentId((prev) => prev || result.data[0].id)
       }
     } else {
-      setError(result.error?.message || 'Failed to fetch incident queue from backend')
+      if (!silent) {
+        setError(result.error?.message || 'Failed to fetch incident queue from backend')
+      }
     }
-    setIsLoading(false)
+    if (!silent) setIsLoading(false)
   }, [])
 
   useEffect(() => {
@@ -57,7 +67,7 @@ export const useAuthorityIncidents = () => {
   }, [])
 
   // -------------------------------------------------------------------------
-  // 2. Realtime Socket.IO Ingestion for Authorities Room
+  // 2. Realtime Socket.IO Ingestion with Out-of-Order Guards
   // -------------------------------------------------------------------------
   useEffect(() => {
     // Join the authorities room
@@ -108,16 +118,29 @@ export const useAuthorityIncidents = () => {
       })
     })
 
-    // Listen for remote status transitions
+    // Listen for remote status transitions with out-of-order protection
     const unsubscribeStatus = subscribeToEvent('incident:status_changed', (payload) => {
+      const incId = payload.id || payload.incident_id
+      const targetStatus = payload.status
+
       console.log(
-        `[Authority Realtime] Incident status changed: ${payload.ticket_id || payload.id} -> ${payload.status}`
+        `[Authority Realtime] Incident status changed: ${payload.ticket_id || incId} -> ${targetStatus}`
       )
 
       setIncidents((prev) =>
         prev.map((inc) => {
-          const incId = payload.id || payload.incident_id
           if (inc.id === incId) {
+            const currentRank = STATUS_RANKS[inc.status] || 0
+            const incomingRank = STATUS_RANKS[targetStatus] || 0
+
+            // Event ordering protection: do not regress status if an older packet arrives late
+            if (incomingRank < currentRank && inc.status !== 'CANCELLED') {
+              console.warn(
+                `[Authority Guard] Out-of-order event rejected: ${targetStatus} (rank ${incomingRank}) < current ${inc.status} (rank ${currentRank})`
+              )
+              return inc
+            }
+
             const updatedEvents = payload.events || [
               ...(inc.events || []),
               {
@@ -125,14 +148,15 @@ export const useAuthorityIncidents = () => {
                 incident_id: incId,
                 event_type: 'STATUS_CHANGE',
                 previous_status: inc.status,
-                new_status: payload.status,
+                new_status: targetStatus,
                 actor: 'authority',
                 created_at: payload.updated_at || new Date().toISOString(),
               },
             ]
+
             return {
               ...inc,
-              status: payload.status,
+              status: targetStatus,
               updated_at: payload.updated_at || new Date().toISOString(),
               events: updatedEvents,
             }
@@ -142,9 +166,12 @@ export const useAuthorityIncidents = () => {
       )
     })
 
-    // Listen for socket connection status
+    // Listen for socket connection status and refresh on reconnect
     const unsubscribeConn = onSocketStatusChange((status) => {
       setConnectivityStatus(status)
+      if (status === 'CONNECTED') {
+        refetch(true) // Silent refresh to catch any updates during disconnect gap
+      }
     })
 
     return () => {
@@ -153,7 +180,7 @@ export const useAuthorityIncidents = () => {
       unsubscribeStatus()
       unsubscribeConn()
     }
-  }, [])
+  }, [refetch])
 
   // -------------------------------------------------------------------------
   // 3. Computed Selected Incident

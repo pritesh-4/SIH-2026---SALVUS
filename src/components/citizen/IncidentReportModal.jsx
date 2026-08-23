@@ -1,15 +1,28 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createIncident } from '../../services/api'
-import { getCurrentLocation } from '../../lib/location'
+import { getCurrentLocation, LANDMARKS } from '../../lib/location'
+
+const DRAFT_STORAGE_KEY = 'salvus_draft_incident_report'
+
+const getSavedDraft = () => {
+  try {
+    const saved = sessionStorage.getItem(DRAFT_STORAGE_KEY)
+    if (saved) return JSON.parse(saved)
+  } catch {
+    // Ignore storage parse error
+  }
+  return null
+}
 
 export const IncidentReportModal = ({ isOpen, onClose }) => {
+  const [draft] = useState(getSavedDraft)
   const [step, setStep] = useState(1) // 1: Select Type, 2: Details & Location, 3: Success Confirmation
-  const [category, setCategory] = useState('flood')
-  const [severity, setSeverity] = useState('HIGH')
-  const [description, setDescription] = useState('')
-  const [reporterName, setReporterName] = useState('')
-  const [reporterPhone, setReporterPhone] = useState('')
-  const [affectedCount, setAffectedCount] = useState(1)
+  const [category, setCategory] = useState(() => draft?.category || 'flood')
+  const [severity, setSeverity] = useState(() => draft?.severity || 'HIGH')
+  const [description, setDescription] = useState(() => draft?.description || '')
+  const [reporterName, setReporterName] = useState(() => draft?.reporterName || '')
+  const [reporterPhone, setReporterPhone] = useState(() => draft?.reporterPhone || '')
+  const [affectedCount, setAffectedCount] = useState(() => draft?.affectedCount || 1)
   const [photoAttached, setPhotoAttached] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submissionError, setSubmissionError] = useState(null)
@@ -19,23 +32,99 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
   const [locationData, setLocationData] = useState({
     latitude: 22.5726,
     longitude: 88.3639,
+    accuracy: 'Detecting accuracy...',
+    accuracyBadgeClass: 'bg-cyan-950/60 text-cyan-300 border-cyan-500/40',
     coordinates: '22.5726° N, 88.3639° E (Sector 12)',
+    address: 'Sector 12 Community Hub',
     status: 'ACQUIRING',
   })
+  const [isAcquiringLocation, setIsAcquiringLocation] = useState(false)
+  const [selectedLandmarkName, setSelectedLandmarkName] = useState(LANDMARKS[0].name)
+
+  // ---------------------------------------------------------------------------
+  // 1. Save draft on field changes
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (step < 3) {
+      try {
+        sessionStorage.setItem(
+          DRAFT_STORAGE_KEY,
+          JSON.stringify({
+            category,
+            severity,
+            description,
+            reporterName,
+            reporterPhone,
+            affectedCount,
+          })
+        )
+      } catch {
+        // Ignore session storage errors
+      }
+    }
+  }, [category, severity, description, reporterName, reporterPhone, affectedCount, step])
+
+  // ---------------------------------------------------------------------------
+  // 2. Location Acquisition & Manual Override
+  // ---------------------------------------------------------------------------
+  const fetchLocation = useCallback(async () => {
+    setIsAcquiringLocation(true)
+    const loc = await getCurrentLocation()
+    setLocationData({
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      accuracy: loc.accuracy || 'Standard accuracy',
+      accuracyBadgeClass:
+        loc.accuracyBadgeClass || 'bg-cyan-950/60 text-cyan-300 border-cyan-500/40',
+      coordinates: loc.coordinates,
+      address: loc.address || 'Detected Device Location',
+      status: loc.status || (loc.success ? 'ACTIVE' : 'FALLBACK'),
+      error: loc.error,
+    })
+    setIsAcquiringLocation(false)
+  }, [])
 
   useEffect(() => {
-    if (isOpen) {
-      // Request location when modal opens
-      getCurrentLocation().then((loc) => {
-        setLocationData({
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          coordinates: loc.coordinates,
-          status: loc.status,
-        })
+    if (!isOpen) return
+    let isMounted = true
+
+    getCurrentLocation().then((loc) => {
+      if (!isMounted) return
+      setLocationData({
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        accuracy: loc.accuracy || 'Standard accuracy',
+        accuracyBadgeClass:
+          loc.accuracyBadgeClass || 'bg-cyan-950/60 text-cyan-300 border-cyan-500/40',
+        coordinates: loc.coordinates,
+        address: loc.address || 'Detected Device Location',
+        status: loc.status || (loc.success ? 'ACTIVE' : 'FALLBACK'),
+        error: loc.error,
       })
+      setIsAcquiringLocation(false)
+    })
+
+    return () => {
+      isMounted = false
     }
   }, [isOpen])
+
+  const handleSelectLandmark = (e) => {
+    const name = e.target.value
+    setSelectedLandmarkName(name)
+    const found = LANDMARKS.find((l) => l.name === name)
+    if (found) {
+      setLocationData({
+        latitude: found.latitude,
+        longitude: found.longitude,
+        accuracy: 'Manual Confirmation (±0m)',
+        accuracyBadgeClass: 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40',
+        coordinates: `${found.latitude.toFixed(4)}° N, ${found.longitude.toFixed(4)}° E`,
+        address: found.address,
+        status: 'MANUAL_CONFIRMED',
+      })
+    }
+  }
 
   const categories = [
     { id: 'flood', label: 'Flash Flood / Deep Water', icon: '🌊', type: 'flood' },
@@ -61,7 +150,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
       severity: severity.toUpperCase(),
       description:
         description.trim() ||
-        `${selectedCat?.label || 'Hazard'} reported at ${locationData.coordinates}`,
+        `${selectedCat?.label || 'Hazard'} reported at ${locationData.address || locationData.coordinates}`,
       reporter_name: reporterName.trim() || 'Anonymous Citizen',
       reporter_phone: reporterPhone.trim() || null,
       latitude: locationData.latitude,
@@ -75,9 +164,16 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     if (result.success && result.data) {
       setCreatedIncident(result.data)
       setStep(3)
+      // Clear draft on success
+      try {
+        sessionStorage.removeItem(DRAFT_STORAGE_KEY)
+      } catch {
+        // Ignore storage error
+      }
     } else {
       setSubmissionError(
-        result.error?.message || 'Failed to transmit report. Salvus fallback grid logged locally.'
+        result.error?.message ||
+          'Failed to transmit report to backend. Please check network and retry.'
       )
     }
   }
@@ -154,7 +250,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
               <button
                 type="button"
                 onClick={handleResetAndClose}
-                className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white text-xs font-semibold"
+                className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white text-xs font-semibold cursor-pointer"
               >
                 Cancel
               </button>
@@ -182,8 +278,15 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
             </h2>
 
             {submissionError && (
-              <div className="bg-rose-950/40 border border-rose-500/50 rounded-xl p-3 text-xs text-rose-300">
-                {submissionError}
+              <div className="bg-rose-950/40 border border-rose-500/50 rounded-xl p-3 text-xs text-rose-300 flex items-center justify-between">
+                <span>{submissionError}</span>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  className="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/30 rounded font-bold uppercase text-[10px] text-rose-200 cursor-pointer"
+                >
+                  Retry
+                </button>
               </div>
             )}
 
@@ -229,17 +332,17 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
 
             {/* Description */}
             <div>
-              <label
-                htmlFor="incident-desc"
-                className="text-xs font-semibold text-slate-300 block mb-1.5"
-              >
-                Incident Description & Landmarks
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="incident-desc" className="text-xs font-semibold text-slate-300">
+                  Incident Description & Landmarks
+                </label>
+                <span className="text-[10px] text-slate-500 font-mono">Draft Auto-Saved</span>
+              </div>
               <textarea
                 id="incident-desc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="E.g., Water rising above knee level near Sector 12 community park. Power cables dangling."
+                placeholder="E.g., Water rising rapidly near Sector 12 community park. Power cables dangling over water channel."
                 rows={3}
                 required
                 className="w-full bg-[#0B1118] border border-[#1E293B] rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
@@ -284,16 +387,55 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
               </div>
             </div>
 
-            {/* GPS Tag & Photo Upload Simulation */}
-            <div className="bg-[#0B1118] border border-[#1E293B] rounded-xl p-3.5 space-y-2 text-xs">
-              <div className="flex items-center justify-between text-slate-300">
-                <span className="flex items-center gap-1.5">
+            {/* Polished Location Confirmation Box */}
+            <div className="bg-[#0B1118] border border-[#1E293B] rounded-xl p-3.5 space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-1.5">
                   <span className="text-cyan-400">📍</span>
-                  <span>Attached GPS Tag:</span>
+                  <span>LOCATION CONFIRMATION</span>
                 </span>
-                <span className="font-mono text-cyan-300 text-[11px]">
-                  {locationData.coordinates}
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${locationData.accuracyBadgeClass}`}
+                >
+                  {isAcquiringLocation ? 'Detecting Location...' : locationData.accuracy}
                 </span>
+              </div>
+
+              <div className="bg-[#111A24] p-2.5 rounded-lg border border-[#1E293B] space-y-1">
+                <div className="text-slate-200 font-medium text-xs">{locationData.address}</div>
+                <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between">
+                  <span>GPS: {locationData.coordinates}</span>
+                  <button
+                    type="button"
+                    onClick={fetchLocation}
+                    disabled={isAcquiringLocation}
+                    className="text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer underline disabled:opacity-50"
+                  >
+                    {isAcquiringLocation ? 'Acquiring...' : '↺ Refresh GPS'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Manual Landmark Selector Fallback */}
+              <div>
+                <label
+                  htmlFor="landmark-select"
+                  className="text-[10px] font-semibold text-slate-400 block mb-1"
+                >
+                  Or Select Nearest Landmark:
+                </label>
+                <select
+                  id="landmark-select"
+                  value={selectedLandmarkName}
+                  onChange={handleSelectLandmark}
+                  className="w-full bg-[#111A24] border border-[#1E293B] rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                >
+                  {LANDMARKS.map((lm) => (
+                    <option key={lm.name} value={lm.name}>
+                      {lm.name} ({lm.address})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-[#1E293B]">

@@ -7,7 +7,7 @@ Controllers/routes call these functions — they never talk to the DB directly.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import aiosqlite
 
@@ -85,10 +85,38 @@ async def _get_events_for_incident(db: aiosqlite.Connection, incident_id: str) -
 
 
 async def create_incident(db: aiosqlite.Connection, payload: IncidentCreate) -> IncidentResponse:
-    """Create a new incident and its initial CREATED event."""
+    """Create a new incident and its initial CREATED event.
+
+    Includes rapid duplicate submission deduplication (4s window).
+    """
+    now_dt = datetime.now(UTC)
+    now = now_dt.isoformat()
+    recent_threshold = (now_dt - timedelta(seconds=4)).isoformat()
+
+    # Deduplication check
+    cursor = await db.execute(
+        """
+        SELECT id FROM incidents
+        WHERE type = ? AND description = ? AND latitude = ? AND longitude = ? AND created_at >= ?
+        LIMIT 1
+        """,
+        (
+            payload.type.value,
+            payload.description,
+            payload.latitude,
+            payload.longitude,
+            recent_threshold,
+        ),
+    )
+    duplicate_row = await cursor.fetchone()
+    if duplicate_row:
+        # Return existing incident instead of creating accidental duplicate
+        existing = await get_incident_by_id(db, duplicate_row["id"])
+        if existing:
+            return existing
+
     incident_id = str(uuid.uuid4())
     ticket_id = await _next_ticket_id(db)
-    now = datetime.now(UTC).isoformat()
 
     await db.execute(
         """
@@ -201,3 +229,14 @@ async def update_incident_status(
 
     await db.commit()
     return await get_incident_by_id(db, incident_id)
+
+
+async def reset_demo_database(db: aiosqlite.Connection) -> None:
+    """Clear all incidents and re-seed default demo scenarios."""
+    await db.execute("DELETE FROM incident_events")
+    await db.execute("DELETE FROM incidents")
+    await db.commit()
+
+    from app.db.seed import seed_database
+
+    await seed_database(db)

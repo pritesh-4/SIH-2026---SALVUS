@@ -1,3 +1,5 @@
+import { SimulatedBadge } from '../../common/SimulatedBadge'
+
 export const AiTriageCard = ({ currentState = 'TRIAGING', aiTriage = {} }) => {
   const isTriaging = currentState === 'TRIAGING'
   const isPostTriage = [
@@ -25,9 +27,12 @@ export const AiTriageCard = ({ currentState = 'TRIAGING', aiTriage = {} }) => {
             ⚡
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white tracking-tight">
-              Operational Intelligence Triage
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white tracking-tight">
+                Operational Intelligence Triage
+              </h3>
+              <SimulatedBadge label="SIMULATED MODEL" />
+            </div>
             <p className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">
               Salvus Incident Evaluation Engine
             </p>

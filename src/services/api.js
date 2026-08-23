@@ -140,3 +140,27 @@ export const updateIncidentStatus = async (incidentId, status, actor = 'authorit
     }
   }
 }
+
+/**
+ * Developer helper: Seed demo scenarios into live backend.
+ */
+export const seedDevIncidents = async () => {
+  try {
+    const response = await apiClient.post('/api/incidents/dev/seed')
+    return { success: true, data: response.data.data }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Developer helper: Reset demo database to clean initial state.
+ */
+export const resetDevIncidents = async () => {
+  try {
+    const response = await apiClient.post('/api/incidents/dev/reset')
+    return { success: true, data: response.data.data }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+}
