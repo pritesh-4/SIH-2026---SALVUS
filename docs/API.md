@@ -43,40 +43,7 @@ Creates a new emergency SOS beacon or citizen hazard report and emits `incident:
     "is_sos": true
   }
   ```
-- **Response (201 Created):**
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "e5cffddc-318c-4a1f-b69e-ba4bfc5e0faa",
-      "ticket_id": "SV-2048",
-      "type": "flood",
-      "severity": "CRITICAL",
-      "description": "Water entering ground floor rapidly. Family of 3 trapped on balcony.",
-      "reporter_name": "Aditi Roy",
-      "reporter_phone": "+91 98301 24890",
-      "latitude": 22.5726,
-      "longitude": 88.3639,
-      "affected_count": 3,
-      "is_sos": true,
-      "status": "NEW",
-      "created_at": "2026-08-23T12:59:26.520142+00:00",
-      "updated_at": "2026-08-23T12:59:26.520142+00:00",
-      "events": [
-        {
-          "id": "a5549cfb-072f-4d23-86c5-92c3f2b0ce70",
-          "incident_id": "e5cffddc-318c-4a1f-b69e-ba4bfc5e0faa",
-          "event_type": "CREATED",
-          "previous_status": null,
-          "new_status": "NEW",
-          "actor": "citizen",
-          "metadata": null,
-          "created_at": "2026-08-23T12:59:26.520142+00:00"
-        }
-      ]
-    }
-  }
-  ```
+- **Response (201 Created):** Single `IncidentResponse` object with initial `CREATED` event.
 - **Error Responses:**
   - `422 Unprocessable Entity`: Validation failure on coordinates, type, or missing required fields.
 
@@ -87,32 +54,7 @@ Creates a new emergency SOS beacon or citizen hazard report and emits `incident:
 Lists all incidents in descending order of creation (newest first).
 
 - **Authentication:** None (Public / Command Console)
-- **Response (200 OK):**
-  ```json
-  {
-    "success": true,
-    "data": [
-      {
-        "id": "e5cffddc-318c-4a1f-b69e-ba4bfc5e0faa",
-        "ticket_id": "SV-2048",
-        "type": "flood",
-        "severity": "CRITICAL",
-        "description": "Water entering ground floor rapidly.",
-        "reporter_name": "Aditi Roy",
-        "reporter_phone": "+91 98301 24890",
-        "latitude": 22.5726,
-        "longitude": 88.3639,
-        "affected_count": 3,
-        "is_sos": true,
-        "status": "NEW",
-        "created_at": "2026-08-23T12:59:26+00:00",
-        "updated_at": "2026-08-23T12:59:26+00:00",
-        "events": [...]
-      }
-    ],
-    "count": 1
-  }
-  ```
+- **Response (200 OK):** `IncidentListResponse` with `data` array and `count`.
 
 ---
 
@@ -131,6 +73,7 @@ Retrieves a single incident by its UUID along with its complete audit event hist
 
 Transitions an incident to a new status governed by the state machine (`NEW` $\rightarrow$ `TRIAGE_PENDING` $\rightarrow$ `VERIFIED` $\rightarrow$ `RESOLVED` / `CANCELLED`) and emits `incident:status_changed` over Socket.IO to both `authorities` and `incident:{id}` rooms.
 
+- **Authorization:** Operational status transitions (`TRIAGE_PENDING`, `VERIFIED`, `RESOLVED`) require authority role (`actor != "citizen"`). Citizens may only trigger `CANCELLED`.
 - **Request Payload:**
   ```json
   {
@@ -141,27 +84,93 @@ Transitions an incident to a new status governed by the state machine (`NEW` $\r
 - **Response (200 OK):** Updated `IncidentResponse` with new audit event appended.
 - **Error Responses:**
   - `400 Bad Request`: Invalid state transition attempt (e.g. skipping steps or mutating terminal state).
+  - `403 Forbidden`: Unauthorized attempt by a citizen actor to perform authority verification or resolution.
   - `404 Not Found`: Incident does not exist.
 
 ---
 
-## 3. Responder & Allocation API (PLANNED 🔮)
+## 3. Responder Fleet API (IMPLEMENTED ✅)
 
-### `POST /api/incidents/{id}/assign` (PLANNED)
+### `GET /api/responders`
 
-Assigns a rescue responder unit to an active incident.
+Lists all active rescue craft, ambulances, and disaster response units.
 
-- **Request Payload:**
-  ```json
-  {
-    "responder_id": "3c4d5e6f-4a1b-4c2d-9e0f-8a7b6c5d4e3f"
-  }
-  ```
 - **Response (200 OK):**
   ```json
   {
-    "assignment_id": "7b8c9d0e-2a1b-4c3d-8e9f-0a1b2c3d4e5f",
-    "status": "en_route",
-    "eta_minutes": 14
+    "success": true,
+    "data": [
+      {
+        "id": "resp-101",
+        "unit_name": "NDRF Rescue Unit 4",
+        "team_lead": "Capt. A. Roy",
+        "vehicle_type": "Gemini Z-Craft Inflatable",
+        "capability": "FLOOD_BOAT",
+        "status": "AVAILABLE",
+        "latitude": 22.574,
+        "longitude": 88.372,
+        "radio_channel": "VHF Ch. 4 (156.2 MHz)",
+        "max_capacity": 8,
+        "current_load": 0,
+        "assigned_incident_id": null,
+        "last_seen": "2026-08-23T14:20:00+00:00",
+        "created_at": "2026-08-23T14:20:00+00:00",
+        "updated_at": "2026-08-23T14:20:00+00:00"
+      }
+    ],
+    "count": 4
   }
   ```
+
+### `GET /api/responders/{id}`
+
+Fetches single responder details.
+
+### `PATCH /api/responders/{id}/status`
+
+Updates responder operational status (`AVAILABLE`, `ASSIGNED`, `EN_ROUTE`, `ON_SCENE`, `OFFLINE`) or sets `assigned_incident_id`, emitting `responder:status_changed` over Socket.IO.
+
+### `POST /api/responders/{id}/location`
+
+Updates real-time GPS telemetry coordinates of a response unit and emits `responder:location_updated`.
+
+---
+
+## 4. Shelter Logistics API (IMPLEMENTED ✅)
+
+### `GET /api/shelters`
+
+Lists all registered evacuation shelters, bed occupancies, and supplies statuses.
+
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "shl-01",
+        "name": "Salt Lake Stadium Assembly Hub",
+        "address": "Gate 3, Salt Lake Stadium Complex, Bidhannagar",
+        "latitude": 22.568,
+        "longitude": 88.406,
+        "total_beds": 600,
+        "available_beds": 420,
+        "occupancy_rate": "68%",
+        "supplies_status": "HIGH (3 days rations, generator backup)",
+        "status": "OPEN",
+        "is_active": true,
+        "created_at": "2026-08-23T14:20:00+00:00",
+        "updated_at": "2026-08-23T14:20:00+00:00"
+      }
+    ],
+    "count": 3
+  }
+  ```
+
+### `GET /api/shelters/{id}`
+
+Fetches single evacuation shelter hub.
+
+### `PATCH /api/shelters/{id}`
+
+Updates shelter bed availability, occupancy percentage, or supplies readiness state.

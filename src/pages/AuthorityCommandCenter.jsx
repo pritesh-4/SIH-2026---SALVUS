@@ -1,55 +1,13 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { authorityData } from '../data/authority/authorityMock'
 import { useAuthorityIncidents } from '../features/authority/useAuthorityIncidents'
 import { SalvusLeafletMap } from '../components/common/SalvusLeafletMap'
 import { SimulatedBadge, LiveBadge } from '../components/common/SimulatedBadge'
-
-const SHELTER_MAP_POINTS = [
-  {
-    id: 'shl-1',
-    name: 'Salt Lake Stadium Assembly Hub',
-    address: 'Gate 3, Salt Lake Stadium Complex',
-    lat: 22.568,
-    lng: 88.406,
-    capacity: '420 beds free (68% occ)',
-  },
-  {
-    id: 'shl-2',
-    name: 'Karunamoyee Multi-Purpose Shelter',
-    address: 'Karunamoyee Central Terminus Complex',
-    lat: 22.5867,
-    lng: 88.4178,
-    capacity: '180 beds free (74% occ)',
-  },
-  {
-    id: 'shl-3',
-    name: 'Sector 5 Youth Hostel Hub',
-    address: 'Block EP, Sector V Tech Corridor',
-    lat: 22.58,
-    lng: 88.435,
-    capacity: '95 beds free (85% occ)',
-  },
-]
-
-const RESPONDER_MAP_POINTS = [
-  {
-    id: 'resp-1',
-    name: 'NDRF Rescue Unit 4 (Capt. Roy)',
-    vessel: 'Gemini Z-Craft Inflatable (Assigned)',
-    lat: 22.574,
-    lng: 88.372,
-  },
-  {
-    id: 'resp-2',
-    name: 'SDRF Rapid Response Boat 2',
-    vessel: 'Aluminum Hull Flood Craft (On Scene)',
-    lat: 22.562,
-    lng: 88.385,
-  },
-]
+import { fetchResponders, fetchShelters } from '../services/api'
+import { subscribeToEvent } from '../lib/realtime/socket'
 
 export const AuthorityCommandCenter = () => {
-  const { hub, responders, shelters } = authorityData
+  const { hub } = authorityData
 
   const {
     incidents,
@@ -72,6 +30,80 @@ export const AuthorityCommandCenter = () => {
     shelters: true,
   })
   const [actionSuccessMessage, setActionSuccessMessage] = useState(null)
+
+  // Real backend responders and shelters state
+  const [liveResponders, setLiveResponders] = useState([])
+  const [liveShelters, setLiveShelters] = useState([])
+  const [isLoadingFleet, setIsLoadingFleet] = useState(true)
+
+  // Fetch responders and shelters from backend on mount and subscribe to realtime updates
+  useEffect(() => {
+    let isMounted = true
+
+    const loadData = async () => {
+      const [respResult, shlResult] = await Promise.all([fetchResponders(), fetchShelters()])
+
+      if (!isMounted) return
+
+      if (respResult.success && respResult.data.length > 0) {
+        setLiveResponders(respResult.data)
+      } else {
+        // Fallback to initial mock if offline
+        setLiveResponders(authorityData.responders)
+      }
+
+      if (shlResult.success && shlResult.data.length > 0) {
+        setLiveShelters(shlResult.data)
+      } else {
+        setLiveShelters(authorityData.shelters)
+      }
+
+      setIsLoadingFleet(false)
+    }
+
+    loadData()
+
+    // Realtime subscriptions for fleet updates
+    const unsubStatus = subscribeToEvent('responder:status_changed', (updatedResp) => {
+      setLiveResponders((prev) =>
+        prev.map((r) => (r.id === updatedResp.id ? { ...r, ...updatedResp } : r))
+      )
+    })
+
+    const unsubLoc = subscribeToEvent('responder:location_updated', (updatedResp) => {
+      setLiveResponders((prev) =>
+        prev.map((r) => (r.id === updatedResp.id ? { ...r, ...updatedResp } : r))
+      )
+    })
+
+    return () => {
+      isMounted = false
+      unsubStatus()
+      unsubLoc()
+    }
+  }, [])
+
+  // Map points derived from real or fallback datasets
+  const responderMapPoints = useMemo(() => {
+    return liveResponders.map((r) => ({
+      id: r.id,
+      name: `${r.unit_name || r.unitName} (${r.team_lead || r.lead || 'Unit'})`,
+      vessel: `${r.vehicle_type || r.vesselClass || 'Rescue Vehicle'} (${r.status})`,
+      lat: r.latitude || r.lat || 22.574,
+      lng: r.longitude || r.lng || 88.372,
+    }))
+  }, [liveResponders])
+
+  const shelterMapPoints = useMemo(() => {
+    return liveShelters.map((s) => ({
+      id: s.id,
+      name: s.name,
+      address: s.address,
+      lat: s.latitude || s.lat || 22.568,
+      lng: s.longitude || s.lng || 88.406,
+      capacity: `${s.available_beds || s.availableBeds || 0} beds free (${s.occupancy_rate || s.occupancyRate || '0%'} occ)`,
+    }))
+  }, [liveShelters])
 
   // Filter incidents in queue
   const filteredIncidents = useMemo(() => {
@@ -103,6 +135,12 @@ export const AuthorityCommandCenter = () => {
         return 'bg-orange-500/20 text-orange-300 border-orange-500/40'
       case 'VERIFIED':
         return 'bg-sky-500/20 text-sky-300 border-sky-500/40 font-bold'
+      case 'ASSIGNED':
+        return 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 font-bold'
+      case 'EN_ROUTE':
+        return 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+      case 'ON_SCENE':
+        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
       case 'RESOLVED':
         return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
       case 'CANCELLED':
@@ -160,7 +198,7 @@ export const AuthorityCommandCenter = () => {
           <span className="text-slate-400 font-mono text-[11px]">{hub.sector}</span>
           <span className="text-slate-600">|</span>
           <span className="text-emerald-400 font-mono text-[11px] flex items-center gap-1">
-            <LiveBadge label="POSTGRES / SQLITE LIVE" />
+            <LiveBadge label="SQLITE WAL ENGINE" />
             <span>{incidents.length} Incident Records</span>
           </span>
         </div>
@@ -180,220 +218,186 @@ export const AuthorityCommandCenter = () => {
             <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
               Active Incidents
             </span>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xl font-black text-white">
-                {computedMetrics.activeIncidents}
-              </span>
-              <span className="text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30 px-1.5 py-0.2 rounded font-mono font-bold">
-                {computedMetrics.criticalThreats} Critical
-              </span>
-            </div>
+            <span className="text-xl sm:text-2xl font-black text-white font-mono">
+              {computedMetrics.activeIncidents}
+            </span>
           </div>
-          <span className="text-xl">⚠️</span>
-        </div>
-
-        <div className="bg-[#0D1520] border border-[#1A2634] p-3.5 rounded-xl flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
-                Deployed Fleet
-              </span>
-              <SimulatedBadge label="SIM" />
-            </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xl font-black text-sky-400">
-                {responders.filter((r) => r.status !== 'AVAILABLE').length}/{responders.length}
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono">Units Active</span>
-            </div>
+          <div className="h-8 w-8 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 text-sm">
+            🚨
           </div>
-          <span className="text-xl">🚤</span>
         </div>
 
         <div className="bg-[#0D1520] border border-[#1A2634] p-3.5 rounded-xl flex items-center justify-between">
           <div>
             <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
-              Incidents Resolved
+              Critical Threats
             </span>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xl font-black text-emerald-400">
-                {computedMetrics.resolvedCount}
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono">Closed Tickets</span>
-            </div>
+            <span className="text-xl sm:text-2xl font-black text-rose-400 font-mono">
+              {computedMetrics.criticalThreats}
+            </span>
           </div>
-          <span className="text-xl">👥</span>
+          <div className="h-8 w-8 rounded-lg bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 text-sm animate-pulse">
+            ⚠️
+          </div>
         </div>
 
         <div className="bg-[#0D1520] border border-[#1A2634] p-3.5 rounded-xl flex items-center justify-between">
           <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
-                Shelter Capacity
-              </span>
-              <SimulatedBadge label="SIM" />
-            </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xl font-black text-amber-400">
-                {shelters.reduce((acc, s) => acc + s.availableBeds, 0)}
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono">Beds Free</span>
-            </div>
+            <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
+              Fleet Deployed
+            </span>
+            <span className="text-xl sm:text-2xl font-black text-sky-400 font-mono">
+              {
+                liveResponders.filter((r) => r.status === 'ASSIGNED' || r.status === 'ON_SCENE')
+                  .length
+              }{' '}
+              / {liveResponders.length}
+            </span>
           </div>
-          <span className="text-xl">🏠</span>
+          <div className="h-8 w-8 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 text-sm">
+            🚤
+          </div>
         </div>
 
-        <div className="bg-[#0D1520] border border-[#1A2634] p-3.5 rounded-xl flex items-center justify-between col-span-2 sm:col-span-1">
+        <div className="bg-[#0D1520] border border-[#1A2634] p-3.5 rounded-xl flex items-center justify-between">
           <div>
             <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
-              Realtime Sync
+              Available Beds
             </span>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xl font-black text-cyan-400">WebSocket</span>
-              <span
-                className={`text-[10px] font-bold font-mono px-1.5 py-0.2 rounded ${
-                  connectivityStatus === 'CONNECTED'
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                }`}
-              >
-                {connectivityStatus}
-              </span>
-            </div>
+            <span className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">
+              {liveShelters.reduce((sum, s) => sum + (s.available_beds || s.availableBeds || 0), 0)}
+            </span>
           </div>
-          <span className="text-xl">⚡</span>
+          <div className="h-8 w-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-sm">
+            🏕️
+          </div>
+        </div>
+
+        <div className="col-span-2 sm:col-span-1 bg-[#0D1520] border border-[#1A2634] p-3.5 rounded-xl flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
+              Resolved Cases
+            </span>
+            <span className="text-xl sm:text-2xl font-black text-slate-300 font-mono">
+              {computedMetrics.resolvedCount}
+            </span>
+          </div>
+          <div className="h-8 w-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-sm">
+            ✓
+          </div>
         </div>
       </section>
 
-      {/* Main 3-Column Operational Command Center Grid */}
+      {/* Main 3-Column Operations Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* LEFT COLUMN: Live Incident Ingestion Queue & Detail Inspector (4 cols) */}
-        <section aria-label="Incident Triage Queue" className="lg:col-span-4 space-y-4">
-          <div className="bg-[#0D1520] border border-[#1A2634] rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
-            <div>
-              {/* Header & Filter Pills */}
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <div>
-                  <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
-                    Live Incident Queue
-                  </h2>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <LiveBadge label="REALTIME SYNC" />
-                    <span className="text-[10px] text-slate-400">Descending chronological</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1 flex-wrap">
-                  {[
-                    { id: 'all', label: 'All' },
-                    { id: 'pending', label: 'Pending' },
-                    { id: 'verified', label: 'Verified' },
-                    { id: 'critical', label: 'Crit' },
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setActiveIncidentFilter(tab.id)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase transition-colors cursor-pointer ${
-                        activeIncidentFilter === tab.id
-                          ? 'bg-cyan-500 text-slate-950'
-                          : 'bg-[#070D14] text-slate-400 border border-[#1A2634] hover:text-white'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
+        {/* LEFT COLUMN: Live Incident Queue & Triage Inspector (4 cols) */}
+        <section
+          aria-label="Incident Triage Queue"
+          className="lg:col-span-4 flex flex-col justify-between bg-[#0D1520] border border-[#1A2634] rounded-2xl p-4 sm:p-5 space-y-4"
+        >
+          <div>
+            {/* Header & Filter Controls */}
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#1A2634]">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-rose-500 animate-ping"></span>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                  Live Incident Queue
+                </h2>
               </div>
+              <span className="text-[11px] font-mono text-cyan-400 font-bold bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-500/30">
+                {filteredIncidents.length} Records
+              </span>
+            </div>
 
-              {/* Incidents List with Skeletons and Empty States */}
-              <div className="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
-                {isLoading && (
-                  <div className="space-y-2 py-2">
-                    {[1, 2, 3].map((n) => (
-                      <div
-                        key={n}
-                        className="p-3 bg-[#070D14] border border-[#1A2634] rounded-xl animate-pulse space-y-2"
-                      >
-                        <div className="h-4 bg-slate-800 rounded w-1/3"></div>
-                        <div className="h-3 bg-slate-800/60 rounded w-3/4"></div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            {/* Filter Pills */}
+            <div className="flex items-center gap-1.5 pt-2 pb-1 overflow-x-auto">
+              {[
+                { id: 'all', label: 'All' },
+                { id: 'critical', label: 'Critical' },
+                { id: 'pending', label: 'Pending Triage' },
+                { id: 'verified', label: 'Verified' },
+                { id: 'resolved', label: 'Resolved' },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setActiveIncidentFilter(f.id)}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold uppercase whitespace-nowrap transition-colors cursor-pointer ${
+                    activeIncidentFilter === f.id
+                      ? 'bg-cyan-500 text-slate-950 shadow'
+                      : 'bg-[#070D14] text-slate-400 hover:text-white border border-[#1A2634]'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
 
-                {error && !isLoading && (
-                  <div className="p-3 bg-rose-950/30 border border-rose-500/40 rounded-xl text-xs text-rose-300 flex items-center justify-between">
-                    <span>{error}</span>
-                    <button
-                      type="button"
-                      onClick={() => refetch()}
-                      className="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/30 rounded font-bold uppercase text-[10px] cursor-pointer"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-
-                {!isLoading && filteredIncidents.length === 0 && (
-                  <div className="py-10 text-center text-xs text-slate-400 font-mono space-y-2">
-                    <p>No incidents matching active filter.</p>
-                    {activeIncidentFilter !== 'all' && (
-                      <button
-                        type="button"
-                        onClick={() => setActiveIncidentFilter('all')}
-                        className="text-cyan-400 hover:text-cyan-300 underline font-semibold text-[11px] cursor-pointer"
-                      >
-                        Show all {incidents.length} incidents
-                      </button>
-                    )}
-                  </div>
-                )}
-
+            {/* Incident Scroll List */}
+            {isLoading ? (
+              <div className="py-12 text-center text-xs font-mono text-slate-500">
+                Loading live incident records from backend...
+              </div>
+            ) : error ? (
+              <div className="py-8 text-center text-xs font-mono text-rose-400 bg-rose-950/20 border border-rose-500/30 rounded-xl p-3 my-2">
+                ⚠️ {error}
+              </div>
+            ) : filteredIncidents.length === 0 ? (
+              <div className="py-12 text-center text-xs font-mono text-slate-500">
+                No incidents match filter "{activeIncidentFilter}".
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1 mt-3">
                 {filteredIncidents.map((inc) => {
                   const isSelected = selectedIncident?.id === inc.id
-                  const isNewlyArrived = newlyArrivedId === inc.id
+                  const isNew = newlyArrivedId === inc.id
 
                   return (
                     <div
                       key={inc.id}
                       onClick={() => setSelectedIncident(inc)}
-                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
-                        isNewlyArrived
-                          ? 'bg-cyan-950/40 border-cyan-400 ring-2 ring-cyan-400/50 animate-pulse'
-                          : isSelected
-                            ? 'bg-[#14202E] border-cyan-500/60 shadow-lg shadow-cyan-950/40 ring-1 ring-cyan-500/40'
-                            : 'bg-[#070D14] border-[#1A2634] hover:border-slate-700'
-                      }`}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative ${
+                        isSelected
+                          ? 'bg-[#111C2B] border-cyan-500/70 shadow-lg ring-1 ring-cyan-500/50'
+                          : 'bg-[#070D14] border-[#1A2634] hover:border-slate-700'
+                      } ${isNew ? 'ring-2 ring-rose-500 animate-pulse' : ''}`}
                     >
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span
-                            className={`px-1.5 py-0.2 rounded text-[9px] font-bold font-mono uppercase border ${getStatusBadgeStyle(
-                              inc.status
-                            )}`}
-                          >
-                            {inc.status}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-black text-white text-xs">
+                            {inc.ticket_id || `SV-${inc.id.slice(-4)}`}
                           </span>
+                          {inc.is_sos && (
+                            <span className="text-[9px] bg-rose-600 text-white px-1.5 py-0.2 rounded font-black tracking-wider uppercase animate-pulse">
+                              SOS
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5">
                           <span
-                            className={`px-1.5 py-0.2 rounded text-[9px] font-bold font-mono uppercase border ${getSeverityBadgeStyle(
+                            className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${getSeverityBadgeStyle(
                               inc.severity
                             )}`}
                           >
                             {inc.severity}
                           </span>
-                          <span className="font-mono text-[10px] text-cyan-300 font-bold">
-                            #{inc.ticket_id}
+                          <span
+                            className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${getStatusBadgeStyle(
+                              inc.status
+                            )}`}
+                          >
+                            {inc.status}
                           </span>
-                          {inc.is_sos && (
-                            <span className="px-1 py-0.2 rounded text-[8px] bg-rose-600 text-white font-mono font-black animate-pulse">
-                              SOS
-                            </span>
-                          )}
                         </div>
+                      </div>
 
-                        <span className="text-[10px] font-mono text-slate-400">
+                      <p className="text-xs text-slate-300 font-medium line-clamp-1 mt-1.5">
+                        {inc.description || 'Disaster hazard report'}
+                      </p>
+
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-2 pt-2 border-t border-[#1A2634]/60">
+                        <span>👤 {inc.reporter_name || 'Citizen User'}</span>
+                        <span>
                           {inc.created_at
                             ? new Date(inc.created_at).toLocaleTimeString([], {
                                 hour: '2-digit',
@@ -402,38 +406,23 @@ export const AuthorityCommandCenter = () => {
                             : 'Live'}
                         </span>
                       </div>
-
-                      <h3 className="text-xs font-bold text-white tracking-tight capitalize">
-                        {inc.type.replace('_', ' ')}
-                      </h3>
-                      <p className="text-[11px] text-slate-300 mt-0.5 line-clamp-1">
-                        {inc.description || 'No description provided.'}
-                      </p>
-
-                      <div className="mt-2 pt-2 border-t border-[#1A2634] flex items-center justify-between text-[10px] font-mono">
-                        <span className="text-slate-400">
-                          Affected:{' '}
-                          <strong className="text-white">{inc.affected_count || 1}</strong>
-                        </span>
-                        <span className="text-cyan-400 text-[10px]">
-                          {inc.latitude?.toFixed(3)}°N, {inc.longitude?.toFixed(3)}°E
-                        </span>
-                      </div>
                     </div>
                   )
                 })}
               </div>
-            </div>
+            )}
+          </div>
 
-            {/* Selected Incident Live Inspector & Lifecycle Actions */}
+          {/* Selected Incident Detail & Lifecycle Actions */}
+          <div className="pt-4 border-t border-[#1A2634]">
             {selectedIncident && (
-              <div className="mt-4 pt-4 border-t border-[#1A2634] space-y-3 bg-[#070D14] p-3.5 rounded-xl border border-[#1A2634] animate-fadeIn">
+              <div className="space-y-3 bg-[#070D14] border border-[#1A2634] p-3.5 rounded-xl text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono font-bold text-cyan-300 uppercase">
-                    INCIDENT INSPECTOR · #{selectedIncident.ticket_id}
+                  <span className="font-mono text-cyan-300 font-bold">
+                    INSPECTOR: {selectedIncident.ticket_id || selectedIncident.id}
                   </span>
                   <span
-                    className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border ${getStatusBadgeStyle(
+                    className={`text-[9px] font-mono px-2 py-0.5 rounded border ${getStatusBadgeStyle(
                       selectedIncident.status
                     )}`}
                   >
@@ -441,79 +430,40 @@ export const AuthorityCommandCenter = () => {
                   </span>
                 </div>
 
-                <div>
-                  <h4 className="text-xs font-bold text-white uppercase tracking-wide">
-                    {selectedIncident.type.replace('_', ' ')} ·{' '}
-                    <span className="text-rose-400">{selectedIncident.severity}</span>
-                  </h4>
-                  <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed bg-[#0D1520] p-2.5 rounded border border-[#1A2634]">
-                    {selectedIncident.description || 'No description logged.'}
-                  </p>
-                </div>
+                <p className="text-slate-300 leading-relaxed">{selectedIncident.description}</p>
 
-                {/* Reporter & Location Metadata */}
-                <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-400 font-mono bg-[#0D1520]/60 p-2 rounded border border-[#1A2634]">
+                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-400 pt-2 border-t border-[#1A2634]/80">
                   <div>
-                    <span className="block text-slate-500">REPORTER:</span>
-                    <strong className="text-slate-200">
-                      {selectedIncident.reporter_name || 'Anonymous'}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="block text-slate-500">AFFECTED:</span>
-                    <strong className="text-slate-200">
-                      {selectedIncident.affected_count || 1} Persons
-                    </strong>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="block text-slate-500">GPS COORDINATES:</span>
-                    <strong className="text-cyan-300">
+                    <span className="text-slate-400 block font-bold">COORDINATES</span>
+                    <span className="text-slate-200">
                       {selectedIncident.latitude?.toFixed(4)}° N,{' '}
                       {selectedIncident.longitude?.toFixed(4)}° E
-                    </strong>
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-bold">AFFECTED PERSONS</span>
+                    <span className="text-rose-300 font-bold">
+                      {selectedIncident.affected_count || 1} People
+                    </span>
                   </div>
                 </div>
 
-                {/* Live Audit Event Timeline */}
-                {selectedIncident.events && selectedIncident.events.length > 0 && (
-                  <div className="space-y-1 pt-1">
-                    <span className="text-[9px] font-mono font-bold text-slate-400 uppercase block">
-                      Audit Event Log ({selectedIncident.events.length})
-                    </span>
-                    <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
-                      {selectedIncident.events.map((evt) => (
-                        <div
-                          key={evt.id || `${evt.event_type}-${evt.created_at}`}
-                          className="flex items-center justify-between text-[9px] font-mono bg-[#0D1520] px-2 py-1 rounded border border-[#1A2634] text-slate-300"
-                        >
-                          <span className="font-bold text-cyan-400">
-                            {evt.event_type} {evt.new_status ? `→ ${evt.new_status}` : ''}
-                          </span>
-                          <span className="text-slate-500">
-                            {evt.actor} · {new Date(evt.created_at).toLocaleTimeString()}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {actionSuccessMessage && (
-                  <div className="bg-emerald-950/40 border border-emerald-500/40 p-2 rounded text-[11px] font-mono text-emerald-300 text-center animate-fadeIn">
+                  <div className="bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 p-2 rounded-lg text-center font-mono text-[11px] animate-fadeIn">
                     {actionSuccessMessage}
                   </div>
                 )}
 
-                {/* Lifecycle State Machine Transition Buttons */}
-                <div className="space-y-2 pt-1">
+                {/* State Machine Transition Buttons */}
+                <div className="pt-2 flex flex-col gap-2">
                   {selectedIncident.status === 'NEW' && (
                     <button
                       type="button"
                       disabled={isUpdatingStatus}
-                      onClick={() => handleTransition('TRIAGE_PENDING', 'Triage Initiated')}
-                      className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs tracking-wider uppercase transition-all shadow-md shadow-amber-500/20 cursor-pointer disabled:opacity-50 text-center flex items-center justify-center gap-2"
+                      onClick={() => handleTransition('TRIAGE_PENDING', 'Pending AI Triage')}
+                      className="w-full py-2 px-3 rounded-lg bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold font-mono text-xs uppercase transition-all shadow cursor-pointer disabled:opacity-50"
                     >
-                      <span>⚡ BEGIN OPERATIONAL TRIAGE</span>
+                      {isUpdatingStatus ? 'Processing...' : '▶ Initiate Triage Queue'}
                     </button>
                   )}
 
@@ -521,31 +471,32 @@ export const AuthorityCommandCenter = () => {
                     <button
                       type="button"
                       disabled={isUpdatingStatus}
-                      onClick={() => handleTransition('VERIFIED', 'Dispatch Verified')}
-                      className="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs tracking-wider uppercase transition-all shadow-md shadow-cyan-500/20 cursor-pointer disabled:opacity-50 text-center flex items-center justify-center gap-2"
+                      onClick={() => handleTransition('VERIFIED', 'Verified Distress')}
+                      className="w-full py-2 px-3 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold font-mono text-xs uppercase transition-all shadow cursor-pointer disabled:opacity-50"
                     >
-                      <span>APPROVE & VERIFY DISPATCH</span>
+                      {isUpdatingStatus ? 'Processing...' : '✓ Verify Incident & Ready Dispatch'}
                     </button>
                   )}
 
                   {selectedIncident.status === 'VERIFIED' && (
-                    <button
-                      type="button"
-                      disabled={isUpdatingStatus}
-                      onClick={() => handleTransition('RESOLVED', 'Incident Safely Resolved')}
-                      className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs tracking-wider uppercase transition-all shadow-md shadow-emerald-950/40 cursor-pointer disabled:opacity-50 text-center flex items-center justify-center gap-2"
-                    >
-                      <span>✓ RESOLVE & CLOSE INCIDENT</span>
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        disabled={isUpdatingStatus}
+                        onClick={() => handleTransition('RESOLVED', 'Safe Rescue & Resolved')}
+                        className="w-full py-2 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold font-mono text-xs uppercase transition-all shadow cursor-pointer disabled:opacity-50"
+                      >
+                        {isUpdatingStatus ? 'Processing...' : '✓ Confirm Rescue & Resolve Ticket'}
+                      </button>
+                    </div>
                   )}
 
-                  {/* Cancel Button (available if not in terminal state) */}
                   {!['RESOLVED', 'CANCELLED'].includes(selectedIncident.status) && (
                     <button
                       type="button"
                       disabled={isUpdatingStatus}
-                      onClick={() => handleTransition('CANCELLED', 'Incident Cancelled')}
-                      className="w-full py-1.5 rounded-lg bg-transparent hover:bg-rose-950/20 text-slate-400 hover:text-rose-300 border border-[#1A2634] hover:border-rose-500/30 text-[10px] font-mono uppercase tracking-wider transition-colors cursor-pointer"
+                      onClick={() => handleTransition('CANCELLED', 'Cancellation')}
+                      className="w-full py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-700 text-[10px] font-mono uppercase transition-all cursor-pointer disabled:opacity-50"
                     >
                       Stand Down / Cancel Incident
                     </button>
@@ -606,7 +557,7 @@ export const AuthorityCommandCenter = () => {
                       : 'bg-[#070D14] text-slate-400 border border-[#1A2634]'
                   }`}
                 >
-                  Fleet ({RESPONDER_MAP_POINTS.length})
+                  Fleet ({responderMapPoints.length})
                 </button>
                 <button
                   type="button"
@@ -617,7 +568,7 @@ export const AuthorityCommandCenter = () => {
                       : 'bg-[#070D14] text-slate-400 border border-[#1A2634]'
                   }`}
                 >
-                  Shelters ({SHELTER_MAP_POINTS.length})
+                  Shelters ({shelterMapPoints.length})
                 </button>
               </div>
             </div>
@@ -634,8 +585,8 @@ export const AuthorityCommandCenter = () => {
                 incidents={incidents}
                 selectedIncidentId={selectedIncident?.id}
                 onSelectIncident={(inc) => setSelectedIncident(inc)}
-                shelters={SHELTER_MAP_POINTS}
-                responders={RESPONDER_MAP_POINTS}
+                shelters={shelterMapPoints}
+                responders={responderMapPoints}
                 showLayers={mapLayers}
                 autoFocusSelected={true}
                 className="h-full w-full"
@@ -674,42 +625,55 @@ export const AuthorityCommandCenter = () => {
                   Responder Fleet Matrix
                 </h2>
               </div>
-              <SimulatedBadge label="SIMULATED FLEET" />
+              {liveResponders.length > 0 && liveResponders[0].unit_name ? (
+                <LiveBadge label="SQLITE FLEET" />
+              ) : (
+                <SimulatedBadge label="SIMULATED FLEET" />
+              )}
             </div>
 
-            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-              {responders.map((resp) => (
-                <div
-                  key={resp.id}
-                  className="bg-[#070D14] border border-[#1A2634] p-2.5 rounded-xl text-xs space-y-1"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-white text-[11px] truncate max-w-[140px]">
-                      {resp.unitName}
-                    </span>
-                    <span
-                      className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold ${
-                        resp.status === 'ASSIGNED'
-                          ? 'bg-sky-500/20 text-sky-300'
-                          : resp.status === 'ON_SCENE'
-                            ? 'bg-emerald-500/20 text-emerald-300'
-                            : 'bg-slate-800 text-slate-400'
-                      }`}
+            {isLoadingFleet ? (
+              <div className="py-6 text-center text-xs font-mono text-slate-500">
+                Syncing fleet units...
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                {liveResponders.map((resp) => {
+                  const unitName = resp.unit_name || resp.unitName
+                  const teamLead = resp.team_lead || resp.lead
+                  const radio = resp.radio_channel || resp.radioChannel
+                  const vessel = resp.vehicle_type || resp.vesselClass
+
+                  return (
+                    <div
+                      key={resp.id}
+                      className="bg-[#070D14] border border-[#1A2634] p-2.5 rounded-xl text-xs space-y-1"
                     >
-                      {resp.status}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 font-mono">
-                    {resp.lead} · {resp.radioChannel}
-                  </p>
-                  {resp.assignedTicket && (
-                    <p className="text-[10px] text-cyan-300 font-mono">
-                      Target: Ticket #{resp.assignedTicket} (ETA {resp.etaMinutes}m)
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-white text-[11px] truncate max-w-[140px]">
+                          {unitName}
+                        </span>
+                        <span
+                          className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold ${
+                            resp.status === 'ASSIGNED'
+                              ? 'bg-sky-500/20 text-sky-300'
+                              : resp.status === 'ON_SCENE'
+                                ? 'bg-emerald-500/20 text-emerald-300'
+                                : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {resp.status}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-mono">
+                        {teamLead} · {radio}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-mono">Craft: {vessel}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {/* Shelter Capacity & Logistics */}
@@ -720,37 +684,47 @@ export const AuthorityCommandCenter = () => {
                   Shelter Supply Hubs
                 </h2>
               </div>
-              <SimulatedBadge label="SIMULATED CAPACITY" />
+              {liveShelters.length > 0 && liveShelters[0].total_beds ? (
+                <LiveBadge label="SQLITE SHELTERS" />
+              ) : (
+                <SimulatedBadge label="SIMULATED CAPACITY" />
+              )}
             </div>
 
             <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-              {shelters.map((shl) => (
-                <div
-                  key={shl.id}
-                  className="bg-[#070D14] border border-[#1A2634] p-2.5 rounded-xl text-xs space-y-1.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-white text-[11px] truncate max-w-[150px]">
-                      {shl.name.split(' ')[0]} Hub
-                    </span>
-                    <span className="font-mono text-[10px] text-emerald-400 font-bold">
-                      {shl.availableBeds} beds left
-                    </span>
-                  </div>
+              {liveShelters.map((shl) => {
+                const avail = shl.available_beds ?? shl.availableBeds ?? 0
+                const occ = shl.occupancy_rate || shl.occupancyRate || '0%'
+                const supplies = shl.supplies_status || shl.foodWaterSupply || 'Normal'
 
-                  <div className="w-full bg-[#0D1520] h-1.5 rounded-full overflow-hidden border border-[#1A2634]">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-amber-500"
-                      style={{ width: shl.occupancyRate }}
-                    ></div>
-                  </div>
+                return (
+                  <div
+                    key={shl.id}
+                    className="bg-[#070D14] border border-[#1A2634] p-2.5 rounded-xl text-xs space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white text-[11px] truncate max-w-[150px]">
+                        {shl.name.split(' ')[0]} Hub
+                      </span>
+                      <span className="font-mono text-[10px] text-emerald-400 font-bold">
+                        {avail} beds left
+                      </span>
+                    </div>
 
-                  <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono">
-                    <span>Occ: {shl.occupancyRate}</span>
-                    <span>Rations: {shl.foodWaterSupply}</span>
+                    <div className="w-full bg-[#0D1520] h-1.5 rounded-full overflow-hidden border border-[#1A2634]">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-500 to-amber-500"
+                        style={{ width: occ }}
+                      ></div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono">
+                      <span>Occ: {occ}</span>
+                      <span className="truncate max-w-[120px]">Rations: {supplies}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </section>

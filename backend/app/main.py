@@ -21,6 +21,8 @@ from app.middleware import generic_exception_handler, validation_exception_handl
 from app.realtime.socket_manager import sio
 from app.routes.health import router as health_router
 from app.routes.incidents import router as incidents_router
+from app.routes.responders import router as responders_router
+from app.routes.shelters import router as shelters_router
 
 load_dotenv()
 
@@ -78,6 +80,8 @@ app.add_exception_handler(Exception, generic_exception_handler)
 # --- Routes ---
 app.include_router(health_router)
 app.include_router(incidents_router)
+app.include_router(responders_router)
+app.include_router(shelters_router)
 
 
 @app.get("/")

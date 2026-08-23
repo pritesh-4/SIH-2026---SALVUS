@@ -10,6 +10,10 @@ export const apiClient = axios.create({
   },
 })
 
+// ---------------------------------------------------------------------------
+// Incident API Calls
+// ---------------------------------------------------------------------------
+
 /**
  * Fetch all incidents from backend (newest first).
  */
@@ -62,17 +66,6 @@ export const fetchIncidentById = async (incidentId) => {
 
 /**
  * Create a new incident report or SOS beacon.
- *
- * @param {Object} payload
- * @param {string} payload.type - 'flood' | 'fire' | 'medical' | 'hazard' | 'power_line' | 'structural' | 'other'
- * @param {string} [payload.severity] - 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
- * @param {string} [payload.description]
- * @param {string} [payload.reporter_name]
- * @param {string} [payload.reporter_phone]
- * @param {number} payload.latitude
- * @param {number} payload.longitude
- * @param {number} [payload.affected_count]
- * @param {boolean} [payload.is_sos]
  */
 export const createIncident = async (payload) => {
   try {
@@ -112,10 +105,6 @@ export const createIncident = async (payload) => {
 
 /**
  * Transition an incident status (NEW -> TRIAGE_PENDING -> VERIFIED -> RESOLVED / CANCELLED).
- *
- * @param {string} incidentId
- * @param {string} status - 'NEW' | 'TRIAGE_PENDING' | 'VERIFIED' | 'RESOLVED' | 'CANCELLED'
- * @param {string} [actor='authority']
  */
 export const updateIncidentStatus = async (incidentId, status, actor = 'authority') => {
   try {
@@ -140,6 +129,98 @@ export const updateIncidentStatus = async (incidentId, status, actor = 'authorit
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Responder Fleet API Calls
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all active response craft and rescue units.
+ */
+export const fetchResponders = async () => {
+  try {
+    const response = await apiClient.get('/api/responders')
+    return {
+      success: true,
+      data: response.data.data || [],
+      count: response.data.count || 0,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to fetch responders'
+    return {
+      success: false,
+      error: { message, code: error.code || 'FETCH_ERROR' },
+      data: [],
+      count: 0,
+    }
+  }
+}
+
+/**
+ * Update responder operational status or incident assignment.
+ */
+export const updateResponderStatus = async (responderId, status, assignedIncidentId = null) => {
+  try {
+    const payload = {}
+    if (status) payload.status = status
+    if (assignedIncidentId !== undefined) payload.assigned_incident_id = assignedIncidentId
+
+    const response = await apiClient.patch(`/api/responders/${responderId}/status`, payload)
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to update responder status'
+    return {
+      success: false,
+      error: { message, code: error.code || 'UPDATE_ERROR' },
+      data: null,
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shelter Logistics API Calls
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all evacuation shelters with live bed capacities.
+ */
+export const fetchShelters = async () => {
+  try {
+    const response = await apiClient.get('/api/shelters')
+    return {
+      success: true,
+      data: response.data.data || [],
+      count: response.data.count || 0,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to fetch shelters'
+    return {
+      success: false,
+      error: { message, code: error.code || 'FETCH_ERROR' },
+      data: [],
+      count: 0,
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Developer & Demo Helpers
+// ---------------------------------------------------------------------------
 
 /**
  * Developer helper: Seed demo scenarios into live backend.

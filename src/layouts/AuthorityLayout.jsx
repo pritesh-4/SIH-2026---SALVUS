@@ -1,9 +1,13 @@
 import { Outlet, Link } from 'react-router-dom'
 import { DevDemoControls } from '../components/common/DevDemoControls'
+import { GlobalNotificationBanner } from '../components/common/GlobalNotificationBanner'
 
 export const AuthorityLayout = () => {
   return (
     <div className="min-h-screen bg-[#070D14] text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-black">
+      {/* Calm System Notifications */}
+      <GlobalNotificationBanner />
+
       {/* Top High-Density Command Bar */}
       <header className="w-full border-b border-[#1A2634] bg-[#0A121C]/95 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-[1720px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">

@@ -38,6 +38,8 @@ async def test_db():
 async def reset_seed_tables(test_db):
     """Reset and seed tables before each test to guarantee repeatable test isolation."""
     await test_db.execute("DELETE FROM incident_events")
+    await test_db.execute("DELETE FROM responders")
+    await test_db.execute("DELETE FROM shelters")
     await test_db.execute("DELETE FROM incidents")
     await test_db.commit()
     await seed_database(test_db)

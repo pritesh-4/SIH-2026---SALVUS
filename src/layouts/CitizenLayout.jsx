@@ -2,10 +2,14 @@ import { Outlet } from 'react-router-dom'
 import { Navbar } from '../components/citizen/Navbar'
 import { BottomNav } from '../components/citizen/BottomNav'
 import { DevDemoControls } from '../components/common/DevDemoControls'
+import { GlobalNotificationBanner } from '../components/common/GlobalNotificationBanner'
 
 export const CitizenLayout = () => {
   return (
     <div className="min-h-screen bg-[#0B1118] text-slate-100 flex flex-col selection:bg-rose-500 selection:text-white">
+      {/* Calm System Notifications */}
+      <GlobalNotificationBanner />
+
       {/* Top Persistent Navigation */}
       <Navbar unreadAlertsCount={1} />
 

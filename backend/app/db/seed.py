@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 SEED_INCIDENTS = [
     {
-        "id": str(uuid.uuid4()),
+        "id": "inc-2048",
         "ticket_id": "SV-2048",
         "type": "flood",
         "severity": "CRITICAL",
@@ -22,7 +22,7 @@ SEED_INCIDENTS = [
         "status": "NEW",
     },
     {
-        "id": str(uuid.uuid4()),
+        "id": "inc-1982",
         "ticket_id": "SV-1982",
         "type": "power_line",
         "severity": "CRITICAL",
@@ -39,7 +39,7 @@ SEED_INCIDENTS = [
         "status": "TRIAGE_PENDING",
     },
     {
-        "id": str(uuid.uuid4()),
+        "id": "inc-1910",
         "ticket_id": "SV-1910",
         "type": "medical",
         "severity": "HIGH",
@@ -56,7 +56,7 @@ SEED_INCIDENTS = [
         "status": "VERIFIED",
     },
     {
-        "id": str(uuid.uuid4()),
+        "id": "inc-1844",
         "ticket_id": "SV-1844",
         "type": "flood",
         "severity": "MEDIUM",
@@ -74,17 +74,118 @@ SEED_INCIDENTS = [
     },
 ]
 
+SEED_RESPONDERS = [
+    {
+        "id": "resp-101",
+        "unit_name": "NDRF Rescue Unit 4",
+        "team_lead": "Capt. A. Roy",
+        "vehicle_type": "Gemini Z-Craft Inflatable",
+        "capability": "FLOOD_BOAT",
+        "status": "AVAILABLE",
+        "latitude": 22.5740,
+        "longitude": 88.3720,
+        "radio_channel": "VHF Ch. 4 (156.2 MHz)",
+        "max_capacity": 8,
+        "current_load": 0,
+        "assigned_incident_id": None,
+    },
+    {
+        "id": "resp-102",
+        "unit_name": "SDRF Rapid Response Boat 2",
+        "team_lead": "Sub-Inspector Ghosh",
+        "vehicle_type": "Aluminum Hull Flood Craft",
+        "capability": "FLOOD_BOAT",
+        "status": "AVAILABLE",
+        "latitude": 22.5620,
+        "longitude": 88.3850,
+        "radio_channel": "VHF Ch. 2 (156.1 MHz)",
+        "max_capacity": 6,
+        "current_load": 0,
+        "assigned_incident_id": None,
+    },
+    {
+        "id": "resp-103",
+        "unit_name": "Kolkata Police Disaster Ambulance 09",
+        "team_lead": "Paramedic M. Das",
+        "vehicle_type": "4x4 High-Water Ambulance",
+        "capability": "AMBULANCE",
+        "status": "AVAILABLE",
+        "latitude": 22.5800,
+        "longitude": 88.4200,
+        "radio_channel": "VHF Ch. 7 (156.35 MHz)",
+        "max_capacity": 4,
+        "current_load": 0,
+        "assigned_incident_id": None,
+    },
+    {
+        "id": "resp-104",
+        "unit_name": "Civil Defence Stretcher Team B",
+        "team_lead": "Havaldar Barman",
+        "vehicle_type": "All-Terrain Rescue Rover",
+        "capability": "STRETCHER_TEAM",
+        "status": "AVAILABLE",
+        "latitude": 22.5880,
+        "longitude": 88.4100,
+        "radio_channel": "VHF Ch. 9 (156.45 MHz)",
+        "max_capacity": 5,
+        "current_load": 0,
+        "assigned_incident_id": None,
+    },
+]
 
-async def seed_database(db) -> list[dict]:
-    """Insert seed incidents and their initial events. Returns list of created incidents."""
+SEED_SHELTERS = [
+    {
+        "id": "shl-01",
+        "name": "Salt Lake Stadium Assembly Hub",
+        "address": "Gate 3, Salt Lake Stadium Complex, Bidhannagar",
+        "latitude": 22.5680,
+        "longitude": 88.4060,
+        "total_beds": 600,
+        "available_beds": 420,
+        "occupancy_rate": "68%",
+        "supplies_status": "HIGH (3 days rations, generator backup)",
+        "status": "OPEN",
+        "is_active": 1,
+    },
+    {
+        "id": "shl-02",
+        "name": "Karunamoyee Multi-Purpose Shelter",
+        "address": "Karunamoyee Central Terminus Complex, Sector II",
+        "latitude": 22.5867,
+        "longitude": 88.4178,
+        "total_beds": 250,
+        "available_beds": 180,
+        "occupancy_rate": "74%",
+        "supplies_status": "MODERATE (2 days rations, first aid active)",
+        "status": "OPEN",
+        "is_active": 1,
+    },
+    {
+        "id": "shl-03",
+        "name": "Sector 5 Youth Hostel Hub",
+        "address": "Block EP, Sector V Tech Corridor, Salt Lake",
+        "latitude": 22.5800,
+        "longitude": 88.4350,
+        "total_beds": 150,
+        "available_beds": 95,
+        "occupancy_rate": "85%",
+        "supplies_status": "RESTOCKING (Medical triage stationed)",
+        "status": "NEAR_CAPACITY",
+        "is_active": 1,
+    },
+]
+
+
+async def seed_database(db) -> dict:
+    """Insert seed incidents, responders, and shelters. Returns dict of created counts."""
     now = datetime.now(UTC).isoformat()
-    created = []
+    created_incidents = []
+    created_responders = []
+    created_shelters = []
 
+    # 1. Seed Incidents
     for inc in SEED_INCIDENTS:
-        # Check if ticket already exists
-        cursor = await db.execute(
-            "SELECT id FROM incidents WHERE ticket_id = ?", (inc["ticket_id"],)
-        )
+        cursor = await db.execute("SELECT id FROM incidents WHERE id = ?", (inc["id"],))
         existing = await cursor.fetchone()
         if existing:
             continue
@@ -114,7 +215,6 @@ async def seed_database(db) -> list[dict]:
             ),
         )
 
-        # Create initial CREATED event
         await db.execute(
             """
             INSERT INTO incident_events (id, incident_id, event_type,
@@ -123,10 +223,81 @@ async def seed_database(db) -> list[dict]:
             """,
             (str(uuid.uuid4()), inc["id"], inc["status"], now),
         )
+        created_incidents.append(inc)
 
-        created.append(inc)
+    # 2. Seed Responders
+    for resp in SEED_RESPONDERS:
+        cursor = await db.execute("SELECT id FROM responders WHERE id = ?", (resp["id"],))
+        existing = await cursor.fetchone()
+        if existing:
+            continue
+
+        await db.execute(
+            """
+            INSERT INTO responders (id, unit_name, team_lead, vehicle_type, capability,
+                status, latitude, longitude, radio_channel, max_capacity, current_load,
+                assigned_incident_id, last_seen, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                resp["id"],
+                resp["unit_name"],
+                resp["team_lead"],
+                resp["vehicle_type"],
+                resp["capability"],
+                resp["status"],
+                resp["latitude"],
+                resp["longitude"],
+                resp["radio_channel"],
+                resp["max_capacity"],
+                resp["current_load"],
+                resp["assigned_incident_id"],
+                now,
+                now,
+                now,
+            ),
+        )
+        created_responders.append(resp)
+
+    # 3. Seed Shelters
+    for shl in SEED_SHELTERS:
+        cursor = await db.execute("SELECT id FROM shelters WHERE id = ?", (shl["id"],))
+        existing = await cursor.fetchone()
+        if existing:
+            continue
+
+        await db.execute(
+            """
+            INSERT INTO shelters (id, name, address, latitude, longitude,
+                total_beds, available_beds, occupancy_rate, supplies_status,
+                status, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                shl["id"],
+                shl["name"],
+                shl["address"],
+                shl["latitude"],
+                shl["longitude"],
+                shl["total_beds"],
+                shl["available_beds"],
+                shl["occupancy_rate"],
+                shl["supplies_status"],
+                shl["status"],
+                shl["is_active"],
+                now,
+                now,
+            ),
+        )
+        created_shelters.append(shl)
 
     await db.commit()
-    if created:
-        print(f"[SEED] Seeded {len(created)} demo incidents.")
-    return created
+    print(
+        f"[SEED] Seeded {len(created_incidents)} incidents, "
+        f"{len(created_responders)} responders, {len(created_shelters)} shelters."
+    )
+    return {
+        "incidents": len(created_incidents),
+        "responders": len(created_responders),
+        "shelters": len(created_shelters),
+    }

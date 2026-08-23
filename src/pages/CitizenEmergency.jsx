@@ -10,6 +10,7 @@ import { EmergencyTimeline } from '../components/citizen/emergency/EmergencyTime
 import { EmergencyInstructionCard } from '../components/citizen/emergency/EmergencyInstructionCard'
 import { EmergencyDemoControls } from '../components/citizen/emergency/EmergencyDemoControls'
 import { EmergencyCancelModal } from '../components/citizen/emergency/EmergencyCancelModal'
+import { GlobalNotificationBanner } from '../components/common/GlobalNotificationBanner'
 
 export const CitizenEmergency = () => {
   const navigate = useNavigate()
@@ -87,6 +88,9 @@ export const CitizenEmergency = () => {
 
   return (
     <div className="min-h-screen bg-[#0B1118] text-slate-100 flex flex-col selection:bg-rose-500 selection:text-white pb-32">
+      {/* Calm System Notifications */}
+      <GlobalNotificationBanner />
+
       {/* Cancellation Confirmation Safeguard Modal */}
       <EmergencyCancelModal
         isOpen={isCancelModalOpen}

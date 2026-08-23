@@ -71,7 +71,26 @@ async def get_incident(incident_id: str):
 
 @router.patch("/{incident_id}/status", response_model=IncidentSingleResponse)
 async def update_incident_status(incident_id: str, payload: IncidentStatusUpdate):
-    """Transition an incident to a new lifecycle status."""
+    """Transition an incident to a new lifecycle status with role authorization."""
+    # Lightweight security baseline: Citizens can only cancel incidents
+    if (
+        payload.status.value in ("TRIAGE_PENDING", "VERIFIED", "RESOLVED")
+        and payload.actor == "citizen"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "FORBIDDEN",
+                    "message": (
+                        "Only authorized emergency authorities may perform "
+                        "triage, verification, or resolution."
+                    ),
+                },
+            },
+        )
+
     db = await get_database()
 
     try:

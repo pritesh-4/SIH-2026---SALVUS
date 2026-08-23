@@ -199,3 +199,18 @@ class TestStatusTransition:
             json={"status": "NEW", "actor": "test"},
         )
         assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_unauthorized_citizen_transition_rejected(self, client):
+        create_resp = await client.post("/api/incidents", json=VALID_INCIDENT)
+        inc_id = create_resp.json()["data"]["id"]
+
+        # Citizen attempts to triage / verify without authority role
+        resp = await client.patch(
+            f"/api/incidents/{inc_id}/status",
+            json={"status": "TRIAGE_PENDING", "actor": "citizen"},
+        )
+        assert resp.status_code == 403
+        body = resp.json()
+        error_obj = body.get("detail", {}).get("error", {}) or body.get("error", {})
+        assert error_obj.get("code") == "FORBIDDEN"
