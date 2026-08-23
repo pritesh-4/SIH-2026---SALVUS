@@ -50,24 +50,24 @@ Salvus is built as an operational life-safety tool defined by key engineering di
 ## System Architecture & Data Flow
 
 ```mermaid
-graph TD
-    subgraph Citizen Experience [/citizen]
-        C[Citizen Home] -->|1. Tap SOS| Modal[Confirmation Safeguard]
-        Modal -->|2. Transmit Beacon| Emg[Emergency Journey /citizen/emergency]
-        C -->|Hazard Report| Report[In-App Incident Reporting Modal]
-        C -->|Safe Route| Map[Offline Route Guidance Drawer]
+flowchart TD
+    subgraph Citizen_Experience ["Citizen Experience (/citizen)"]
+        C["Citizen Home"] -->|"1. Tap SOS"| Modal["Confirmation Safeguard"]
+        Modal -->|"2. Transmit Beacon"| Emg["Emergency Journey (/citizen/emergency)"]
+        C -->|"Hazard Report"| Report["In-App Incident Reporting Modal"]
+        C -->|"Safe Route"| Map["Offline Route Guidance Drawer"]
     end
 
-    subgraph AI Triage & Verification Layer
-        Emg -->|Distress Telemetry| AI[Operational Intelligence Engine]
-        AI -->|Hazard Classification & Urgency Index| Verif[Human Dispatcher Verification]
+    subgraph AI_Layer ["AI Triage & Verification Layer"]
+        Emg -->|"Distress Telemetry"| AI["Operational Intelligence Engine"]
+        AI -->|"Hazard Classification & Urgency Index"| Verif["Human Dispatcher Verification"]
     end
 
-    subgraph Authority Command Center [/authority]
-        Verif -->|Approved Incident| Queue[Incident Ingestion Queue]
-        Queue -->|Select Incident| Triage[AI Dispatch Recommendation]
-        Triage -->|Approve Dispatch| Fleet[Tactical Command Map & Fleet Matrix]
-        Fleet -->|Live Vessel Tracking & Route Vector| Emg
+    subgraph Authority_Center ["Authority Command Center (/authority)"]
+        Verif -->|"Approved Incident"| Queue["Incident Ingestion Queue"]
+        Queue -->|"Select Incident"| Triage["AI Dispatch Recommendation"]
+        Triage -->|"Approve Dispatch"| Fleet["Tactical Command Map & Fleet Matrix"]
+        Fleet -->|"Live Vessel Tracking & Route Vector"| Emg
     end
 ```
 

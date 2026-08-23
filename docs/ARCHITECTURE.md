@@ -7,30 +7,30 @@ This document details the architectural layout, component boundaries, and state 
 ## 1. System Architecture Diagram
 
 ```mermaid
-graph TB
-    subgraph Client Application Layer
+flowchart TB
+    subgraph Client_App ["Client Application Layer"]
         direction TB
-        CitizenPortal[Citizen Safety Console /citizen]
-        CitizenEmergency[Progressive Disclosure Emergency Journey /citizen/emergency]
-        AuthorityCenter[Authority Command Center /authority]
+        CitizenPortal["Citizen Safety Console (/citizen)"]
+        CitizenEmergency["Progressive Disclosure Emergency Journey (/citizen/emergency)"]
+        AuthorityCenter["Authority Command Center (/authority)"]
 
         CitizenPortal <--> CitizenEmergency
-        CitizenPortal <-->|1-Click Portal Switcher| AuthorityCenter
+        CitizenPortal <-->|"1-Click Portal Switcher"| AuthorityCenter
     end
 
-    subgraph Central State Engine
-        StateHook[useEmergencyState State Machine]
-        ProgressiveFilter[Progressive Disclosure Focal Engine]
-        MockStore[Authority & Citizen Data Stores]
+    subgraph Central_State ["Central State Engine"]
+        StateHook["useEmergencyState State Machine"]
+        ProgressiveFilter["Progressive Disclosure Focal Engine"]
+        MockStore["Authority & Citizen Data Stores"]
 
         StateHook --> ProgressiveFilter
         StateHook --> MockStore
     end
 
-    subgraph Intelligence & Operational Layers
-        AIEngine[AI Triage & Urgency Scoring Model]
-        AllocationEngine[Deterministic Weighted Resource Matcher]
-        TelemetryEngine[Simulated Vessel Navigation & ETA Stream]
+    subgraph Intelligence_Layer ["Intelligence & Operational Layers"]
+        AIEngine["AI Triage & Urgency Scoring Model"]
+        AllocationEngine["Deterministic Weighted Resource Matcher"]
+        TelemetryEngine["Simulated Vessel Navigation & ETA Stream"]
     end
 
     %% Wiring
