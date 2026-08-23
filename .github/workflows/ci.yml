@@ -8,7 +8,7 @@ on:
     branches:
       - main
 
-# Cancel obsolete in-progress runs when new commits are pushed to the same PR
+# Cancel obsolete in-progress runs when new commits are pushed
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -17,8 +17,8 @@ permissions:
   contents: read
 
 jobs:
-  quality-gate:
-    name: Code Quality & Build Validation
+  frontend-quality:
+    name: Frontend Quality & Build Gate
     runs-on: ubuntu-latest
 
     steps:
@@ -40,5 +40,36 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
-      - name: Run Production Build (Vite)
+      - name: Run Vite Production Build
         run: npm run build
+
+  backend-quality:
+    name: Backend Lint, Format & Test Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements.txt'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run Ruff Linter
+        run: ruff check backend
+
+      - name: Check Ruff Formatting
+        run: ruff format --check backend
+
+      - name: Run Pytest Test Suite
+        run: |
+          cd backend
+          python -m pytest -v --durations=10

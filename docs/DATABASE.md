@@ -1,84 +1,72 @@
-# DATABASE.md - Database Schema Blueprint (PLANNED)
+# DATABASE.md - Database Schema & Storage Architecture
 
-The database layers are configured inside Supabase (PostgreSQL with the PostGIS spatial extension). No tables are currently implemented.
+This document describes the current database schema, storage engine, and future migration path for Salvus.
 
 ---
 
-## 1. Intended Tables Schema
+## 1. Storage Architecture
 
-### Table: `users`
+- **Phase 1 Implementation:** Asynchronous local SQLite (`aiosqlite`) stored in `backend/data/salvus.db`.
+  - Configured with Write-Ahead Logging (`PRAGMA journal_mode=WAL`) for concurrent reading and writing.
+  - Foreign key enforcement enabled (`PRAGMA foreign_keys=ON`).
+- **Production Target (Phase 2):** PostgreSQL with PostGIS extension on Supabase / Render for geospatial indexing and multi-region replication.
 
-- **Purpose:** Stores core user profile records.
-- **Fields:**
-  - `id` (uuid, Primary Key)
-  - `email` (varchar, unique)
-  - `role` (varchar) - `'citizen'` | `'dispatcher'` | `'responder'`
-  - `created_at` (timestamp)
+---
+
+## 2. Implemented Tables (IMPLEMENTED ✅)
 
 ### Table: `incidents`
 
-- **Purpose:** Log of all emergency SOS pings and hazards.
-- **Fields:**
-  - `id` (uuid, Primary Key)
-  - `location` (geometry(Point, 4326)) - **Geospatial coordinates**
-  - `category` (varchar) - `'Flood'` | `'Fire'` | `'Medical'` | `'Hazard'` | `'Other'`
-  - `severity` (varchar) - `'Critical'` | `'High'` | `'Moderate'` | `'Low'`
-  - `status` (varchar) - `'active'` | `'dispatched'` | `'resolved'` | `'cancelled'`
-  - `summary` (text)
-  - `citizen_phone` (varchar)
-  - `created_at` (timestamp)
+Stores emergency SOS distress beacons and citizen hazard reports.
 
-### Table: `responders`
+| Column           | Type      | Constraints                    | Description                                                               |
+| ---------------- | --------- | ------------------------------ | ------------------------------------------------------------------------- |
+| `id`             | `TEXT`    | `PRIMARY KEY`                  | UUIDv4 string                                                             |
+| `ticket_id`      | `TEXT`    | `UNIQUE NOT NULL`              | Public identifier (e.g. `SV-2048`)                                        |
+| `type`           | `TEXT`    | `NOT NULL`                     | `flood`, `fire`, `medical`, `hazard`, `power_line`, `structural`, `other` |
+| `severity`       | `TEXT`    | `NOT NULL DEFAULT 'MEDIUM'`    | `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`                                       |
+| `description`    | `TEXT`    | `NOT NULL DEFAULT ''`          | Detailed hazard / rescue description                                      |
+| `reporter_name`  | `TEXT`    | `NOT NULL DEFAULT 'Anonymous'` | Name of reporting citizen                                                 |
+| `reporter_phone` | `TEXT`    | `NULL`                         | Contact phone number                                                      |
+| `latitude`       | `REAL`    | `NOT NULL`                     | Latitude coordinate (-90 to 90)                                           |
+| `longitude`      | `REAL`    | `NOT NULL`                     | Longitude coordinate (-180 to 180)                                        |
+| `affected_count` | `INTEGER` | `NOT NULL DEFAULT 1`           | Estimated number of people in danger                                      |
+| `is_sos`         | `INTEGER` | `NOT NULL DEFAULT 0`           | 1 if high-priority SOS, 0 if hazard report                                |
+| `status`         | `TEXT`    | `NOT NULL DEFAULT 'NEW'`       | `NEW`, `TRIAGE_PENDING`, `VERIFIED`, `RESOLVED`, `CANCELLED`              |
+| `created_at`     | `TEXT`    | `NOT NULL`                     | ISO 8601 UTC timestamp                                                    |
+| `updated_at`     | `TEXT`    | `NOT NULL`                     | ISO 8601 UTC timestamp                                                    |
 
-- **Purpose:** Rescue crew accounts and status.
-- **Fields:**
-  - `id` (uuid, Primary Key)
-  - `name` (varchar)
-  - `capability` (varchar[]) - e.g. `['water_rescue', 'first_aid']`
-  - `current_status` (varchar) - `'idle'` | `'en_route'` | `'busy'` | `'offline'`
-  - `last_location` (geometry(Point, 4326))
-  - `updated_at` (timestamp)
+### Table: `incident_events`
 
-### Table: `assignments`
+Immutable audit trail logging every state transition and action on an incident.
 
-- **Purpose:** Maps responders to active incidents.
-- **Fields:**
-  - `id` (uuid, Primary Key)
-  - `incident_id` (uuid, Foreign Key -> `incidents.id`)
-  - `responder_id` (uuid, Foreign Key -> `responders.id`)
-  - `status` (varchar) - `'assigned'` | `'en_route'` | `'at_scene'` | `'completed'`
-  - `assigned_at` (timestamp)
+| Column            | Type   | Constraints                                       | Description                                    |
+| ----------------- | ------ | ------------------------------------------------- | ---------------------------------------------- |
+| `id`              | `TEXT` | `PRIMARY KEY`                                     | UUIDv4 string                                  |
+| `incident_id`     | `TEXT` | `NOT NULL, FK -> incidents(id) ON DELETE CASCADE` | Associated incident                            |
+| `event_type`      | `TEXT` | `NOT NULL`                                        | `CREATED`, `STATUS_CHANGE`, `ASSIGNMENT`, etc. |
+| `previous_status` | `TEXT` | `NULL`                                            | Status before transition                       |
+| `new_status`      | `TEXT` | `NULL`                                            | Status after transition                        |
+| `actor`           | `TEXT` | `NOT NULL DEFAULT 'system'`                       | User/service who triggered event               |
+| `metadata`        | `TEXT` | `NULL`                                            | Optional JSON metadata payload                 |
+| `created_at`      | `TEXT` | `NOT NULL`                                        | ISO 8601 UTC timestamp                         |
 
-### Table: `shelters`
+### Database Indexes
 
-- **Purpose:** Shelter facilities monitoring.
-- **Fields:**
-  - `id` (uuid, Primary Key)
-  - `name` (varchar)
-  - `location` (geometry(Point, 4326))
-  - `capacity` (integer)
-  - `current_occupancy` (integer)
-  - `resource_status` (jsonb) - tracks medicine/water levels
+```sql
+CREATE INDEX idx_incidents_status ON incidents(status);
+CREATE INDEX idx_incidents_coords ON incidents(latitude, longitude);
+CREATE INDEX idx_incidents_created_at ON incidents(created_at DESC);
+CREATE INDEX idx_incident_events_incident_id ON incident_events(incident_id);
+```
 
 ---
 
-## 2. Spatial Indexes (PostGIS)
+## 3. Future Schema Blueprint (PLANNED 🔮)
 
-To ensure near-instantaneous proximity routing, spatial indexes must be applied:
+The following tables will be introduced in subsequent phases for full responder fleet allocation:
 
-```sql
-CREATE INDEX idx_incidents_location ON incidents USING GIST (location);
-CREATE INDEX idx_responders_location ON responders USING GIST (last_location);
-CREATE INDEX idx_shelters_location ON shelters USING GIST (location);
-```
-
-These allow efficient queries using distance calculations:
-
-```sql
--- Find nearest open shelter within 10km (10000m)
-SELECT id, name, ST_Distance(location, ST_MakePoint(longitude, latitude)::geography) as dist
-FROM shelters
-WHERE current_occupancy < capacity
-AND ST_DWithin(location, ST_MakePoint(longitude, latitude)::geography, 10000)
-ORDER BY dist ASC;
-```
+- **`users`**: Authentication & role management (`citizen`, `dispatcher`, `responder`).
+- **`responders`**: Rescue crews with specialized capabilities (`water_rescue`, `medical`, `heavy_debris`).
+- **`assignments`**: Junction linking responders to incidents with ETA telemetry.
+- **`shelters`**: Evacuation center capacities, occupancy, and medical supply levels.

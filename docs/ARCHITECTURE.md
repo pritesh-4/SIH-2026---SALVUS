@@ -1,6 +1,6 @@
 # ARCHITECTURE.md - System Architecture & Component Design
 
-This document details the architectural layout, component boundaries, and state management models of the Salvus platform.
+This document details the architectural layout, component boundaries, state management models, and backend foundation of the Salvus platform.
 
 ---
 
@@ -8,7 +8,7 @@ This document details the architectural layout, component boundaries, and state 
 
 ```mermaid
 flowchart TB
-    subgraph Client_App ["Client Application Layer"]
+    subgraph Client_App ["Client Application Layer (React 19 + Vite)"]
         direction TB
         CitizenPortal["Citizen Safety Console (/citizen)"]
         CitizenEmergency["Progressive Disclosure Emergency Journey (/citizen/emergency)"]
@@ -18,32 +18,72 @@ flowchart TB
         CitizenPortal <-->|"1-Click Portal Switcher"| AuthorityCenter
     end
 
-    subgraph Central_State ["Central State Engine"]
-        StateHook["useEmergencyState State Machine"]
-        ProgressiveFilter["Progressive Disclosure Focal Engine"]
-        MockStore["Authority & Citizen Data Stores"]
+    subgraph Backend_App ["Backend Foundation Layer (Python FastAPI)"]
+        direction TB
+        APIGateway["FastAPI REST Endpoints (/api/incidents, /health)"]
+        SocketEngine["Async Socket.IO Server (Rooms: authorities, incident:id)"]
+        DomainService["Incident Service & Deterministic State Machine"]
+        DBLayer["Async SQLite Storage (aiosqlite + WAL Mode)"]
 
-        StateHook --> ProgressiveFilter
-        StateHook --> MockStore
+        APIGateway <--> DomainService
+        SocketEngine <--> DomainService
+        DomainService <--> DBLayer
     end
 
-    subgraph Intelligence_Layer ["Intelligence & Operational Layers"]
+    subgraph Intelligence_Layer ["Intelligence & Operational Layers (Phase 2)"]
         AIEngine["AI Triage & Urgency Scoring Model"]
         AllocationEngine["Deterministic Weighted Resource Matcher"]
         TelemetryEngine["Simulated Vessel Navigation & ETA Stream"]
     end
 
     %% Wiring
-    CitizenEmergency <--> StateHook
-    AuthorityCenter <--> MockStore
-    StateHook --> AIEngine
-    AuthorityCenter --> AllocationEngine
-    StateHook --> TelemetryEngine
+    CitizenPortal -.->|HTTP/REST| APIGateway
+    AuthorityCenter -.->|HTTP/REST| APIGateway
+    AuthorityCenter -.->|WebSockets| SocketEngine
+    DomainService -.-> AIEngine
+    AuthorityCenter -.-> AllocationEngine
 ```
 
 ---
 
-## 2. Frontend Component Hierarchy
+## 2. Backend Architecture (`backend/`)
+
+The backend is built with **Python 3.12+ and FastAPI**, prioritizing asynchronous I/O, domain-driven design, and deterministic state transitions:
+
+```
+backend/
+├── app/
+│   ├── db/
+│   │   ├── __init__.py        # Async SQLite connection lifecycle & WAL configuration
+│   │   ├── migrations.py      # Schema definitions (incidents, incident_events)
+│   │   └── seed.py            # Realistic Kolkata flood demo incident seeding
+│   ├── models/
+│   │   └── __init__.py        # Pydantic schemas (IncidentCreate, IncidentResponse, enums)
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── state_machine.py   # Deterministic incident lifecycle transitions & terminal checks
+│   │   └── incident_service.py # Business logic, CRUD operations, ticket generation
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   ├── health.py          # Health check endpoint (/health)
+│   │   └── incidents.py       # REST endpoints (/api/incidents)
+│   ├── realtime/
+│   │   ├── __init__.py
+│   │   └── socket_manager.py  # python-socketio async server & typed event emitters
+│   ├── middleware/
+│   │   └── __init__.py        # Global validation & error handler middleware
+│   └── main.py                # Lifespan manager, CORS, ASGI combined app mount
+├── tests/
+│   ├── conftest.py            # In-memory SQLite & async HTTP client fixtures
+│   ├── test_state_machine.py  # Unit tests for transitions, ranking, terminals
+│   └── test_incident_api.py   # Integration tests for all REST endpoints
+├── pyproject.toml             # Ruff linter & Pytest configuration
+└── requirements.txt           # Explicit version-pinned dependencies
+```
+
+---
+
+## 3. Frontend Component Hierarchy
 
 ```
 src/
@@ -77,12 +117,14 @@ src/
 
 ---
 
-## 3. Emergency Lifecycle State Machine
+## 4. Emergency Lifecycle State Machine
 
 The central state machine enforces deterministic, unidirectional progression across the complete emergency lifecycle:
 
-$$\text{SOS\_ACTIVE} \rightarrow \text{TRIAGING} \rightarrow \text{VERIFIED} \rightarrow \text{ASSIGNED} \rightarrow \text{EN\_ROUTE} \rightarrow \text{NEARBY} \rightarrow \text{ON\_SCENE} \rightarrow \text{RESOLVED}$$
+$$\text{NEW} \rightarrow \text{TRIAGE\_PENDING} \rightarrow \text{VERIFIED} \rightarrow \text{RESOLVED}$$
 
-- **Guarded Transitions:** Impossible backward jumps or state skipping are prevented.
-- **Cancellation Safe Harbor:** Any active state can transition to `CANCELLED` via a confirmation modal safeguard, allowing the citizen to stand down responders while retaining instant re-activation.
-- **Network Health Simulation:** Tracks `CONNECTED`, `LIMITED_CONNECTION` (SMS fallback), and `OFFLINE` (local caching).
+_(Extended full responder pipeline: `ASSIGNED` $\rightarrow$ `EN_ROUTE` $\rightarrow$ `NEARBY` $\rightarrow$ `ON_SCENE` $\rightarrow$ `RESOLVED`)_
+
+- **Guarded Transitions:** Impossible backward jumps or state skipping are prevented and validated on both API and domain layers.
+- **Cancellation Safe Harbor:** Any active non-terminal state can transition to `CANCELLED` via a confirmation safeguard, allowing the citizen/authority to stand down while recording the audit event.
+- **Terminal States:** `RESOLVED` and `CANCELLED` lock the incident against further status mutations.

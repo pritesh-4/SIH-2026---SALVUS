@@ -1,48 +1,60 @@
-# REALTIME.md - Real-time State & WebSockets (PLANNED)
+# REALTIME.md - Real-time State & WebSockets
 
-Real-time synchronization across the command console and active citizen pages is driven by Socket.io and Supabase Realtime triggers.
-
----
-
-## 1. Socket.io Channels & Rooms
-
-### Room: `authorities`
-
-- **Subscribers:** Active dispatchers/dashboard operators.
-- **Payloads Broadcasted:**
-  - `incident:new` -> Emits structured triage payload when citizen triggers SOS.
-  - `responder:telemetry` -> Emits GPS updates of en route units.
-  - `shelter:occupancy_update` -> Emits vacancy alerts.
-
-### Room: `incident:<incident_id>`
-
-- **Subscribers:** Stranded citizen who submitted SOS, assigned responders.
-- **Payloads Broadcasted:**
-  - `assignment:status_change` -> Broadcasts when dispatcher assigns crew.
-  - `responder:location` -> Provides real-time coordinates of assigned responder.
+This document describes the real-time communication layer in Salvus for live incident synchronization across citizen clients and authority dashboards.
 
 ---
 
-## 2. Telemetry Ingestion Flow
+## 1. Socket.IO Architecture (IMPLEMENTED ✅)
+
+The backend exposes an asynchronous Socket.IO engine (`python-socketio`) running on the same ASGI server alongside FastAPI:
+
+- **Server Instance:** `app.realtime.socket_manager.sio`
+- **Transport:** Async ASGI with WebSockets + Long-Polling fallback
+- **CORS:** Configured for cross-origin local and cloud clients
+
+---
+
+## 2. Channels, Rooms & Events
+
+### Room: `authorities` (IMPLEMENTED ✅)
+
+- **Subscribers:** Emergency dispatchers, coordinators, command center dashboards.
+- **Events Emitted:**
+  - `incident:new`: Emitted whenever a citizen submits a new SOS beacon or hazard report.
+    ```json
+    {
+      "incident_id": "e5cffddc-318c-4a1f-b69e-ba4bfc5e0faa",
+      "ticket_id": "SV-2048",
+      "type": "flood",
+      "severity": "CRITICAL",
+      "latitude": 22.5726,
+      "longitude": 88.3639,
+      "is_sos": true,
+      "status": "NEW",
+      "created_at": "2026-08-23T12:59:26.520142+00:00"
+    }
+    ```
+  - `incident:status_changed`: Emitted when any incident advances its lifecycle state.
+
+---
+
+### Room: `incident:{incident_id}` (IMPLEMENTED ✅)
+
+- **Subscribers:** The stranded citizen who created the ticket and assigned responders.
+- **Events Emitted:**
+  - `incident:status_changed`: Live progression update (e.g. `NEW` $\rightarrow$ `TRIAGE_PENDING` $\rightarrow$ `VERIFIED` $\rightarrow$ `RESOLVED`).
+
+---
+
+## 3. High-Frequency Telemetry Ingestion (PLANNED 🔮)
+
+Planned for responder tracking:
 
 ```
- Responder GPS updates
+ Responder GPS updates (5s Interval)
    │
-   ├── Emits client-side ping (Interval: 5s)
-   │
-   ├── Socket server picks up telemetry
-   │
-   ├── 1. Push coordinates to `authorities` room (updates admin maps)
-   │   2. Push to `incident:<incident_id>` room (updates citizen map)
-   │   3. Buffer location in server memory
-   │
-   └── Batch write to PostgreSQL every 15s (optimizes write rates)
+   ├── Sockets ingest telemetry ping
+   ├── Push coordinates to `authorities` room (updates admin map)
+   ├── Push to `incident:<id>` room (updates citizen rescue radar)
+   └── Batch write to DB every 15s
 ```
-
----
-
-## 3. Disconnection & Network Failures
-
-- **Local State Buffering:** If the connection drops, client maps preserve the last known coordinate markers.
-- **Heartbeats:** Sockets emit an active heartbeat ping every 10 seconds. If missing for 3 consecutive iterations, the dashboard flags the responder status as `'offline'`.
-- **Automatic Reconnects:** Reconnect attempts execute exponentially at 1s, 2s, 4s, 8s intervals before failing.

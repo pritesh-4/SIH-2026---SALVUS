@@ -1,6 +1,6 @@
 # DECISIONS.md - Architecture Decision Records (ADRs)
 
-This document records the foundational architectural decisions, rationale, and engineering trade-offs made across the Salvus platform.
+This document records foundational architectural decisions, rationale, and engineering trade-offs made across the Salvus platform.
 
 ---
 
@@ -55,3 +55,21 @@ This document records the foundational architectural decisions, rationale, and e
 - **Decision:** Replace all placeholder interactions with rich in-app components: `IncidentReportModal.jsx` for 3-step hazard logging, Safe Route Briefing for shelter navigation, and `EmergencyCancelModal.jsx` for cancellation safeguards.
 - **Reason:** Zero dead interactions; delivers a production-grade, trustworthy application feel.
 - **Trade-offs:** Requires authoring dedicated modal components and managing their open/closed states.
+
+---
+
+## ADR-007: Python FastAPI for Backend Foundation
+
+- **Context:** The disaster intelligence ecosystem requires high-performance async API processing, clean data validation, and seamless integration with future AI & geospatial models.
+- **Decision:** Use Python 3.12+ with FastAPI, Pydantic v2, and ASGI Async Server.
+- **Reason:** FastAPI provides automatic OpenAPI schemas, strict typing, high throughput with async coroutines, and direct compatibility with Python data science/AI toolchains (Groq, Gemini SDKs).
+- **Trade-offs:** Requires maintaining dual ecosystems (Node.js for frontend, Python for backend), mitigated via separate directory trees and isolated CI quality gates.
+
+---
+
+## ADR-008: Async SQLite for Local Foundation with Postgres/PostGIS Migration Path
+
+- **Context:** Early phases and demo presentations require zero-configuration, reliable persistence without cloud database latency or credential lockouts.
+- **Decision:** Use `aiosqlite` with Write-Ahead Logging (WAL) mode for Phase 1, structuring the schema for 1-to-1 migration to PostgreSQL + PostGIS in production.
+- **Reason:** Instant local spin-up, zero external dependencies, robust transactional integrity, and easy tear-down for testing.
+- **Trade-offs:** Lacks native spatial indexing (GIST) in Phase 1, which will be unlocked when migrating to PostGIS in the deployment phase.
