@@ -9,11 +9,14 @@ import { ReportIncidentCard } from '../components/citizen/ReportIncidentCard'
 import { AreaMapCard } from '../components/citizen/AreaMapCard'
 import { EmergencyConfirmationModal } from '../components/citizen/emergency/EmergencyConfirmationModal'
 import { IncidentReportModal } from '../components/citizen/IncidentReportModal'
+import { createIncident } from '../services/api'
+import { getCurrentLocation } from '../lib/location'
 
 export const CitizenHome = () => {
   const navigate = useNavigate()
   const [isConfirmingSos, setIsConfirmingSos] = useState(false)
   const [isReportingIncident, setIsReportingIncident] = useState(false)
+  const [isSubmittingSos, setIsSubmittingSos] = useState(false)
 
   const { user, safetyStatus, emergency, activeAlert, nearestShelter, report, areaMap } =
     citizenHomeData
@@ -22,9 +25,41 @@ export const CitizenHome = () => {
     setIsConfirmingSos(true)
   }
 
-  const handleConfirmSos = () => {
-    setIsConfirmingSos(false)
-    navigate('/citizen/sos')
+  const handleConfirmSos = async () => {
+    if (isSubmittingSos) return
+    setIsSubmittingSos(true)
+
+    try {
+      // 1. Acquire current coordinates safely
+      const loc = await getCurrentLocation()
+
+      // 2. Submit SOS Beacon to backend
+      const result = await createIncident({
+        type: 'flood',
+        severity: 'CRITICAL',
+        description: 'Immediate emergency SOS beacon activated by citizen.',
+        reporter_name: 'Aditi Roy',
+        reporter_phone: '+91 98301 24890',
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        affected_count: 1,
+        is_sos: true,
+      })
+
+      setIsConfirmingSos(false)
+      setIsSubmittingSos(false)
+
+      if (result.success && result.data) {
+        navigate(`/citizen/sos?incidentId=${result.data.id}`)
+      } else {
+        // Fallback to standalone SOS mode if backend is unreachable
+        navigate('/citizen/sos')
+      }
+    } catch {
+      setIsConfirmingSos(false)
+      setIsSubmittingSos(false)
+      navigate('/citizen/sos')
+    }
   }
 
   const handleCancelSos = () => {

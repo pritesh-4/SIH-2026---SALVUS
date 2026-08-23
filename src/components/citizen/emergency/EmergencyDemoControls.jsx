@@ -12,6 +12,8 @@ export const EmergencyDemoControls = ({
   onSpeedChange,
   connectivityStatus = 'CONNECTED',
   onConnectivityChange,
+  onTriggerLiveSos,
+  incidentTicket,
 }) => {
   const [isMinimized, setIsMinimized] = useState(false)
 
@@ -38,7 +40,7 @@ export const EmergencyDemoControls = ({
           className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#111A24]/95 border border-cyan-500/50 shadow-2xl backdrop-blur-md text-cyan-300 text-xs font-bold uppercase tracking-wider hover:bg-cyan-500/20 cursor-pointer shadow-cyan-950/60"
         >
           <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
-          <span>⚡ Demo Dock</span>
+          <span>⚡ Demo Dock {incidentTicket ? `(#${incidentTicket})` : ''}</span>
         </button>
       </aside>
     )
@@ -53,8 +55,8 @@ export const EmergencyDemoControls = ({
         {/* Left Label & Minimize Button */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
-          <span className="text-[11px] font-extrabold tracking-wider text-cyan-300 uppercase">
-            Demo Simulator
+          <span className="text-[11px] font-extrabold tracking-wider text-cyan-300 uppercase font-mono">
+            Demo Dock {incidentTicket && <span className="text-white">· #{incidentTicket}</span>}
           </span>
           <button
             type="button"
@@ -86,6 +88,17 @@ export const EmergencyDemoControls = ({
 
         {/* Right Controls */}
         <div className="flex items-center gap-1.5 ml-auto shrink-0 flex-wrap">
+          {onTriggerLiveSos && (
+            <button
+              type="button"
+              onClick={onTriggerLiveSos}
+              className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-mono text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-rose-950/40"
+              title="Broadcast Live SOS to Backend & Authorities Room"
+            >
+              ⚡ Live SOS
+            </button>
+          )}
+
           {/* Connectivity toggle */}
           {onConnectivityChange && (
             <button
@@ -134,13 +147,13 @@ export const EmergencyDemoControls = ({
                 : 'bg-[#1E293B] text-slate-300 hover:text-white'
             }`}
           >
-            {isAutoPlaying ? '⏸ Auto Playing' : '▶ Auto Simulate'}
+            {isAutoPlaying ? '⏸ Auto' : '▶ Sim'}
           </button>
 
           <button
             type="button"
             onClick={onPrev}
-            className="px-2.5 py-1 rounded-lg bg-[#0B1118] border border-[#1E293B] text-slate-300 hover:text-white text-[10px] font-bold cursor-pointer"
+            className="px-2 py-1 rounded-lg bg-[#0B1118] border border-[#1E293B] text-slate-300 hover:text-white text-[10px] font-bold cursor-pointer"
             title="Previous Stage"
           >
             ←
@@ -148,7 +161,7 @@ export const EmergencyDemoControls = ({
           <button
             type="button"
             onClick={onNext}
-            className="px-2.5 py-1 rounded-lg bg-[#0B1118] border border-[#1E293B] text-slate-300 hover:text-white text-[10px] font-bold cursor-pointer"
+            className="px-2 py-1 rounded-lg bg-[#0B1118] border border-[#1E293B] text-slate-300 hover:text-white text-[10px] font-bold cursor-pointer"
             title="Next Stage"
           >
             →
@@ -156,7 +169,7 @@ export const EmergencyDemoControls = ({
           <button
             type="button"
             onClick={onReset}
-            className="px-2.5 py-1 rounded-lg bg-[#0B1118] border border-rose-500/30 text-rose-300 hover:text-rose-200 text-[10px] font-bold cursor-pointer"
+            className="px-2 py-1 rounded-lg bg-[#0B1118] border border-rose-500/30 text-rose-300 hover:text-rose-200 text-[10px] font-bold cursor-pointer"
             title="Reset Flow"
           >
             ↺

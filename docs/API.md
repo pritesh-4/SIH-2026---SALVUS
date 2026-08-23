@@ -26,7 +26,7 @@ Returns service health status.
 
 ### `POST /api/incidents`
 
-Creates a new emergency SOS beacon or citizen hazard report.
+Creates a new emergency SOS beacon or citizen hazard report and emits `incident:new` over Socket.IO to the `authorities` room.
 
 - **Authentication:** Public / Anonymous allowed
 - **Request Payload:**
@@ -129,13 +129,13 @@ Retrieves a single incident by its UUID along with its complete audit event hist
 
 ### `PATCH /api/incidents/{id}/status`
 
-Transitions an incident to a new status governed by the state machine (`NEW` $\rightarrow$ `TRIAGE_PENDING` $\rightarrow$ `VERIFIED` $\rightarrow$ `RESOLVED` / `CANCELLED`).
+Transitions an incident to a new status governed by the state machine (`NEW` $\rightarrow$ `TRIAGE_PENDING` $\rightarrow$ `VERIFIED` $\rightarrow$ `RESOLVED` / `CANCELLED`) and emits `incident:status_changed` over Socket.IO to both `authorities` and `incident:{id}` rooms.
 
 - **Request Payload:**
   ```json
   {
-    "status": "TRIAGE_PENDING",
-    "actor": "ai_triage_engine"
+    "status": "VERIFIED",
+    "actor": "authority"
   }
   ```
 - **Response (200 OK):** Updated `IncidentResponse` with new audit event appended.

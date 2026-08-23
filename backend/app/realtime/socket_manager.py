@@ -51,7 +51,7 @@ async def join_room(sid: str, data: dict):
     """
     room = data.get("room")
     if room:
-        sio.enter_room(sid, room)
+        await sio.enter_room(sid, room)
         print(f"[Socket.IO] {sid} joined room: {room}")
         await sio.emit("room_joined", {"room": room}, to=sid)
 
@@ -61,7 +61,7 @@ async def leave_room(sid: str, data: dict):
     """Let a client leave a named room."""
     room = data.get("room")
     if room:
-        sio.leave_room(sid, room)
+        await sio.leave_room(sid, room)
         print(f"[Socket.IO] {sid} left room: {room}")
 
 
@@ -72,19 +72,27 @@ async def leave_room(sid: str, data: dict):
 
 async def emit_incident_created(incident: IncidentResponse) -> None:
     """Broadcast a new incident to the authorities room."""
+    payload = {
+        "id": incident.id,
+        "incident_id": incident.id,
+        "ticket_id": incident.ticket_id,
+        "type": incident.type,
+        "severity": incident.severity,
+        "description": incident.description,
+        "reporter_name": incident.reporter_name,
+        "reporter_phone": incident.reporter_phone,
+        "latitude": incident.latitude,
+        "longitude": incident.longitude,
+        "affected_count": incident.affected_count,
+        "is_sos": incident.is_sos,
+        "status": incident.status,
+        "created_at": incident.created_at,
+        "updated_at": incident.updated_at,
+        "events": [e.model_dump() for e in incident.events],
+    }
     await sio.emit(
         "incident:new",
-        {
-            "incident_id": incident.id,
-            "ticket_id": incident.ticket_id,
-            "type": incident.type,
-            "severity": incident.severity,
-            "latitude": incident.latitude,
-            "longitude": incident.longitude,
-            "is_sos": incident.is_sos,
-            "status": incident.status,
-            "created_at": incident.created_at,
-        },
+        payload,
         room="authorities",
     )
     print(f"[Socket.IO] Emitted incident:new → authorities ({incident.ticket_id})")
@@ -94,10 +102,13 @@ async def emit_incident_status_changed(incident: IncidentResponse, new_status: s
     """Broadcast a status change to both the authorities room and the
     incident-specific room."""
     payload = {
+        "id": incident.id,
         "incident_id": incident.id,
         "ticket_id": incident.ticket_id,
         "status": new_status,
         "updated_at": incident.updated_at,
+        "incident": incident.model_dump(),
+        "events": [e.model_dump() for e in incident.events],
     }
 
     # Notify the authority dashboard

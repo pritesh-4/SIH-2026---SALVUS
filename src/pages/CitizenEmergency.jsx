@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useEmergencyState } from '../features/citizen/emergency/useEmergencyState'
 import { EmergencyHeader } from '../components/citizen/emergency/EmergencyHeader'
 import { LocationStatusBanner } from '../components/citizen/emergency/LocationStatusBanner'
@@ -13,6 +13,9 @@ import { EmergencyCancelModal } from '../components/citizen/emergency/EmergencyC
 
 export const CitizenEmergency = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const urlIncidentId = searchParams.get('incidentId')
+
   const {
     currentState,
     currentInfo,
@@ -40,8 +43,9 @@ export const CitizenEmergency = () => {
     goToPrevState,
     resetEmergency,
     triggerSos,
+    triggerLiveDemoSos,
     toggleAutoPlay,
-  } = useEmergencyState('SOS_ACTIVE')
+  } = useEmergencyState('SOS_ACTIVE', urlIncidentId)
 
   // Cancelled State Screen
   if (currentState === 'CANCELLED') {
@@ -247,6 +251,8 @@ export const CitizenEmergency = () => {
         onSpeedChange={setSimulationSpeed}
         connectivityStatus={connectivityStatus}
         onConnectivityChange={setConnectivityStatus}
+        onTriggerLiveSos={triggerLiveDemoSos}
+        incidentTicket={incident.id}
       />
     </div>
   )

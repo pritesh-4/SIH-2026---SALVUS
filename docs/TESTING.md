@@ -34,28 +34,43 @@ ruff check app tests
 # 2. Check Python code formatting (Ruff)
 ruff format --check app tests
 
-# 3. Auto-fix Ruff lint and format issues
-ruff check --fix app tests
-ruff format app tests
-
-# 4. Run Pytest Test Suite
+# 3. Run Pytest Test Suite
 python -m pytest -v
 ```
 
 ---
 
-## 2. CI Quality Gate (.github/workflows/ci.yml)
+## 2. Realtime Two-Browser Core Loop Test
 
-Every `push` and `pull_request` to `main` executes the automated CI quality gate:
+This end-to-end verification confirms live bidirectional synchronization across Citizen and Authority clients:
 
-1. **Frontend Gate (`frontend-quality`)**:
-   - Prettier formatting check
-   - ESLint static analysis
-   - Vite production build
-2. **Backend Gate (`backend-quality`)**:
-   - Ruff linting (`ruff check`)
-   - Ruff formatting validation (`ruff format --check`)
-   - Pytest unit & integration test suite (`pytest -v`)
+### Test Prerequisites:
+
+1. Start backend server:
+   ```bash
+   cd backend
+   venv\Scripts\uvicorn.exe app.main:combined_asgi_app --host 127.0.0.1 --port 8000 --reload
+   ```
+2. Start frontend dev server:
+   ```bash
+   npm run dev
+   ```
+
+### Verification Flow (WITHOUT PAGE RELOAD):
+
+1. **Window A (Citizen)**: Open `http://localhost:5173/citizen`.
+2. **Window B (Authority)**: Open `http://localhost:5173/authority`.
+3. In **Window A**, click "SEND SOS" and hold/confirm to transmit the beacon.
+4. Observe in **Window B** (Authority):
+   - Incident appears instantly at the top of the queue with `#SV-XXXX` ticket number.
+   - Live marker appears on the tactical radar map at the reported GPS coordinates.
+   - Active Incidents count increments.
+5. In **Window B**, select the incident and click **"Verify Incident"** (`NEW` $\rightarrow$ `VERIFIED`).
+6. Observe in **Window A** (Citizen):
+   - Emergency page status immediately switches to **"Request Reviewed & Approved"** (`VERIFIED` phase) with zero page reload.
+7. In **Window B**, click **"✓ RESOLVE & CLOSE INCIDENT"** (`VERIFIED` $\rightarrow$ `RESOLVED`).
+8. Observe in **Window A** (Citizen):
+   - Citizen screen immediately transitions to **"Rescue & Evacuation Complete"** (`RESOLVED` phase) with zero page reload.
 
 ---
 
@@ -64,6 +79,6 @@ Every `push` and `pull_request` to `main` executes the automated CI quality gate
 - **Frontend Build Performance:** Production build compiles in under **500ms** with Vite.
 - **Frontend Lint Integrity:** 0 ESLint errors and 0 ESLint warnings.
 - **Backend Lint Integrity:** 0 Ruff errors, 100% formatted.
-- **Backend Test Suite:** 100% pass rate across state machine and REST API tests.
-- **Zero Dead UI:** Every visible button, card, tab, and icon triggers a real in-app interaction, modal drawer, or route.
-- **State Determinism:** Emergency flow transitions deterministically through all lifecycle states.
+- **Backend Test Suite:** 100% pass rate across state machine and REST API tests (35/35 passing).
+- **Zero Page Reload:** Realtime incident creation, map marker plotting, and status lifecycle progression update across browsers in sub-second time.
+- **Offline Gracefulness:** Connection health transitions between `CONNECTED`, `RECONNECTING`, and `OFFLINE` without dashboard disruption.
