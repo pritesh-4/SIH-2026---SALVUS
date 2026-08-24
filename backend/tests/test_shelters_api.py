@@ -82,4 +82,3 @@ async def test_shelter_mutation_forbidden_for_citizen(client):
         json={"available_beds": 0, "actor": "citizen"},
     )
     assert patch_resp.status_code == 403
-

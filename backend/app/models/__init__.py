@@ -171,7 +171,6 @@ class ResponderLocationUpdate(BaseModel):
     actor: str = Field(default="responder", max_length=200)
 
 
-
 class ResponderResponse(BaseModel):
     """Responder fleet unit schema."""
 
@@ -311,4 +310,3 @@ class ShelterRecommendationListResponse(BaseModel):
     success: bool = True
     data: list[RecommendedShelterResponse]
     count: int
-

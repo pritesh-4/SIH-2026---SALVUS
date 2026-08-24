@@ -173,11 +173,7 @@ async def get_recommended_shelters(
             amenities_bonus += 5
 
         total_suitability = (
-            capacity_score
-            + status_score
-            + proximity_score
-            + supplies_bonus
-            + amenities_bonus
+            capacity_score + status_score + proximity_score + supplies_bonus + amenities_bonus
         )
 
         # Generate clear human rationale
@@ -220,4 +216,3 @@ async def get_recommended_shelters(
     # Sort descending by suitability score, then ascending by distance
     recommendations.sort(key=lambda r: (-r.suitability_score, r.distance_km))
     return recommendations
-

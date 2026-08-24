@@ -319,4 +319,3 @@ async def get_candidate_responders_for_incident(
             break
 
     return candidates
-

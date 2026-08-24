@@ -201,4 +201,3 @@ async def update_responder_location(responder_id: str, payload: ResponderLocatio
         pass
 
     return ResponderSingleResponse(data=resp)
-

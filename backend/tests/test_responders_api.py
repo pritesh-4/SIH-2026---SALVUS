@@ -120,4 +120,3 @@ async def test_responder_mutation_forbidden_for_citizen(client):
         json={"incident_id": "inc-2048", "actor": "citizen"},
     )
     assert assign_resp.status_code == 403
-

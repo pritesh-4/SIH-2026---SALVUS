@@ -107,4 +107,3 @@ async def update_shelter(shelter_id: str, payload: ShelterUpdate):
         pass
 
     return ShelterSingleResponse(data=shelter)
-

@@ -108,4 +108,3 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
 
     await db.commit()
     print("[DB] Migrations complete: incidents, incident_events, responders, shelters.")
-

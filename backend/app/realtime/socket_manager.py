@@ -119,8 +119,7 @@ async def emit_responder_status_changed(responder: ResponderResponse) -> None:
         await sio.emit("responder.status_changed", payload, room=room)
 
     print(
-        f"[Socket.IO] Emitted responder:status_changed → "
-        f"{responder.unit_name} ({responder.status})"
+        f"[Socket.IO] Emitted responder:status_changed → {responder.unit_name} ({responder.status})"
     )
 
 
@@ -136,9 +135,7 @@ async def emit_responder_location_updated(responder: ResponderResponse) -> None:
         await sio.emit("responder.location_updated", payload, room=room)
 
 
-async def emit_assignment_created(
-    responder: ResponderResponse, incident: IncidentResponse
-) -> None:
+async def emit_assignment_created(responder: ResponderResponse, incident: IncidentResponse) -> None:
     """Broadcast responder incident assignment."""
     payload = {
         "responder_id": responder.id,
@@ -154,8 +151,7 @@ async def emit_assignment_created(
     await sio.emit("assignment:created", payload, room=incident_room)
     await sio.emit("assignment.created", payload, room=incident_room)
     print(
-        f"[Socket.IO] Emitted assignment:created → "
-        f"{responder.unit_name} to #{incident.ticket_id}"
+        f"[Socket.IO] Emitted assignment:created → {responder.unit_name} to #{incident.ticket_id}"
     )
 
 
@@ -165,8 +161,5 @@ async def emit_shelter_updated(shelter: ShelterResponse) -> None:
     await sio.emit("shelter:updated", payload, room="authorities")
     await sio.emit("shelter.updated", payload, room="authorities")
     print(
-        f"[Socket.IO] Emitted shelter:updated → "
-        f"{shelter.name} ({shelter.available_beds} beds free)"
+        f"[Socket.IO] Emitted shelter:updated → {shelter.name} ({shelter.available_beds} beds free)"
     )
-
-
