@@ -161,11 +161,75 @@ export const fetchResponders = async () => {
 }
 
 /**
+ * Fetch ranked candidate responders for an active emergency incident.
+ */
+export const fetchResponderCandidates = async (incidentId) => {
+  try {
+    const response = await apiClient.get(`/api/responders/candidates/${incidentId}`)
+    return {
+      success: true,
+      data: response.data.data || [],
+      count: response.data.count || 0,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to fetch candidate responders'
+    return {
+      success: false,
+      error: { message, code: error.code || 'FETCH_ERROR' },
+      data: [],
+      count: 0,
+    }
+  }
+}
+
+/**
+ * Assign a responder unit to an incident.
+ */
+export const assignResponder = async (
+  responderId,
+  incidentId,
+  status = 'ASSIGNED',
+  actor = 'authority'
+) => {
+  try {
+    const response = await apiClient.post(`/api/responders/${responderId}/assign`, {
+      incident_id: incidentId,
+      status,
+      actor,
+    })
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to assign responder to incident'
+    return {
+      success: false,
+      error: { message, code: error.code || 'ASSIGN_ERROR' },
+      data: null,
+    }
+  }
+}
+
+/**
  * Update responder operational status or incident assignment.
  */
-export const updateResponderStatus = async (responderId, status, assignedIncidentId = null) => {
+export const updateResponderStatus = async (
+  responderId,
+  status,
+  assignedIncidentId = null,
+  actor = 'authority'
+) => {
   try {
-    const payload = {}
+    const payload = { actor }
     if (status) payload.status = status
     if (assignedIncidentId !== undefined) payload.assigned_incident_id = assignedIncidentId
 
@@ -183,6 +247,28 @@ export const updateResponderStatus = async (responderId, status, assignedInciden
     return {
       success: false,
       error: { message, code: error.code || 'UPDATE_ERROR' },
+      data: null,
+    }
+  }
+}
+
+/**
+ * Update responder real-time GPS coordinates.
+ */
+export const updateResponderLocation = async (responderId, latitude, longitude) => {
+  try {
+    const response = await apiClient.post(`/api/responders/${responderId}/location`, {
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+    })
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: { message: error.message, code: 'UPDATE_ERROR' },
       data: null,
     }
   }
@@ -214,6 +300,69 @@ export const fetchShelters = async () => {
       error: { message, code: error.code || 'FETCH_ERROR' },
       data: [],
       count: 0,
+    }
+  }
+}
+
+/**
+ * Fetch ranked candidate recommended shelters for a location.
+ */
+export const fetchRecommendedShelters = async (lat = 22.5726, lon = 88.3639, amenity = null) => {
+  try {
+    const params = { lat, lon }
+    if (amenity) params.amenity = amenity
+    const response = await apiClient.get('/api/shelters/recommendations', { params })
+    return {
+      success: true,
+      data: response.data.data || [],
+      count: response.data.count || 0,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to fetch recommended shelters'
+    return {
+      success: false,
+      error: { message, code: error.code || 'FETCH_ERROR' },
+      data: [],
+      count: 0,
+    }
+  }
+}
+
+/**
+ * Update shelter bed occupancy or status.
+ */
+export const updateShelterOccupancy = async (
+  shelterId,
+  availableBeds = null,
+  status = null,
+  suppliesStatus = null,
+  actor = 'authority'
+) => {
+  try {
+    const payload = { actor }
+    if (availableBeds !== null) payload.available_beds = Number(availableBeds)
+    if (status) payload.status = status
+    if (suppliesStatus) payload.supplies_status = suppliesStatus
+
+    const response = await apiClient.patch(`/api/shelters/${shelterId}`, payload)
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to update shelter'
+    return {
+      success: false,
+      error: { message, code: error.code || 'UPDATE_ERROR' },
+      data: null,
     }
   }
 }

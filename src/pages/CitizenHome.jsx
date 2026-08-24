@@ -132,6 +132,7 @@ export const CitizenHome = () => {
               name={nearestShelter.name}
               distance={nearestShelter.distance}
               capacity={nearestShelter.capacity}
+              amenities={nearestShelter.amenities}
               actionText={nearestShelter.actionText}
               onActionClick={() => navigate('/citizen/map')}
             />

@@ -76,11 +76,18 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
             occupancy_rate TEXT NOT NULL DEFAULT '0%',
             supplies_status TEXT NOT NULL DEFAULT 'ADEQUATE',
             status TEXT NOT NULL DEFAULT 'OPEN',
+            amenities TEXT NOT NULL DEFAULT '[]',
             is_active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
     """)
+
+    # Column migrations if table already existed without amenities
+    try:
+        await db.execute("ALTER TABLE shelters ADD COLUMN amenities TEXT NOT NULL DEFAULT '[]'")
+    except Exception:
+        pass  # Column already exists
 
     # Indexes for high-performance spatial & status queries
     await db.execute("CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)")
@@ -101,3 +108,4 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
 
     await db.commit()
     print("[DB] Migrations complete: incidents, incident_events, responders, shelters.")
+

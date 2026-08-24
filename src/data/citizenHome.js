@@ -36,11 +36,12 @@ export const citizenHomeData = {
     severity: 'warning',
   },
   nearestShelter: {
-    badgeText: 'Nearest safe shelter',
-    name: 'Sector 12 Community Hall',
-    distance: '1.2 km away',
-    capacity: '42% occupied (116 beds free)',
-    actionText: 'View safe route directions',
+    badgeText: 'Recommended Safe Place',
+    name: 'Salt Lake Stadium Assembly Hub',
+    distance: '350m · 4 min walk',
+    capacity: '420 beds available',
+    amenities: 'Emergency Medical Triage · Clean Water Tanker',
+    actionText: 'Get Safe Route',
   },
   report: {
     badgeText: 'Community report',

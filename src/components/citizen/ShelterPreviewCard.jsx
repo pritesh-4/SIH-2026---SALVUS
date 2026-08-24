@@ -1,9 +1,10 @@
 export const ShelterPreviewCard = ({
-  badgeText = 'Nearest safe shelter',
-  name = 'Sector 12 Community Hall',
-  distance = '1.2 km away',
-  capacity = '42% occupied',
-  actionText = 'View directions',
+  badgeText = 'Recommended Safe Place',
+  name = 'Salt Lake Stadium Assembly Hub',
+  distance = '350m · 4 min walk',
+  capacity = '420 beds available',
+  amenities = 'Medical Triage · Drinking Water',
+  actionText = 'Get Safe Route',
   onActionClick,
 }) => {
   return (
@@ -11,20 +12,27 @@ export const ShelterPreviewCard = ({
       <div>
         <div className="flex items-center gap-1.5 mb-1.5">
           <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
-          <span className="text-xs font-semibold text-emerald-400">{badgeText}</span>
+          <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider font-mono">
+            {badgeText}
+          </span>
         </div>
         <h3 className="text-base sm:text-lg font-bold text-slate-100 tracking-tight leading-snug">
           {name}
         </h3>
-        <p className="text-xs sm:text-sm text-slate-400 mt-1">
-          {distance} · {capacity}
+        <p className="text-xs sm:text-sm text-slate-300 font-mono mt-1 font-medium">
+          {distance} · <span className="text-emerald-400 font-semibold">{capacity}</span>
         </p>
+        {amenities && (
+          <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+            <span className="text-blue-400">✓</span> {amenities}
+          </p>
+        )}
       </div>
-      <div className="mt-4 pt-2">
+      <div className="mt-4 pt-2 border-t border-[#182332]">
         <button
           type="button"
           onClick={onActionClick}
-          className="text-xs sm:text-sm font-semibold text-sky-400 hover:text-sky-300 transition-colors inline-flex items-center gap-1 cursor-pointer group"
+          className="text-xs sm:text-sm font-bold text-sky-400 hover:text-sky-300 transition-colors inline-flex items-center gap-1.5 cursor-pointer group"
         >
           <span>{actionText}</span>
           <span className="transition-transform group-hover:translate-x-1">→</span>
@@ -33,3 +41,5 @@ export const ShelterPreviewCard = ({
     </div>
   )
 }
+
+export default ShelterPreviewCard

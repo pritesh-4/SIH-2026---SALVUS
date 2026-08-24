@@ -1,21 +1,24 @@
 """Shelter logistics REST API routes.
 
 Endpoints:
-    GET    /api/shelters          — List all shelters
-    GET    /api/shelters/{id}     — Get single shelter by ID
-    PATCH  /api/shelters/{id}     — Update shelter occupancy or status
+    GET    /api/shelters                 — List all shelters
+    GET    /api/shelters/recommendations — Get candidate recommended shelters for a location
+    GET    /api/shelters/{id}            — Get single shelter by ID
+    PATCH  /api/shelters/{id}            — Update shelter occupancy or status
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.db import get_database
 from app.models import (
     ShelterListResponse,
+    ShelterRecommendationListResponse,
     ShelterSingleResponse,
     ShelterUpdate,
 )
+from app.realtime.socket_manager import emit_shelter_updated
 from app.services import shelter_service
 
 router = APIRouter(prefix="/api/shelters", tags=["shelters"])
@@ -27,6 +30,20 @@ async def list_shelters():
     db = await get_database()
     shelters = await shelter_service.get_all_shelters(db)
     return ShelterListResponse(data=shelters, count=len(shelters))
+
+
+@router.get("/recommendations", response_model=ShelterRecommendationListResponse)
+async def get_recommended_shelters(
+    lat: float = Query(default=22.5726, ge=-90, le=90, description="Latitude of user/incident"),
+    lon: float = Query(default=88.3639, ge=-180, le=180, description="Longitude of user/incident"),
+    amenity: list[str] | None = Query(default=None, description="Optional required amenities"),
+):
+    """Retrieve ranked candidate safe evacuation shelters for an incident or citizen."""
+    db = await get_database()
+    recommendations = await shelter_service.get_recommended_shelters(
+        db, latitude=lat, longitude=lon, required_amenities=amenity
+    )
+    return ShelterRecommendationListResponse(data=recommendations, count=len(recommendations))
 
 
 @router.get("/{shelter_id}", response_model=ShelterSingleResponse)
@@ -51,6 +68,18 @@ async def get_shelter(shelter_id: str):
 @router.patch("/{shelter_id}", response_model=ShelterSingleResponse)
 async def update_shelter(shelter_id: str, payload: ShelterUpdate):
     """Update shelter bed availability or supplies status."""
+    if payload.actor == "citizen":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "FORBIDDEN",
+                    "message": "Citizens cannot mutate shelter capacity logistics.",
+                },
+            },
+        )
+
     db = await get_database()
     shelter = await shelter_service.update_shelter_occupancy(
         db,
@@ -70,4 +99,12 @@ async def update_shelter(shelter_id: str, payload: ShelterUpdate):
                 },
             },
         )
+
+    # Broadcast real-time shelter update
+    try:
+        await emit_shelter_updated(shelter)
+    except Exception:
+        pass
+
     return ShelterSingleResponse(data=shelter)
+

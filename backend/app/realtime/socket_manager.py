@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import socketio
 
-from app.models import IncidentResponse
+from app.models import IncidentResponse, ResponderResponse, ShelterResponse
 
 # ---------------------------------------------------------------------------
 # Socket.IO server instance (async mode for FastAPI)
@@ -66,35 +66,16 @@ async def leave_room(sid: str, data: dict):
 
 
 # ---------------------------------------------------------------------------
-# Typed event emitters — called by the incident service / routes
+# Typed event emitters — called by services and routes
 # ---------------------------------------------------------------------------
 
 
 async def emit_incident_created(incident: IncidentResponse) -> None:
     """Broadcast a new incident to the authorities room."""
-    payload = {
-        "id": incident.id,
-        "incident_id": incident.id,
-        "ticket_id": incident.ticket_id,
-        "type": incident.type,
-        "severity": incident.severity,
-        "description": incident.description,
-        "reporter_name": incident.reporter_name,
-        "reporter_phone": incident.reporter_phone,
-        "latitude": incident.latitude,
-        "longitude": incident.longitude,
-        "affected_count": incident.affected_count,
-        "is_sos": incident.is_sos,
-        "status": incident.status,
-        "created_at": incident.created_at,
-        "updated_at": incident.updated_at,
-        "events": [e.model_dump() for e in incident.events],
-    }
-    await sio.emit(
-        "incident:new",
-        payload,
-        room="authorities",
-    )
+    payload = incident.model_dump()
+    # Support both colon and dot format event listeners
+    await sio.emit("incident:new", payload, room="authorities")
+    await sio.emit("incident.created", payload, room="authorities")
     print(f"[Socket.IO] Emitted incident:new → authorities ({incident.ticket_id})")
 
 
@@ -113,12 +94,79 @@ async def emit_incident_status_changed(incident: IncidentResponse, new_status: s
 
     # Notify the authority dashboard
     await sio.emit("incident:status_changed", payload, room="authorities")
+    await sio.emit("incident.status_changed", payload, room="authorities")
 
     # Notify subscribers of this specific incident (citizen app, responders)
     incident_room = f"incident:{incident.id}"
     await sio.emit("incident:status_changed", payload, room=incident_room)
+    await sio.emit("incident.status_changed", payload, room=incident_room)
 
     print(
         f"[Socket.IO] Emitted incident:status_changed → authorities + {incident_room} "
         f"({incident.ticket_id} → {new_status})"
     )
+
+
+async def emit_responder_status_changed(responder: ResponderResponse) -> None:
+    """Broadcast responder status changes."""
+    payload = responder.model_dump()
+    await sio.emit("responder:status_changed", payload, room="authorities")
+    await sio.emit("responder.status_changed", payload, room="authorities")
+
+    if responder.assigned_incident_id:
+        room = f"incident:{responder.assigned_incident_id}"
+        await sio.emit("responder:status_changed", payload, room=room)
+        await sio.emit("responder.status_changed", payload, room=room)
+
+    print(
+        f"[Socket.IO] Emitted responder:status_changed → "
+        f"{responder.unit_name} ({responder.status})"
+    )
+
+
+async def emit_responder_location_updated(responder: ResponderResponse) -> None:
+    """Broadcast responder GPS telemetry updates."""
+    payload = responder.model_dump()
+    await sio.emit("responder:location_updated", payload, room="authorities")
+    await sio.emit("responder.location_updated", payload, room="authorities")
+
+    if responder.assigned_incident_id:
+        room = f"incident:{responder.assigned_incident_id}"
+        await sio.emit("responder:location_updated", payload, room=room)
+        await sio.emit("responder.location_updated", payload, room=room)
+
+
+async def emit_assignment_created(
+    responder: ResponderResponse, incident: IncidentResponse
+) -> None:
+    """Broadcast responder incident assignment."""
+    payload = {
+        "responder_id": responder.id,
+        "incident_id": incident.id,
+        "ticket_id": incident.ticket_id,
+        "responder": responder.model_dump(),
+        "incident": incident.model_dump(),
+    }
+    await sio.emit("assignment:created", payload, room="authorities")
+    await sio.emit("assignment.created", payload, room="authorities")
+
+    incident_room = f"incident:{incident.id}"
+    await sio.emit("assignment:created", payload, room=incident_room)
+    await sio.emit("assignment.created", payload, room=incident_room)
+    print(
+        f"[Socket.IO] Emitted assignment:created → "
+        f"{responder.unit_name} to #{incident.ticket_id}"
+    )
+
+
+async def emit_shelter_updated(shelter: ShelterResponse) -> None:
+    """Broadcast shelter capacity or status updates."""
+    payload = shelter.model_dump()
+    await sio.emit("shelter:updated", payload, room="authorities")
+    await sio.emit("shelter.updated", payload, room="authorities")
+    print(
+        f"[Socket.IO] Emitted shelter:updated → "
+        f"{shelter.name} ({shelter.available_beds} beds free)"
+    )
+
+

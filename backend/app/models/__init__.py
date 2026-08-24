@@ -43,6 +43,7 @@ class ResponderStatus(StrEnum):
     AVAILABLE = "AVAILABLE"
     ASSIGNED = "ASSIGNED"
     EN_ROUTE = "EN_ROUTE"
+    NEARBY = "NEARBY"
     ON_SCENE = "ON_SCENE"
     OFFLINE = "OFFLINE"
 
@@ -151,6 +152,15 @@ class ResponderStatusUpdate(BaseModel):
 
     status: ResponderStatus | None = None
     assigned_incident_id: str | None = None
+    actor: str = Field(default="authority", max_length=200)
+
+
+class ResponderAssignmentRequest(BaseModel):
+    """Payload for assigning a responder unit to an incident."""
+
+    incident_id: str
+    status: ResponderStatus = ResponderStatus.ASSIGNED
+    actor: str = Field(default="authority", max_length=200)
 
 
 class ResponderLocationUpdate(BaseModel):
@@ -158,6 +168,8 @@ class ResponderLocationUpdate(BaseModel):
 
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
+    actor: str = Field(default="responder", max_length=200)
+
 
 
 class ResponderResponse(BaseModel):
@@ -195,6 +207,36 @@ class ResponderSingleResponse(BaseModel):
     data: ResponderResponse
 
 
+class ResponderCandidateListResponse(BaseModel):
+    """Response for candidate responders matching an incident."""
+
+    success: bool = True
+    incident_id: str
+    data: list[CandidateResponderResponse]
+    count: int
+
+
+class CandidateResponderResponse(BaseModel):
+    """Candidate responder ranked by capability, proximity, and workload."""
+
+    id: str
+    unit_name: str
+    team_lead: str
+    vehicle_type: str
+    capability: str
+    status: str
+    latitude: float
+    longitude: float
+    radio_channel: str
+    max_capacity: int
+    current_load: int
+    assigned_incident_id: str | None = None
+    distance_km: float
+    match_score: int
+    match_reason: str
+    is_recommended: bool
+
+
 # ---------------------------------------------------------------------------
 # Shelter Models
 # ---------------------------------------------------------------------------
@@ -206,6 +248,7 @@ class ShelterUpdate(BaseModel):
     available_beds: int | None = None
     status: ShelterStatus | None = None
     supplies_status: str | None = None
+    actor: str = Field(default="authority", max_length=200)
 
 
 class ShelterResponse(BaseModel):
@@ -221,9 +264,30 @@ class ShelterResponse(BaseModel):
     occupancy_rate: str
     supplies_status: str
     status: str
+    amenities: list[str] = []
     is_active: bool
     created_at: str
     updated_at: str
+
+
+class RecommendedShelterResponse(BaseModel):
+    """Candidate evacuation shelter ranked by capacity, proximity, and safety."""
+
+    id: str
+    name: str
+    address: str
+    latitude: float
+    longitude: float
+    total_beds: int
+    available_beds: int
+    occupancy_rate: str
+    supplies_status: str
+    status: str
+    distance_km: float
+    estimated_walk_min: int
+    suitability_score: int
+    recommendation_reason: str
+    amenities: list[str] = []
 
 
 class ShelterListResponse(BaseModel):
@@ -239,3 +303,12 @@ class ShelterSingleResponse(BaseModel):
 
     success: bool = True
     data: ShelterResponse
+
+
+class ShelterRecommendationListResponse(BaseModel):
+    """Response for candidate recommended shelters."""
+
+    success: bool = True
+    data: list[RecommendedShelterResponse]
+    count: int
+

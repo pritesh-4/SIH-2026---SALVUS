@@ -1,5 +1,6 @@
 """Seed data for demo/development — Kolkata flood scenario matching frontend mocks."""
 
+import json
 import uuid
 from datetime import UTC, datetime
 
@@ -142,9 +143,16 @@ SEED_SHELTERS = [
         "longitude": 88.4060,
         "total_beds": 600,
         "available_beds": 420,
-        "occupancy_rate": "68%",
+        "occupancy_rate": "30%",
         "supplies_status": "HIGH (3 days rations, generator backup)",
         "status": "OPEN",
+        "amenities": [
+            "Emergency Medical Triage",
+            "Drinking Water Tanker",
+            "Generator Power Backup",
+            "Wheelchair Accessible",
+            "Hot Meal Distribution",
+        ],
         "is_active": 1,
     },
     {
@@ -155,9 +163,15 @@ SEED_SHELTERS = [
         "longitude": 88.4178,
         "total_beds": 250,
         "available_beds": 180,
-        "occupancy_rate": "74%",
+        "occupancy_rate": "28%",
         "supplies_status": "MODERATE (2 days rations, first aid active)",
         "status": "OPEN",
+        "amenities": [
+            "First Aid Post",
+            "Purified Water",
+            "Dry Rations",
+            "Infant Care Kits",
+        ],
         "is_active": 1,
     },
     {
@@ -167,10 +181,15 @@ SEED_SHELTERS = [
         "latitude": 22.5800,
         "longitude": 88.4350,
         "total_beds": 150,
-        "available_beds": 95,
+        "available_beds": 22,
         "occupancy_rate": "85%",
         "supplies_status": "RESTOCKING (Medical triage stationed)",
         "status": "NEAR_CAPACITY",
+        "amenities": [
+            "Medical Triage",
+            "Emergency Charging Desk",
+            "Restroom Facilities",
+        ],
         "is_active": 1,
     },
 ]
@@ -270,8 +289,8 @@ async def seed_database(db) -> dict:
             """
             INSERT INTO shelters (id, name, address, latitude, longitude,
                 total_beds, available_beds, occupancy_rate, supplies_status,
-                status, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                status, amenities, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 shl["id"],
@@ -284,6 +303,7 @@ async def seed_database(db) -> dict:
                 shl["occupancy_rate"],
                 shl["supplies_status"],
                 shl["status"],
+                json.dumps(shl.get("amenities", [])),
                 shl["is_active"],
                 now,
                 now,
