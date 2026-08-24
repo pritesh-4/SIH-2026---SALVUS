@@ -73,3 +73,21 @@ This document records foundational architectural decisions, rationale, and engin
 - **Decision:** Use `aiosqlite` with Write-Ahead Logging (WAL) mode for Phase 1, structuring the schema for 1-to-1 migration to PostgreSQL + PostGIS in production.
 - **Reason:** Instant local spin-up, zero external dependencies, robust transactional integrity, and easy tear-down for testing.
 - **Trade-offs:** Lacks native spatial indexing (GIST) in Phase 1, which will be unlocked when migrating to PostGIS in the deployment phase.
+
+---
+
+## ADR-009: Restrained Semantic Color System & Operational Hierarchy for Authority Command Center
+
+- **Context:** The previous command center dashboard suffered from visual saturation with 6+ competing accent colors, giant emoji metric cards, and unguided incident selection layouts, creating cognitive strain for dispatchers.
+- **Decision:** Adopt an **85–90% neutral slate budget** with a structured 3-column operational layout (Queue -> Tactical Map -> Command Inspector). Restrict colors strictly to semantic meaning: Red (Critical/SOS only), Amber (Triage/Warning), Blue (Selected/Active/Verified), and Green (Resolved/Safe capacity). Standardize cards and popups into a unified C2 military/emergency operations design language.
+- **Reason:** Emergency management interfaces must communicate calm intelligence during chaos. When everything is bright and highlighted, nothing stands out.
+- **Trade-offs:** Subtler aesthetic rather than flashy "gamer/cyberpunk" dashboard styling, which aligns with serious governmental and NGO operations.
+
+---
+
+## ADR-010: Environment Configuration & Secret Management Architecture
+
+- **Context:** Backend and frontend need distinct configuration parameters (CORS origins, API keys, database paths) without risking secret leaks to version control.
+- **Decision:** Establish isolated `.env.example` templates for root and `backend/` with empty secret placeholders, paired with strict `.gitignore` rules forbidding any `.env*` files from being committed.
+- **Reason:** Guarantees security-first defaults, repeatable local developer onboarding, and smooth CI/CD quality gate runs without dependency on external secret stores during development.
+- **Trade-offs:** Developers must run `cp .env.example .env` during initial setup.

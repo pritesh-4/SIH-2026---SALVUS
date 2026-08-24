@@ -1,2 +1,24 @@
-.ruff_cache
-.pytest_cache
+# Python Virtual Environments, Bytecode & Caches
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Environment files & Secrets (CRITICAL)
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
