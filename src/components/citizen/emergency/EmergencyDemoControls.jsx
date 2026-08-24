@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export const EmergencyDemoControls = ({
   currentState,
@@ -15,7 +15,41 @@ export const EmergencyDemoControls = ({
   onTriggerLiveSos,
   incidentTicket,
 }) => {
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const params = new URLSearchParams(window.location.search)
+    return (
+      params.get('demo') === 'true' ||
+      params.get('dev') === 'true' ||
+      localStorage.getItem('salvus_demo_mode') === 'true'
+    )
+  })
+
   const [isMinimized, setIsMinimized] = useState(false)
+
+  // Keyboard shortcut listener: Ctrl+Shift+D toggles demo mode
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        e.preventDefault()
+        setIsDemoMode((prev) => {
+          const next = !prev
+          if (next) {
+            localStorage.setItem('salvus_demo_mode', 'true')
+          } else {
+            localStorage.removeItem('salvus_demo_mode')
+          }
+          return next
+        })
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  if (!isDemoMode) {
+    return null
+  }
 
   const states = [
     { key: 'SOS_ACTIVE', label: '1. SOS' },
@@ -37,10 +71,10 @@ export const EmergencyDemoControls = ({
         <button
           type="button"
           onClick={() => setIsMinimized(false)}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#111A24]/95 border border-cyan-500/50 shadow-2xl backdrop-blur-md text-cyan-300 text-xs font-bold uppercase tracking-wider hover:bg-cyan-500/20 cursor-pointer shadow-cyan-950/60"
+          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#080C12]/95 border border-slate-700 shadow-2xl backdrop-blur-md text-slate-300 text-xs font-semibold hover:bg-[#121B27] cursor-pointer"
         >
-          <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
-          <span>⚡ Demo Dock {incidentTicket ? `(#${incidentTicket})` : ''}</span>
+          <span className="h-2 w-2 rounded-full bg-sky-400"></span>
+          <span>Demo dock {incidentTicket ? `(#${incidentTicket})` : ''}</span>
         </button>
       </aside>
     )

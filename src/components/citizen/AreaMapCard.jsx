@@ -1,44 +1,44 @@
 export const AreaMapCard = ({
-  badgeText = 'YOUR AREA',
-  location = 'Sector 12 · Kolkata',
+  badgeText = 'Local area overview',
+  location = 'Sector 12 · Salt Lake, Kolkata',
   legend = [
-    { label: 'You', color: '#3B82F6' },
-    { label: 'Shelter', color: '#10B981' },
+    { label: 'Your location', color: '#3B82F6' },
+    { label: 'Safe shelter', color: '#10B981' },
     { label: 'Hazard zone', color: '#EF4444' },
   ],
 }) => {
   return (
-    <div className="bg-[#111A24] border border-[#1E293B] rounded-xl p-6 transition-all duration-200 hover:border-[#2A3B4E]">
+    <div className="bg-[#0D141F] border border-[#1A2533] rounded-xl p-5 sm:p-6 transition-all duration-200 hover:border-[#27384C]">
       {/* Header */}
-      <div className="mb-4">
-        <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase block mb-1">
-          {badgeText}
-        </span>
-        <h3 className="text-sm font-medium text-slate-300">{location}</h3>
+      <div className="mb-3">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="h-2 w-2 rounded-full bg-sky-400"></span>
+          <span className="text-xs font-semibold text-slate-300">{badgeText}</span>
+        </div>
+        <h3 className="text-sm font-semibold text-slate-100">{location}</h3>
       </div>
 
       {/* Map Radar Canvas */}
-      <div className="relative w-full h-48 sm:h-52 bg-[#0B1118]/70 rounded-lg border border-[#1A2634] overflow-hidden flex flex-col justify-between p-4 select-none">
+      <div className="relative w-full h-44 sm:h-48 bg-[#080C12] rounded-lg border border-[#182332] overflow-hidden flex flex-col justify-between p-4 select-none">
         {/* Subtle Map Grid lines */}
-        <div className="absolute inset-0 flex flex-col justify-between py-6 px-4 pointer-events-none opacity-40">
-          <div className="w-full h-px bg-[#1E293B]"></div>
-          <div className="w-full h-px bg-[#1E293B]"></div>
-          <div className="w-full h-px bg-[#1E293B]"></div>
-          <div className="w-full h-px bg-[#1E293B]"></div>
+        <div className="absolute inset-0 flex flex-col justify-between py-6 px-4 pointer-events-none opacity-30">
+          <div className="w-full h-px bg-[#182332]"></div>
+          <div className="w-full h-px bg-[#182332]"></div>
+          <div className="w-full h-px bg-[#182332]"></div>
         </div>
 
         {/* Hazard Zone (Soft Red Area) */}
         <div
-          className="absolute rounded-full bg-rose-500/20 border border-rose-500/30 flex items-center justify-center transition-all duration-500"
+          className="absolute rounded-full bg-rose-500/15 border border-rose-500/30 flex items-center justify-center transition-all duration-500"
           style={{
             left: '42%',
             top: '55%',
-            width: '74px',
-            height: '74px',
+            width: '68px',
+            height: '68px',
             transform: 'translate(-50%, -50%)',
           }}
         >
-          <span className="h-2 w-2 rounded-full bg-rose-500/40"></span>
+          <span className="h-1.5 w-1.5 rounded-full bg-rose-500/60"></span>
         </div>
 
         {/* You Indicator (Blue Dot) */}
@@ -52,8 +52,7 @@ export const AreaMapCard = ({
           title="Your current location"
         >
           <span className="relative flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-60"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-[#3B82F6] shadow-[0_0_10px_#3B82F6]"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-[#3B82F6] ring-2 ring-blue-400/50"></span>
           </span>
         </div>
 
@@ -65,9 +64,9 @@ export const AreaMapCard = ({
             top: '48%',
             transform: 'translate(-50%, -50%)',
           }}
-          title="Community Hall (Shelter)"
+          title="Community Hall (Safe Shelter)"
         >
-          <span className="h-3 w-3 rounded-full bg-[#10B981] shadow-[0_0_10px_#10B981]"></span>
+          <span className="h-3 w-3 rounded-full bg-[#10B981] ring-2 ring-emerald-400/50"></span>
         </div>
 
         {/* Legend Footer */}

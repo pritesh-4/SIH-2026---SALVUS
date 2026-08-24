@@ -81,37 +81,30 @@ export const CitizenHome = () => {
         onClose={() => setIsReportingIncident(false)}
       />
 
-      {/* Header Greeting */}
+      {/* Header Greeting (Calm, Human, Sentence Case) */}
       <section className="mb-6">
-        <p className="text-xs font-semibold tracking-widest text-slate-400 uppercase">
-          {user.greeting}
-        </p>
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-1.5">
+        <p className="text-xs font-medium text-slate-400">{user.greeting}</p>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100 tracking-tight mt-1">
           {user.headline}
         </h1>
       </section>
 
       {/* 2-Column Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left Column (58% / 7 cols on lg) */}
+        {/* Left Column (7 cols on lg): Safety Status + Urgent SOS + Active Advisory */}
         <div className="lg:col-span-7 flex flex-col gap-4">
+          {/* 1. Am I safe? */}
           <SafetyStatusCard
             badgeText={safetyStatus.badgeText}
             title={safetyStatus.title}
             subtitle={safetyStatus.subtitle}
           />
 
-          <EmergencyCard
-            badgeText={emergency.badgeText}
-            title={emergency.title}
-            description={emergency.description}
-            buttonText={emergency.buttonText}
-            onSosClick={handleOpenSosModal}
-          />
-
+          {/* 2. Is anything changing nearby? */}
           <div
             onClick={() => navigate('/citizen/alerts')}
             className="cursor-pointer group transition-transform active:scale-[0.99]"
+            title="Click to view full advisory details"
           >
             <ActiveAlertCard
               badgeText={activeAlert.badgeText}
@@ -119,11 +112,20 @@ export const CitizenHome = () => {
               source={activeAlert.source}
             />
           </div>
+
+          {/* 5. How do I request help? (Prominent Emergency Action) */}
+          <EmergencyCard
+            badgeText={emergency.badgeText}
+            title={emergency.title}
+            description={emergency.description}
+            buttonText={emergency.buttonText}
+            onSosClick={handleOpenSosModal}
+          />
         </div>
 
-        {/* Right Column (42% / 5 cols on lg) */}
+        {/* Right Column (5 cols on lg): Safe Haven + Community Hazard Reporting + Area Map */}
         <div className="lg:col-span-5 flex flex-col gap-4">
-          {/* Top 2-Card Row */}
+          {/* 4. Where is safety available? & Community Reporting */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <ShelterPreviewCard
               badgeText={nearestShelter.badgeText}
@@ -143,11 +145,11 @@ export const CitizenHome = () => {
             />
           </div>
 
-          {/* Bottom Map Card */}
+          {/* Area Overview Map */}
           <div
             onClick={() => navigate('/citizen/map')}
             className="cursor-pointer group transition-transform active:scale-[0.99]"
-            title="Click to open full Map"
+            title="Click to open local situational map"
           >
             <AreaMapCard
               badgeText={areaMap.badgeText}

@@ -1,11 +1,11 @@
 export const citizenHomeData = {
   user: {
-    greeting: 'GOOD MORNING · ADITI',
+    greeting: 'Good morning, Aditi',
     headline: "You're currently safe",
   },
   systemStatus: {
     isLive: true,
-    label: 'LIVE',
+    label: 'Live update',
     time: '14:42 IST',
   },
   navigation: [
@@ -16,48 +16,50 @@ export const citizenHomeData = {
   ],
   safetyStatus: {
     level: 'SAFE',
-    badgeText: 'STATUS · SAFE',
-    title: 'No active threats in your area',
-    subtitle: 'Based on live weather + local reports · Updated 2m ago',
+    badgeText: 'Current status · Safe',
+    title: 'No active threats in your immediate area',
+    subtitle: 'Monitored via local sector reports and weather models · Updated 2m ago',
   },
   emergency: {
-    badgeText: 'EMERGENCY',
-    title: 'Need help right now?',
-    description: 'Send an emergency request with your live location to nearby responders.',
-    buttonText: 'SEND SOS',
+    badgeText: 'Emergency assistance',
+    title: 'Need urgent emergency help?',
+    description:
+      'Transmits an instant distress beacon with your precise location to disaster coordinators.',
+    buttonText: 'Send SOS Request',
   },
   activeAlert: {
-    badgeText: 'ACTIVE ALERT · HEAVY RAIN',
+    badgeText: 'Active weather advisory · Heavy rain',
+    title: 'Flash Flood Watch in Sector 12',
     description:
-      'Localized flooding possible in low-lying sectors. Move to higher ground if water rises.',
-    source: 'Source: Open-Meteo + GDACS · 14 min ago',
+      'Localized water accumulation is possible in low-lying sectors. Stay on elevated ground if water begins rising.',
+    source: 'Verified by Meteorological Dept & GDACS · 14 min ago',
     severity: 'warning',
   },
   nearestShelter: {
-    badgeText: 'NEAREST SHELTER',
-    name: 'Community Hall',
-    distance: '1.2 km',
-    capacity: '42% full',
-    actionText: 'View directions',
+    badgeText: 'Nearest safe shelter',
+    name: 'Sector 12 Community Hall',
+    distance: '1.2 km away',
+    capacity: '42% occupied (116 beds free)',
+    actionText: 'View safe route directions',
   },
   report: {
-    badgeText: 'REPORT',
-    title: 'Report an incident',
-    subtitle: 'Photo + location, takes 30s',
-    actionText: 'Start report',
+    badgeText: 'Community report',
+    title: 'Report a local hazard',
+    subtitle: 'Submit a photo and location in 30 seconds to help your community.',
+    actionText: 'Report hazard',
   },
   areaMap: {
-    badgeText: 'YOUR AREA',
-    location: 'Sector 12 · Kolkata',
+    badgeText: 'Local area overview',
+    location: 'Sector 12 · Salt Lake, Kolkata',
     legend: [
-      { label: 'You', color: '#3B82F6' },
-      { label: 'Shelter', color: '#10B981' },
+      { label: 'Your location', color: '#3B82F6' },
+      { label: 'Safe shelter', color: '#10B981' },
       { label: 'Hazard zone', color: '#EF4444' },
     ],
     markers: {
       user: { x: 42, y: 36, label: 'You' },
       shelter: { x: 73, y: 56, label: 'Community Hall' },
-      hazard: { x: 50, y: 72, radius: 26, label: 'Flooded Sector' },
+      hazard: { x: 50, y: 72, radius: 26, label: 'Flooded Underpass' },
     },
   },
 }

@@ -20,11 +20,11 @@ export const CitizenAlerts = () => {
   const getBadgeClasses = (severity) => {
     switch (severity) {
       case 'CRITICAL':
-        return 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+        return 'bg-rose-950/40 text-rose-300 border-rose-500/40'
       case 'WARNING':
-        return 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+        return 'bg-amber-950/40 text-amber-300 border-amber-500/40'
       case 'WATCH':
-        return 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+        return 'bg-sky-950/40 text-sky-300 border-sky-500/40'
       default:
         return 'bg-slate-800 text-slate-300 border-slate-700'
     }
@@ -49,23 +49,21 @@ export const CitizenAlerts = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold tracking-widest text-slate-400 uppercase">
-              HAZARD INTELLIGENCE
-            </span>
-            <span className="h-1.5 w-1.5 rounded-full bg-slate-600"></span>
-            <span className="text-xs font-mono text-rose-400">
-              {summary.criticalCount} Critical Threat Active
+            <span className="text-xs font-semibold text-slate-400">Safety advisories</span>
+            <span className="h-1 w-1 rounded-full bg-slate-600"></span>
+            <span className="text-xs text-rose-400 font-medium">
+              {summary.criticalCount} Critical active
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-1">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100 tracking-tight mt-1">
             Emergency Alerts & Advisories
           </h1>
         </div>
 
         {/* Live Source Status */}
-        <div className="flex items-center gap-2 bg-[#111A24] border border-[#1E293B] px-3.5 py-2 rounded-xl text-xs text-slate-300">
+        <div className="flex items-center gap-2 bg-[#0D141F] border border-[#1A2533] px-3.5 py-2 rounded-xl text-xs text-slate-300">
           <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-          <span>Feed Synchronized ({summary.lastUpdated})</span>
+          <span>Feed updated ({summary.lastUpdated})</span>
         </div>
       </div>
 
@@ -76,14 +74,14 @@ export const CitizenAlerts = () => {
             key={f.id}
             type="button"
             onClick={() => setSelectedFilter(f.id)}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
               selectedFilter === f.id
-                ? 'bg-rose-500 text-white shadow-md shadow-rose-950/50'
-                : 'bg-[#111A24] border border-[#1E293B] text-slate-300 hover:text-white'
+                ? 'bg-slate-700 text-white shadow-sm'
+                : 'bg-[#0D141F] border border-[#1A2533] text-slate-300 hover:text-white'
             }`}
           >
             <span>{f.label}</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-slate-950/30">
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-slate-900 text-slate-300">
               {f.count}
             </span>
           </button>
@@ -96,39 +94,47 @@ export const CitizenAlerts = () => {
           <article
             key={alert.id}
             onClick={() => setActiveAlertDetail(alert)}
-            className={`bg-[#111A24] border border-[#1E293B] ${getBorderAccent(
+            className={`bg-[#0D141F] border border-[#1A2533] ${getBorderAccent(
               alert.severity
-            )} rounded-xl p-5 sm:p-6 transition-all duration-200 hover:border-slate-600 hover:bg-[#14202C] cursor-pointer group`}
+            )} rounded-xl p-5 sm:p-6 transition-all duration-200 hover:border-[#27384C] hover:bg-[#121B27] cursor-pointer group`}
           >
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-3">
+            {/* Header: Severity & Location */}
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-2.5">
               <div className="flex items-center gap-2">
                 <span
-                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold tracking-wider uppercase border ${getBadgeClasses(
+                  className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getBadgeClasses(
                     alert.severity
                   )}`}
                 >
                   {alert.severity}
                 </span>
-                <span className="text-xs text-slate-400 font-medium">· {alert.timestamp}</span>
+                <span className="text-xs text-slate-400">· {alert.timestamp}</span>
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                <span className="text-slate-500">📍</span>
+              <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                <span>📍</span>
                 <span>{alert.distance}</span>
               </div>
             </div>
 
-            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight group-hover:text-cyan-300 transition-colors">
+            {/* 1. WHAT HAPPENED */}
+            <h2 className="text-base sm:text-lg font-bold text-slate-100 tracking-tight group-hover:text-sky-300 transition-colors">
               {alert.title}
             </h2>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
+
+            {/* 2. WHY IT MATTERS HERE */}
+            <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed font-normal">
               {alert.summary}
             </p>
 
-            <div className="mt-4 pt-3 border-t border-[#1E293B] flex items-center justify-between text-xs text-slate-400">
-              <span className="truncate max-w-[280px] sm:max-w-md">{alert.source}</span>
-              <span className="text-cyan-400 font-semibold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                Read Safety Actions →
+            {/* 3. WHAT TO DO (Prominent Action Preview) */}
+            <div className="mt-3.5 pt-3 border-t border-[#1A2533] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 text-slate-400">
+                <span className="text-slate-500">Source:</span>
+                <span className="truncate max-w-[280px] sm:max-w-md">{alert.source}</span>
+              </div>
+              <span className="text-sky-400 font-semibold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform shrink-0">
+                View recommended safety actions →
               </span>
             </div>
           </article>
@@ -143,11 +149,11 @@ export const CitizenAlerts = () => {
           aria-labelledby="alert-detail-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
         >
-          <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl max-w-xl w-full p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto relative">
+          <div className="bg-[#0D141F] border border-[#1A2533] rounded-2xl max-w-xl w-full p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto relative">
             {/* Modal Top Bar */}
             <div className="flex items-center justify-between gap-3 mb-4">
               <span
-                className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase border ${getBadgeClasses(
+                className={`px-3 py-0.5 rounded-full text-xs font-semibold border ${getBadgeClasses(
                   activeAlertDetail.severity
                 )}`}
               >
@@ -162,35 +168,35 @@ export const CitizenAlerts = () => {
               </button>
             </div>
 
-            {/* Title & Meta */}
+            {/* Title & Area */}
             <h3
               id="alert-detail-title"
-              className="text-xl sm:text-2xl font-extrabold text-white tracking-tight leading-snug"
+              className="text-xl sm:text-2xl font-extrabold text-slate-100 tracking-tight leading-snug"
             >
               {activeAlertDetail.title}
             </h3>
             <p className="text-xs text-slate-400 mt-1">
-              Affecting:{' '}
+              Affecting area:{' '}
               <strong className="text-slate-200">{activeAlertDetail.affectedArea}</strong>
             </p>
 
-            {/* Full Explanation */}
-            <div className="bg-[#0B1118] border border-[#1E293B] rounded-xl p-4 my-4 text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
+            {/* Why It Matters (Explanation) */}
+            <div className="bg-[#080C12] border border-[#182332] rounded-xl p-4 my-4 text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
               {activeAlertDetail.details}
             </div>
 
-            {/* Recommended Safety Actions */}
+            {/* Recommended Safety Actions (What to do) */}
             <div className="mb-5">
-              <h4 className="text-xs font-bold tracking-wider text-slate-200 uppercase mb-2.5">
-                Recommended Actions:
+              <h4 className="text-xs font-bold tracking-wide text-slate-200 uppercase mb-2.5">
+                What you should do:
               </h4>
               <div className="space-y-2">
                 {activeAlertDetail.actions.map((act, i) => (
                   <div
                     key={i}
-                    className="flex items-start gap-2.5 text-xs text-slate-300 bg-[#162230]/60 p-2.5 rounded-lg border border-[#1E293B]"
+                    className="flex items-start gap-2.5 text-xs text-slate-300 bg-[#121B27] p-2.5 rounded-lg border border-[#1A2533]"
                   >
-                    <span className="text-cyan-400 font-bold">✓</span>
+                    <span className="text-sky-400 font-bold">✓</span>
                     <span>{act}</span>
                   </div>
                 ))}
@@ -202,9 +208,9 @@ export const CitizenAlerts = () => {
               <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-3.5 mb-5 flex items-center justify-between gap-3">
                 <div>
                   <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
-                    Recommended Safe Haven
+                    Recommended Safe Shelter
                   </span>
-                  <span className="text-xs font-bold text-white">
+                  <span className="text-xs font-bold text-slate-100">
                     {activeAlertDetail.nearestSafeHaven.name}
                   </span>
                   <span className="text-[11px] text-slate-400 block mt-0.5">
@@ -217,24 +223,24 @@ export const CitizenAlerts = () => {
                   onClick={() => navigate('/citizen/map')}
                   className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs whitespace-nowrap cursor-pointer"
                 >
-                  View on Map
+                  View on map
                 </button>
               </div>
             )}
 
             {/* Modal Actions */}
-            <div className="flex flex-col sm:flex-row gap-3 pt-3 border-t border-[#1E293B]">
+            <div className="flex flex-col sm:flex-row gap-3 pt-3 border-t border-[#1A2533]">
               <button
                 type="button"
                 onClick={() => navigate('/citizen/sos')}
-                className="flex-1 py-3 px-4 rounded-xl bg-[#EF4444] hover:bg-rose-600 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer text-center"
+                className="flex-1 py-2.5 px-4 rounded-xl bg-[#EF4444] hover:bg-rose-600 text-white font-bold text-xs tracking-wide transition-colors cursor-pointer text-center"
               >
-                Request Evacuation (SOS)
+                Request SOS evacuation
               </button>
               <button
                 type="button"
                 onClick={() => setActiveAlertDetail(null)}
-                className="py-3 px-5 rounded-xl bg-[#1E293B] hover:bg-[#2A3B4E] text-slate-200 font-semibold text-xs tracking-wider uppercase cursor-pointer"
+                className="py-2.5 px-5 rounded-xl bg-[#1A2533] hover:bg-[#27384C] text-slate-200 font-semibold text-xs cursor-pointer"
               >
                 Dismiss
               </button>

@@ -96,22 +96,20 @@ export const CitizenMap = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold tracking-widest text-slate-400 uppercase">
-              SITUATIONAL AWARENESS
-            </span>
-            <span className="h-1.5 w-1.5 rounded-full bg-slate-600"></span>
-            <span className="text-xs font-mono text-cyan-400">{userLocation.address}</span>
+            <span className="text-xs font-semibold text-slate-400">Local area map</span>
+            <span className="h-1 w-1 rounded-full bg-slate-600"></span>
+            <span className="text-xs text-sky-400">{userLocation.address}</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-1">
-            Local Situational Map
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100 tracking-tight mt-1">
+            Situational Map & Safe Shelters
           </h1>
         </div>
 
         {/* Quick Safety Summary Pill */}
-        <div className="flex items-center gap-3 bg-[#111A24] border border-[#1E293B] px-4 py-2.5 rounded-xl">
+        <div className="flex items-center gap-3 bg-[#0D141F] border border-[#1A2533] px-4 py-2 rounded-xl">
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse"></span>
-            <span className="text-xs font-semibold text-amber-300">{summary.statusText}</span>
+            <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
+            <span className="text-xs font-semibold text-slate-200">{summary.statusText}</span>
           </div>
         </div>
       </div>
@@ -119,27 +117,27 @@ export const CitizenMap = () => {
       {/* Layer Filter Pills */}
       <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-4 no-scrollbar">
         {[
-          { id: 'all', label: 'All Markers', count: 5 },
-          { id: 'shelters', label: 'Safe Shelters', count: 2 },
-          { id: 'hazards', label: 'Active Hazards', count: 2 },
-          { id: 'medical', label: 'Medical Stations', count: 1 },
+          { id: 'all', label: 'All places', count: 5 },
+          { id: 'shelters', label: 'Safe shelters', count: 2 },
+          { id: 'hazards', label: 'Reported hazards', count: 2 },
+          { id: 'medical', label: 'Medical stations', count: 1 },
         ].map((f) => (
           <button
             key={f.id}
             type="button"
             onClick={() => setActiveFilter(f.id)}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
               activeFilter === f.id
-                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                : 'bg-[#111A24] border border-[#1E293B] text-slate-300 hover:text-white'
+                ? 'bg-slate-700 text-white shadow-sm'
+                : 'bg-[#0D141F] border border-[#1A2533] text-slate-300 hover:text-white'
             }`}
           >
             <span>{f.label}</span>
             <span
               className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
                 activeFilter === f.id
-                  ? 'bg-slate-950/30 text-slate-900 font-bold'
-                  : 'bg-[#1E293B] text-slate-400'
+                  ? 'bg-slate-900 text-white font-bold'
+                  : 'bg-[#182332] text-slate-400'
               }`}
             >
               {f.count}
@@ -151,14 +149,16 @@ export const CitizenMap = () => {
       {/* Map Layout Grid: Left Canvas (7 cols), Right Detail Sheet (5 cols) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* OpenStreetMap Surface (7 cols) */}
-        <div className="lg:col-span-7 bg-[#111A24] border border-[#1E293B] rounded-2xl p-4 sm:p-6 flex flex-col justify-between relative overflow-hidden min-h-[440px] sm:min-h-[520px]">
-          {/* Map Top Status Bar */}
-          <div className="flex items-center justify-between z-10 bg-[#0B1118]/85 backdrop-blur-md px-3.5 py-2 rounded-lg border border-[#1E293B] text-xs mb-3">
+        <div className="lg:col-span-7 bg-[#0D141F] border border-[#1A2533] rounded-2xl p-4 sm:p-5 flex flex-col justify-between relative overflow-hidden min-h-[440px] sm:min-h-[520px]">
+          {/* Map Top Status Bar (Calm & Human) */}
+          <div className="flex items-center justify-between z-10 bg-[#080C12]/90 backdrop-blur-md px-3.5 py-2 rounded-lg border border-[#182332] text-xs mb-3">
             <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
-              <span className="font-semibold text-slate-200">GPS Radar Sync: Active</span>
+              <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+              <span className="font-medium text-slate-200">
+                Your location: Sector 12, Salt Lake
+              </span>
             </div>
-            <span className="font-mono text-slate-400 text-[11px]">{userLocation.coordinates}</span>
+            <span className="text-slate-400 text-xs">Accuracy: ±4m</span>
           </div>
 
           {/* Real Leaflet Map Surface */}
@@ -187,11 +187,11 @@ export const CitizenMap = () => {
           </div>
 
           {/* Map Footer Legend */}
-          <div className="mt-3 bg-[#0B1118]/90 px-3 py-2 rounded-lg border border-[#1E293B] flex items-center justify-between text-[11px] text-slate-400 flex-wrap gap-2">
+          <div className="mt-3 bg-[#080C12]/90 px-3 py-2 rounded-lg border border-[#182332] flex items-center justify-between text-xs text-slate-400 flex-wrap gap-2">
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-cyan-400"></span>
-                <span>You (Sector 12)</span>
+                <span className="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
+                <span>You</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
@@ -205,9 +205,9 @@ export const CitizenMap = () => {
             <button
               type="button"
               onClick={() => setSelectedItem(CITIZEN_SHELTERS[0])}
-              className="text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer"
+              className="text-sky-400 hover:text-sky-300 font-semibold cursor-pointer text-xs"
             >
-              Reset View
+              Reset view
             </button>
           </div>
         </div>
@@ -215,28 +215,28 @@ export const CitizenMap = () => {
         {/* Marker Detail Sheet / Side Card (5 cols) */}
         <div className="lg:col-span-5 flex flex-col gap-4">
           {selectedItem ? (
-            <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl p-6 flex flex-col justify-between min-h-[440px] transition-all">
+            <div className="bg-[#0D141F] border border-[#1A2533] rounded-2xl p-6 flex flex-col justify-between min-h-[440px] transition-all">
               <div>
                 {/* Header Tag & Distance */}
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <span
-                    className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase border ${
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
                       selectedItem.type === 'shelter'
-                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
                         : selectedItem.type === 'medical'
-                          ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-400'
-                          : 'bg-rose-500/15 border-rose-500/40 text-rose-400'
+                          ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300'
+                          : 'bg-rose-500/15 border-rose-500/40 text-rose-300'
                     }`}
                   >
                     {selectedItem.category || selectedItem.type}
                   </span>
-                  <span className="text-xs font-mono font-bold text-white bg-[#0B1118] px-2.5 py-1 rounded-lg border border-[#1E293B]">
+                  <span className="text-xs font-medium text-slate-200 bg-[#080C12] px-2.5 py-1 rounded-lg border border-[#182332]">
                     {selectedItem.distance || 'Near Sector 12'}
                   </span>
                 </div>
 
                 {/* Title & Address */}
-                <h2 className="text-xl font-bold text-white tracking-tight">
+                <h2 className="text-xl font-bold text-slate-100 tracking-tight">
                   {selectedItem.name || `Incident #${selectedItem.ticket_id}`}
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
@@ -247,19 +247,21 @@ export const CitizenMap = () => {
                 {selectedItem.type === 'shelter' && (
                   <div className="mt-5 space-y-4">
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-[#0B1118] border border-[#1E293B] p-3 rounded-xl">
-                        <span className="text-[10px] text-slate-400 block uppercase font-semibold">
+                      <div className="bg-[#080C12] border border-[#182332] p-3 rounded-xl">
+                        <span className="text-[10px] text-slate-400 block uppercase font-medium">
                           Capacity
                         </span>
                         <span className="text-sm font-bold text-emerald-400">
                           {selectedItem.capacity}
                         </span>
                       </div>
-                      <div className="bg-[#0B1118] border border-[#1E293B] p-3 rounded-xl">
-                        <span className="text-[10px] text-slate-400 block uppercase font-semibold">
+                      <div className="bg-[#080C12] border border-[#182332] p-3 rounded-xl">
+                        <span className="text-[10px] text-slate-400 block uppercase font-medium">
                           Assembly Sector
                         </span>
-                        <span className="text-sm font-bold text-white">Sector 12 / Salt Lake</span>
+                        <span className="text-sm font-bold text-slate-200">
+                          Sector 12, Salt Lake
+                        </span>
                       </div>
                     </div>
 

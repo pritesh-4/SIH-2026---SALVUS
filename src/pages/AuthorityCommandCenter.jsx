@@ -105,13 +105,21 @@ export const AuthorityCommandCenter = () => {
     }))
   }, [liveShelters])
 
-  // Filter incidents in queue
+  // Filter incidents in queue according to operational priorities
   const filteredIncidents = useMemo(() => {
     return incidents.filter((inc) => {
-      if (activeIncidentFilter === 'critical') return inc.severity === 'CRITICAL'
-      if (activeIncidentFilter === 'pending') return ['NEW', 'TRIAGE_PENDING'].includes(inc.status)
-      if (activeIncidentFilter === 'verified') return inc.status === 'VERIFIED'
-      if (activeIncidentFilter === 'resolved') return inc.status === 'RESOLVED'
+      if (activeIncidentFilter === 'immediate') {
+        return inc.severity === 'CRITICAL' || inc.is_sos || inc.status === 'NEW'
+      }
+      if (activeIncidentFilter === 'review') {
+        return ['NEW', 'TRIAGE_PENDING'].includes(inc.status)
+      }
+      if (activeIncidentFilter === 'response') {
+        return ['VERIFIED', 'ASSIGNED', 'EN_ROUTE', 'ON_SCENE'].includes(inc.status)
+      }
+      if (activeIncidentFilter === 'resolved') {
+        return ['RESOLVED', 'CANCELLED'].includes(inc.status)
+      }
       return true
     })
   }, [incidents, activeIncidentFilter])
@@ -272,30 +280,11 @@ export const AuthorityCommandCenter = () => {
         </div>
       </div>
 
-      {/* Top Operational Metrics Bar (Calm, Precise, Low-Noise) */}
-      <section
-        aria-label="Operational Metrics"
-        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5"
-      >
-        {/* Active Incidents */}
-        <div className="bg-[#0C121B] border border-[#182332] p-3 rounded-lg flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono font-medium uppercase text-slate-400">
-              Active Incidents
-            </span>
-            <span className="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
-          </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-100 font-mono">
-              {computedMetrics.activeIncidents}
-            </span>
-            <span className="text-[10px] text-slate-500 font-mono">In Queue</span>
-          </div>
-        </div>
-
-        {/* Critical Threats */}
+      {/* Top Operational Metrics Bar (4 Essential Operational Metrics) */}
+      <section aria-label="Operational Metrics" className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        {/* 1. Critical Threats (Red only when > 0, otherwise calm slate) */}
         <div
-          className={`bg-[#0C121B] border p-3 rounded-lg flex flex-col justify-between ${
+          className={`bg-[#0C121B] border p-3 rounded-lg flex flex-col justify-between transition-colors ${
             computedMetrics.criticalThreats > 0 ? 'border-rose-500/40' : 'border-[#182332]'
           }`}
         >
@@ -312,7 +301,7 @@ export const AuthorityCommandCenter = () => {
           <div className="mt-1 flex items-baseline gap-2">
             <span
               className={`text-2xl font-bold font-mono ${
-                computedMetrics.criticalThreats > 0 ? 'text-rose-400' : 'text-slate-300'
+                computedMetrics.criticalThreats > 0 ? 'text-rose-400' : 'text-slate-200'
               }`}
             >
               {computedMetrics.criticalThreats}
@@ -321,11 +310,27 @@ export const AuthorityCommandCenter = () => {
           </div>
         </div>
 
-        {/* Fleet Active */}
+        {/* 2. Active Incidents */}
         <div className="bg-[#0C121B] border border-[#182332] p-3 rounded-lg flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono font-medium uppercase text-slate-400">
-              Fleet Deployed
+              Active Incidents
+            </span>
+            <span className="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+          </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-slate-100 font-mono">
+              {computedMetrics.activeIncidents}
+            </span>
+            <span className="text-[10px] text-slate-500 font-mono">Triage Queue</span>
+          </div>
+        </div>
+
+        {/* 3. Fleet Deployed */}
+        <div className="bg-[#0C121B] border border-[#182332] p-3 rounded-lg flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono font-medium uppercase text-slate-400">
+              Responders Deployed
             </span>
             <span className="h-1.5 w-1.5 rounded-full bg-blue-400"></span>
           </div>
@@ -338,7 +343,7 @@ export const AuthorityCommandCenter = () => {
           </div>
         </div>
 
-        {/* Shelter Beds Available */}
+        {/* 4. Shelter Capacity */}
         <div className="bg-[#0C121B] border border-[#182332] p-3 rounded-lg flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono font-medium uppercase text-slate-400">
@@ -351,22 +356,6 @@ export const AuthorityCommandCenter = () => {
               {totalBedsAvailable}
             </span>
             <span className="text-[10px] text-slate-500 font-mono">Beds Free</span>
-          </div>
-        </div>
-
-        {/* Resolved Cases */}
-        <div className="col-span-2 sm:col-span-1 bg-[#0C121B] border border-[#182332] p-3 rounded-lg flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono font-medium uppercase text-slate-400">
-              Resolved Cases
-            </span>
-            <span className="h-1.5 w-1.5 rounded-full bg-slate-500"></span>
-          </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-300 font-mono">
-              {computedMetrics.resolvedCount}
-            </span>
-            <span className="text-[10px] text-slate-500 font-mono">Archived</span>
           </div>
         </div>
       </section>
@@ -392,13 +381,13 @@ export const AuthorityCommandCenter = () => {
             </span>
           </div>
 
-          {/* Filter Pills */}
+          {/* Filter Pills (Operational Priorities) */}
           <div className="flex items-center gap-1 overflow-x-auto pb-1">
             {[
               { id: 'all', label: 'All' },
-              { id: 'critical', label: 'Critical' },
-              { id: 'pending', label: 'Pending' },
-              { id: 'verified', label: 'Verified' },
+              { id: 'immediate', label: 'Immediate Action' },
+              { id: 'review', label: 'Needs Review' },
+              { id: 'response', label: 'In Response' },
               { id: 'resolved', label: 'Resolved' },
             ].map((f) => (
               <button

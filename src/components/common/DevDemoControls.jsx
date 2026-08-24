@@ -1,12 +1,47 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { seedDevIncidents, resetDevIncidents, createIncident } from '../../services/api'
 import { simulateConnectionDrop } from '../../lib/realtime/socket'
 import { getCurrentLocation } from '../../lib/location'
 
 export const DevDemoControls = ({ onRefresh = null }) => {
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const params = new URLSearchParams(window.location.search)
+    return (
+      params.get('demo') === 'true' ||
+      params.get('dev') === 'true' ||
+      localStorage.getItem('salvus_demo_mode') === 'true'
+    )
+  })
+
   const [isOpen, setIsOpen] = useState(false)
   const [statusMessage, setStatusMessage] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  // Keyboard shortcut listener: Ctrl+Shift+D toggles demo mode
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        e.preventDefault()
+        setIsDemoMode((prev) => {
+          const next = !prev
+          if (next) {
+            localStorage.setItem('salvus_demo_mode', 'true')
+          } else {
+            localStorage.removeItem('salvus_demo_mode')
+          }
+          return next
+        })
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  // If not in demo mode, do not render developer controls in production UI
+  if (!isDemoMode) {
+    return null
+  }
 
   const showFeedback = (msg) => {
     setStatusMessage(msg)
@@ -68,16 +103,16 @@ export const DevDemoControls = ({ onRefresh = null }) => {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="bg-[#0D141F]/90 hover:bg-[#152030] text-slate-400 hover:text-slate-200 border border-slate-700/80 px-2.5 py-1 rounded-md text-[11px] font-mono font-medium shadow-lg backdrop-blur-md flex items-center gap-1.5 cursor-pointer transition-colors"
-          title="Open Developer Demo & Testing Controls"
+          className="bg-[#080C12]/95 hover:bg-[#121B27] text-slate-400 hover:text-slate-200 border border-[#182332] px-2.5 py-1 rounded-md text-[11px] font-mono shadow-lg backdrop-blur-md flex items-center gap-1.5 cursor-pointer transition-colors"
+          title="Open Developer Demo & Testing Controls (Ctrl+Shift+D)"
         >
           <span>⚙️</span>
           <span>DEV CONTROLS</span>
         </button>
       ) : (
-        <div className="bg-[#0D141F] border border-slate-700 rounded-xl p-3.5 shadow-2xl w-76 backdrop-blur-md space-y-2.5 text-xs animate-fadeIn">
+        <div className="bg-[#080C12] border border-[#182332] rounded-xl p-3.5 shadow-2xl w-76 backdrop-blur-md space-y-2.5 text-xs animate-fadeIn">
           {/* Header */}
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+          <div className="flex items-center justify-between pb-2 border-b border-[#182332]">
             <div className="flex items-center gap-1.5">
               <span className="text-slate-400">⚙️</span>
               <span className="font-mono font-semibold text-slate-200 uppercase tracking-wider text-[11px]">
@@ -94,8 +129,8 @@ export const DevDemoControls = ({ onRefresh = null }) => {
           </div>
 
           <p className="text-[10px] text-slate-400 font-mono leading-tight">
-            Repeatable testing tools for live database, WebSocket sync, and network failure
-            simulation.
+            Repeatable testing tools for database and network failure simulation. (Ctrl+Shift+D to
+            hide)
           </p>
 
           {statusMessage && (
@@ -110,7 +145,7 @@ export const DevDemoControls = ({ onRefresh = null }) => {
               type="button"
               disabled={isLoading}
               onClick={handleSeed}
-              className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/70 text-slate-200 font-mono font-medium text-[10px] text-left transition-colors cursor-pointer disabled:opacity-50"
+              className="p-2 rounded-lg bg-[#0D141F] hover:bg-[#152030] border border-[#182332] text-slate-200 font-mono text-[10px] text-left transition-colors cursor-pointer disabled:opacity-50"
             >
               ⚡ Seed Demo Data
             </button>
@@ -119,7 +154,7 @@ export const DevDemoControls = ({ onRefresh = null }) => {
               type="button"
               disabled={isLoading}
               onClick={handleReset}
-              className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/70 text-slate-200 font-mono font-medium text-[10px] text-left transition-colors cursor-pointer disabled:opacity-50"
+              className="p-2 rounded-lg bg-[#0D141F] hover:bg-[#152030] border border-[#182332] text-slate-200 font-mono text-[10px] text-left transition-colors cursor-pointer disabled:opacity-50"
             >
               🗑️ Reset Database
             </button>
@@ -128,7 +163,7 @@ export const DevDemoControls = ({ onRefresh = null }) => {
               type="button"
               disabled={isLoading}
               onClick={handleSimulateSos}
-              className="p-2 rounded-lg bg-rose-950/30 hover:bg-rose-950/50 border border-rose-500/30 text-rose-300 font-mono font-medium text-[10px] text-left transition-colors cursor-pointer disabled:opacity-50"
+              className="p-2 rounded-lg bg-rose-950/30 hover:bg-rose-950/50 border border-rose-500/30 text-rose-300 font-mono text-[10px] text-left transition-colors cursor-pointer disabled:opacity-50"
             >
               🚨 Trigger SOS
             </button>
@@ -136,15 +171,15 @@ export const DevDemoControls = ({ onRefresh = null }) => {
             <button
               type="button"
               onClick={handleSimulateDisconnect}
-              className="p-2 rounded-lg bg-amber-950/30 hover:bg-amber-950/50 border border-amber-500/30 text-amber-300 font-mono font-medium text-[10px] text-left transition-colors cursor-pointer"
+              className="p-2 rounded-lg bg-amber-950/30 hover:bg-amber-950/50 border border-amber-500/30 text-amber-300 font-mono text-[10px] text-left transition-colors cursor-pointer"
             >
               📶 Drop Socket (5s)
             </button>
           </div>
 
-          <div className="pt-1.5 border-t border-slate-800 flex items-center justify-between text-[9px] font-mono text-slate-500">
+          <div className="pt-1.5 border-t border-[#182332] flex items-center justify-between text-[9px] font-mono text-slate-500">
             <span>SALVUS DEMO ENGINE</span>
-            <span>PORT 5173</span>
+            <span>DEMO MODE ACTIVE</span>
           </div>
         </div>
       )}
