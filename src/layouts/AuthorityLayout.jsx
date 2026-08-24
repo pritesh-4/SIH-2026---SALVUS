@@ -4,64 +4,66 @@ import { GlobalNotificationBanner } from '../components/common/GlobalNotificatio
 
 export const AuthorityLayout = () => {
   return (
-    <div className="min-h-screen bg-[#070D14] text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-black">
-      {/* Calm System Notifications */}
+    <div className="min-h-screen bg-[#080C12] text-slate-100 flex flex-col selection:bg-blue-600 selection:text-white">
+      {/* System Notifications */}
       <GlobalNotificationBanner />
 
-      {/* Top High-Density Command Bar */}
-      <header className="w-full border-b border-[#1A2634] bg-[#0A121C]/95 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-[1720px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          {/* Brand & System Mode */}
+      {/* Top High-Clarity Operations Header */}
+      <header className="w-full border-b border-[#1A2433] bg-[#0A1017]/95 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-[1760px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+          {/* Brand & Sector Identity */}
           <div className="flex items-center gap-3">
             <Link to="/authority" className="flex items-center gap-2 group">
-              <span className="text-white font-black text-lg tracking-wider group-hover:text-cyan-400 transition-colors">
+              <span className="text-white font-bold text-base tracking-wider group-hover:text-blue-400 transition-colors font-mono">
                 SALVUS
               </span>
-              <span className="text-[10px] font-bold bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 px-2 py-0.5 rounded uppercase tracking-widest font-mono">
-                COMMAND CENTER
+              <span className="text-[10px] font-semibold bg-slate-800 border border-slate-700 text-slate-300 px-2 py-0.5 rounded uppercase tracking-widest font-mono">
+                OPS COMMAND
               </span>
             </Link>
 
-            <span className="hidden lg:inline text-[#1E293B]">|</span>
+            <span className="hidden lg:inline text-slate-700">|</span>
 
             {/* Operational Grid Status */}
-            <div className="hidden lg:flex items-center gap-2 text-xs text-slate-300">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="font-mono text-emerald-400 font-bold">GRID ACTIVE</span>
-              <span className="text-slate-500">·</span>
+            <div className="hidden lg:flex items-center gap-2 text-xs text-slate-400">
+              <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+              <span className="font-mono text-slate-300 font-medium">GRID ONLINE</span>
+              <span className="text-slate-600">·</span>
               <span className="text-slate-400 font-mono text-[11px]">
                 Kolkata Central Hub — Sector 12
               </span>
             </div>
           </div>
 
-          {/* Center Alert Level Badge */}
-          <div className="hidden md:flex items-center gap-2 bg-rose-950/40 border border-rose-500/40 px-3.5 py-1.5 rounded-full text-xs text-rose-300 font-mono font-bold">
-            <span className="h-2 w-2 rounded-full bg-rose-500 animate-ping"></span>
-            <span>CRISIS LEVEL 3 · FLASH FLOOD SURGE IN PROGRESS</span>
+          {/* Center Situation Status Banner */}
+          <div className="hidden md:flex items-center gap-2 bg-[#0E1520] border border-amber-500/30 px-3 py-1 rounded-md text-xs text-slate-200 font-mono">
+            <span className="h-2 w-2 rounded-full bg-amber-400"></span>
+            <span className="text-amber-400 font-bold">LEVEL 3</span>
+            <span className="text-slate-600">·</span>
+            <span className="text-slate-300">FLASH FLOOD SURGE IN PROGRESS</span>
           </div>
 
-          {/* Right Action: Portal Switcher to Citizen */}
+          {/* Right Action: Clock & Citizen Portal Switcher */}
           <div className="flex items-center gap-3">
-            <span className="hidden sm:inline font-mono text-xs text-slate-400">23:45 IST</span>
+            <div className="hidden sm:flex items-center gap-1.5 font-mono text-xs text-slate-400 bg-slate-900/60 border border-slate-800 px-2.5 py-1 rounded">
+              <span className="text-slate-500">SYS:</span>
+              <span className="text-slate-300 font-medium">23:45 IST</span>
+            </div>
 
             <Link
               to="/citizen"
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#111A24] hover:bg-[#1A2634] border border-[#2A3B4E] text-cyan-300 hover:text-white text-xs font-bold transition-all shadow-md cursor-pointer tracking-wide uppercase"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-slate-200 hover:text-white text-xs font-semibold transition-colors cursor-pointer tracking-wide"
               title="Switch to Citizen Safety Console"
             >
-              <span>👤</span>
-              <span className="hidden xs:inline">Citizen App</span>
+              <span className="text-xs">👤</span>
+              <span className="hidden xs:inline">Citizen Portal</span>
             </Link>
           </div>
         </div>
       </header>
 
       {/* Main Command Center Area */}
-      <main className="flex-1 w-full max-w-[1720px] mx-auto p-4 sm:p-6">
+      <main className="flex-1 w-full max-w-[1760px] mx-auto p-3 sm:p-4 lg:p-5">
         <Outlet />
       </main>
 

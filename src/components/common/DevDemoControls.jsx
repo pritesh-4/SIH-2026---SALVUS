@@ -63,34 +63,31 @@ export const DevDemoControls = ({ onRefresh = null }) => {
   }
 
   return (
-    <aside
-      aria-label="Developer Demo Panel"
-      className="fixed bottom-4 right-4 z-50 font-sans animate-fadeIn"
-    >
+    <aside aria-label="Developer Demo Panel" className="fixed bottom-3 right-3 z-50 font-sans">
       {!isOpen ? (
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="bg-[#0B1118]/95 hover:bg-[#152230] text-purple-300 hover:text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-full text-xs font-mono font-bold shadow-2xl backdrop-blur-md flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105"
-          title="Open Developer Demo & Resilience Controls"
+          className="bg-[#0D141F]/90 hover:bg-[#152030] text-slate-400 hover:text-slate-200 border border-slate-700/80 px-2.5 py-1 rounded-md text-[11px] font-mono font-medium shadow-lg backdrop-blur-md flex items-center gap-1.5 cursor-pointer transition-colors"
+          title="Open Developer Demo & Testing Controls"
         >
-          <span>🛠️</span>
-          <span>DEV DEMO CONTROLS</span>
+          <span>⚙️</span>
+          <span>DEV CONTROLS</span>
         </button>
       ) : (
-        <div className="bg-[#0D1520] border border-purple-500/50 rounded-2xl p-4 shadow-2xl w-80 backdrop-blur-md space-y-3 text-xs animate-fadeIn">
+        <div className="bg-[#0D141F] border border-slate-700 rounded-xl p-3.5 shadow-2xl w-76 backdrop-blur-md space-y-2.5 text-xs animate-fadeIn">
           {/* Header */}
-          <div className="flex items-center justify-between pb-2 border-t-0 border-b border-[#1A2634]">
-            <div className="flex items-center gap-2">
-              <span className="text-purple-400 font-bold">🛠️</span>
-              <span className="font-mono font-bold text-white uppercase tracking-wider text-[11px]">
-                Developer Resilience Suite
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400">⚙️</span>
+              <span className="font-mono font-semibold text-slate-200 uppercase tracking-wider text-[11px]">
+                Developer Testing Suite
               </span>
             </div>
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="text-slate-400 hover:text-white font-mono p-1 cursor-pointer"
+              className="text-slate-400 hover:text-white font-mono p-0.5 cursor-pointer text-xs"
             >
               ✕
             </button>
@@ -102,18 +99,18 @@ export const DevDemoControls = ({ onRefresh = null }) => {
           </p>
 
           {statusMessage && (
-            <div className="bg-purple-950/60 border border-purple-500/40 p-2 rounded-xl text-[10px] font-mono text-purple-200 animate-fadeIn text-center">
+            <div className="bg-slate-800/90 border border-slate-700 p-2 rounded-lg text-[10px] font-mono text-slate-200 text-center">
               {statusMessage}
             </div>
           )}
 
           {/* Action Grid */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
               disabled={isLoading}
               onClick={handleSeed}
-              className="p-2 rounded-xl bg-[#111A24] hover:bg-[#1A2838] border border-[#1E293B] hover:border-purple-500/50 text-purple-300 font-mono font-bold text-[10px] text-left transition-all cursor-pointer disabled:opacity-50"
+              className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/70 text-slate-200 font-mono font-medium text-[10px] text-left transition-colors cursor-pointer disabled:opacity-50"
             >
               ⚡ Seed Demo Data
             </button>
@@ -122,7 +119,7 @@ export const DevDemoControls = ({ onRefresh = null }) => {
               type="button"
               disabled={isLoading}
               onClick={handleReset}
-              className="p-2 rounded-xl bg-[#111A24] hover:bg-[#1A2838] border border-[#1E293B] hover:border-purple-500/50 text-slate-300 hover:text-white font-mono font-bold text-[10px] text-left transition-all cursor-pointer disabled:opacity-50"
+              className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/70 text-slate-200 font-mono font-medium text-[10px] text-left transition-colors cursor-pointer disabled:opacity-50"
             >
               🗑️ Reset Database
             </button>
@@ -131,23 +128,23 @@ export const DevDemoControls = ({ onRefresh = null }) => {
               type="button"
               disabled={isLoading}
               onClick={handleSimulateSos}
-              className="p-2 rounded-xl bg-rose-950/30 hover:bg-rose-950/50 border border-rose-500/40 text-rose-300 font-mono font-bold text-[10px] text-left transition-all cursor-pointer disabled:opacity-50"
+              className="p-2 rounded-lg bg-rose-950/30 hover:bg-rose-950/50 border border-rose-500/30 text-rose-300 font-mono font-medium text-[10px] text-left transition-colors cursor-pointer disabled:opacity-50"
             >
-              🚨 Fire Live SOS
+              🚨 Trigger SOS
             </button>
 
             <button
               type="button"
               onClick={handleSimulateDisconnect}
-              className="p-2 rounded-xl bg-amber-950/30 hover:bg-amber-950/50 border border-amber-500/40 text-amber-300 font-mono font-bold text-[10px] text-left transition-all cursor-pointer"
+              className="p-2 rounded-lg bg-amber-950/30 hover:bg-amber-950/50 border border-amber-500/30 text-amber-300 font-mono font-medium text-[10px] text-left transition-colors cursor-pointer"
             >
               📶 Drop Socket (5s)
             </button>
           </div>
 
-          <div className="pt-2 border-t border-[#1A2634] flex items-center justify-between text-[9px] font-mono text-slate-500">
-            <span>SALVUS PHASE 3 HARDENING</span>
-            <span>PORT 8000 / 5173</span>
+          <div className="pt-1.5 border-t border-slate-800 flex items-center justify-between text-[9px] font-mono text-slate-500">
+            <span>SALVUS DEMO ENGINE</span>
+            <span>PORT 5173</span>
           </div>
         </div>
       )}
