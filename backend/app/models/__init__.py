@@ -34,6 +34,7 @@ class IncidentStatus(StrEnum):
     VERIFIED = "VERIFIED"
     ASSIGNED = "ASSIGNED"
     EN_ROUTE = "EN_ROUTE"
+    NEARBY = "NEARBY"
     ON_SCENE = "ON_SCENE"
     RESOLVED = "RESOLVED"
     CANCELLED = "CANCELLED"
@@ -206,17 +207,28 @@ class ResponderSingleResponse(BaseModel):
     data: ResponderResponse
 
 
-class ResponderCandidateListResponse(BaseModel):
-    """Response for candidate responders matching an incident."""
+class ScoreBreakdown(BaseModel):
+    """Auditable scoring factor breakdown."""
 
-    success: bool = True
-    incident_id: str
-    data: list[CandidateResponderResponse]
-    count: int
+    capability_score: int
+    severity_alignment: int
+    availability_score: int
+    proximity_score: int
+    workload_penalty: int
+    total_score: int
+
+
+class CandidateExplanation(BaseModel):
+    """Deterministic explanation for a responder recommendation."""
+
+    headline: str
+    positive_factors: list[str] = []
+    negative_factors: list[str] = []
+    breakdown: ScoreBreakdown
 
 
 class CandidateResponderResponse(BaseModel):
-    """Candidate responder ranked by capability, proximity, and workload."""
+    """Candidate responder ranked by capability, proximity, ETA, and workload."""
 
     id: str
     unit_name: str
@@ -231,9 +243,92 @@ class CandidateResponderResponse(BaseModel):
     current_load: int
     assigned_incident_id: str | None = None
     distance_km: float
+    eta_minutes: float = 0.0
+    eta_formatted: str = "N/A"
     match_score: int
     match_reason: str
     is_recommended: bool
+    explanation: CandidateExplanation | None = None
+    route_geometry: list[list[float]] = []
+    route_status: str = "ESTIMATED"
+
+
+class ResponderCandidateListResponse(BaseModel):
+    """Response for candidate responders matching an incident."""
+
+    success: bool = True
+    incident_id: str
+    data: list[CandidateResponderResponse]
+    count: int
+
+
+class ResponderLifecycleAdvanceRequest(BaseModel):
+    """Payload for advancing responder along operational journey."""
+
+    target_status: ResponderStatus
+    actor: str = Field(default="authority", max_length=200)
+    notes: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Routing Models
+# ---------------------------------------------------------------------------
+
+
+class RouteProfile(StrEnum):
+    DRIVING = "driving"
+    WALKING = "walking"
+    BOAT = "boat"
+
+
+class RouteStatus(StrEnum):
+    OPTIMAL_OSRM = "OPTIMAL_OSRM"
+    FALLBACK_CORRIDOR = "FALLBACK_CORRIDOR"
+    ERROR = "ERROR"
+
+
+class RouteRequest(BaseModel):
+    """Payload for requesting route between coordinates."""
+
+    origin_latitude: float = Field(ge=-90, le=90)
+    origin_longitude: float = Field(ge=-180, le=180)
+    destination_latitude: float = Field(ge=-90, le=90)
+    destination_longitude: float = Field(ge=-180, le=180)
+    profile: RouteProfile = RouteProfile.DRIVING
+
+
+class RouteResponse(BaseModel):
+    """Standardized route calculation schema."""
+
+    distance_km: float
+    distance_meters: float
+    duration_seconds: float
+    duration_minutes: float
+    eta_formatted: str
+    coordinates: list[list[float]]
+    profile: str
+    status: RouteStatus
+    summary: str | None = None
+    is_fallback: bool = False
+
+
+class RouteSingleResponse(BaseModel):
+    """Response envelope for routing service."""
+
+    success: bool = True
+    data: RouteResponse
+
+
+class SimulationStepRequest(BaseModel):
+    """Telemetry payload for driving simulated movement along route."""
+
+    responder_id: str
+    incident_id: str
+    step_index: int
+    total_steps: int
+    latitude: float
+    longitude: float
+    target_status: ResponderStatus | None = None
 
 
 # ---------------------------------------------------------------------------

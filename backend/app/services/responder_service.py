@@ -1,13 +1,12 @@
 """Responder fleet domain service.
 
 Manages active rescue units, availability states, real-time GPS coordinates,
-operational candidate matching, and incident assignments.
+explainable candidate allocation, and synchronized lifecycle assignments.
 """
 
 from __future__ import annotations
 
 import json
-import math
 import uuid
 from datetime import UTC, datetime
 
@@ -18,20 +17,10 @@ from app.models import (
     IncidentResponse,
     ResponderResponse,
 )
+from app.services.allocation_engine import rank_and_explain_candidates
 from app.services.incident_service import get_incident_by_id
-
-
-def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate the great-circle distance between two GPS coordinates in kilometers."""
-    radius_km = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
-    )
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return round(radius_km * c, 2)
+from app.services.routing_service import get_route, haversine_distance_km
+from app.services.state_machine import validate_responder_transition
 
 
 def _row_to_responder(row: aiosqlite.Row) -> ResponderResponse:
@@ -135,7 +124,7 @@ async def assign_responder_to_incident(
     status: str = "ASSIGNED",
     actor: str = "authority",
 ) -> tuple[ResponderResponse, IncidentResponse] | None:
-    """Authoritatively assign a responder unit to an active emergency incident."""
+    """Authoritatively and atomically assign a responder unit to an active incident."""
     responder = await get_responder_by_id(db, responder_id)
     if not responder:
         return None
@@ -143,6 +132,13 @@ async def assign_responder_to_incident(
     incident = await get_incident_by_id(db, incident_id)
     if not incident:
         return None
+
+    # Check terminal incident state guard
+    if incident.status in ("RESOLVED", "CANCELLED"):
+        raise ValueError(
+            f"Cannot assign responder to incident #{incident.ticket_id} "
+            f"with terminal status '{incident.status}'."
+        )
 
     now = datetime.now(UTC).isoformat()
 
@@ -156,19 +152,17 @@ async def assign_responder_to_incident(
         (status, incident_id, now, responder_id),
     )
 
-    # 2. Update incident record lifecycle if pending triage
+    # 2. Update incident record lifecycle
     previous_inc_status = incident.status
-    new_inc_status = incident.status
-    if incident.status in ("NEW", "TRIAGE_PENDING", "VERIFIED"):
-        new_inc_status = "ASSIGNED"
-        await db.execute(
-            """
-            UPDATE incidents
-            SET status = 'ASSIGNED', updated_at = ?
-            WHERE id = ?
-            """,
-            (now, incident_id),
-        )
+    new_inc_status = "ASSIGNED"
+    await db.execute(
+        """
+        UPDATE incidents
+        SET status = 'ASSIGNED', updated_at = ?
+        WHERE id = ?
+        """,
+        (now, incident_id),
+    )
 
     # 3. Add audit event to incident timeline
     event_id = str(uuid.uuid4())
@@ -176,9 +170,13 @@ async def assign_responder_to_incident(
         {
             "responder_id": responder.id,
             "unit_name": responder.unit_name,
+            "team_lead": responder.team_lead,
             "capability": responder.capability,
             "vehicle_type": responder.vehicle_type,
             "radio_channel": responder.radio_channel,
+            "distance_km": haversine_distance_km(
+                incident.latitude, incident.longitude, responder.latitude, responder.longitude
+            ),
         }
     )
     await db.execute(
@@ -208,15 +206,107 @@ async def assign_responder_to_incident(
     return updated_responder, updated_incident
 
 
-async def get_candidate_responders_for_incident(
-    db: aiosqlite.Connection, incident_id: str
-) -> list[CandidateResponderResponse]:
-    """Rank all active response units for a specific incident based on:
+async def advance_responder_lifecycle(
+    db: aiosqlite.Connection,
+    responder_id: str,
+    target_status: str,
+    actor: str = "authority",
+    notes: str | None = None,
+) -> tuple[ResponderResponse, IncidentResponse | None] | None:
+    """Advance responder through unified operational journey and synchronize incident lifecycle."""
+    responder = await get_responder_by_id(db, responder_id)
+    if not responder:
+        return None
 
-    1. Capability match
-    2. Operational availability
-    3. Spatial proximity (Haversine distance)
-    4. Current unit workload
+    if not validate_responder_transition(responder.status, target_status):
+        raise ValueError(
+            f"Invalid responder transition from '{responder.status}' to '{target_status}'."
+        )
+
+    now = datetime.now(UTC).isoformat()
+    incident_id = responder.assigned_incident_id
+    updated_incident = None
+
+    # Handle resolution or status change
+    new_assigned_id = incident_id
+    if target_status == "AVAILABLE":
+        new_assigned_id = None
+
+    await db.execute(
+        """
+        UPDATE responders
+        SET status = ?, assigned_incident_id = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (target_status, new_assigned_id, now, responder_id),
+    )
+
+    if incident_id:
+        incident = await get_incident_by_id(db, incident_id)
+        if incident and incident.status not in ("RESOLVED", "CANCELLED"):
+            previous_inc_status = incident.status
+            new_inc_status = previous_inc_status
+
+            if target_status in ("ASSIGNED", "EN_ROUTE", "NEARBY", "ON_SCENE"):
+                new_inc_status = target_status
+            elif target_status == "AVAILABLE":
+                new_inc_status = "RESOLVED"
+
+            await db.execute(
+                """
+                UPDATE incidents
+                SET status = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (new_inc_status, now, incident_id),
+            )
+
+            # Record lifecycle audit event
+            event_id = str(uuid.uuid4())
+            event_metadata = json.dumps(
+                {
+                    "responder_id": responder.id,
+                    "unit_name": responder.unit_name,
+                    "responder_status": target_status,
+                    "notes": notes,
+                }
+            )
+            await db.execute(
+                """
+                INSERT INTO incident_events (id, incident_id, event_type, previous_status,
+                    new_status, actor, metadata, created_at)
+                VALUES (?, ?, 'LIFECYCLE_TRANSITION', ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    incident_id,
+                    previous_inc_status,
+                    new_inc_status,
+                    actor,
+                    event_metadata,
+                    now,
+                ),
+            )
+
+            await db.commit()
+            updated_incident = await get_incident_by_id(db, incident_id)
+
+    await db.commit()
+    updated_responder = await get_responder_by_id(db, responder_id)
+    if not updated_responder:
+        return None
+
+    return updated_responder, updated_incident
+
+
+async def get_candidate_responders_for_incident(
+    db: aiosqlite.Connection,
+    incident_id: str,
+    include_routes: bool = True,
+) -> list[CandidateResponderResponse]:
+    """Retrieve ranked candidate responders for an active emergency incident with
+
+    deterministic scoring, explanations, and OSRM/fallback routing vectors.
     """
     incident = await get_incident_by_id(db, incident_id)
     if not incident:
@@ -226,96 +316,26 @@ async def get_candidate_responders_for_incident(
     if not responders:
         return []
 
-    candidates: list[CandidateResponderResponse] = []
+    candidates = rank_and_explain_candidates(incident, responders)
 
-    for resp in responders:
-        dist_km = haversine_distance_km(
-            incident.latitude, incident.longitude, resp.latitude, resp.longitude
-        )
-
-        # Baseline capability matching score
-        cap_score = 50
-        cap_reason = "General Auxiliary Support"
-
-        inc_type = incident.type.lower()
-        if inc_type == "flood":
-            if resp.capability == "FLOOD_BOAT":
-                cap_score = 95
-                cap_reason = "Specialized Flood Watercraft"
-            elif resp.capability == "AMBULANCE":
-                cap_score = 70
-                cap_reason = "Medical Evacuation Support"
-            elif resp.capability == "STRETCHER_TEAM":
-                cap_score = 65
-                cap_reason = "Shallow Water Extraction"
-        elif inc_type == "medical":
-            if resp.capability == "AMBULANCE":
-                cap_score = 95
-                cap_reason = "Primary Advanced Life Support"
-            elif resp.capability == "STRETCHER_TEAM":
-                cap_score = 85
-                cap_reason = "Stretcher Patient Transfer"
-            elif resp.capability == "FLOOD_BOAT":
-                cap_score = 60
-                cap_reason = "Amphibious Medical Transit"
-        elif inc_type in ("power_line", "hazard", "fire"):
-            if resp.capability in ("HAZMAT", "DEBRIS_CLEAR"):
-                cap_score = 95
-                cap_reason = "Hazard Mitigation & Isolation"
-            elif resp.capability == "STRETCHER_TEAM":
-                cap_score = 75
-                cap_reason = "Perimeter Safety & Evacuation"
-
-        # Availability score adjustment
-        status_bonus = 0
-        if resp.status == "AVAILABLE":
-            status_bonus = 30
-        elif resp.status == "NEARBY":
-            status_bonus = 20
-        elif resp.status == "EN_ROUTE":
-            status_bonus = 10
-        elif resp.status in ("ASSIGNED", "ON_SCENE"):
-            status_bonus = -20
-        elif resp.status == "OFFLINE":
-            status_bonus = -100
-
-        # Distance penalty (5 points per km)
-        dist_penalty = min(40, int(dist_km * 5))
-
-        # Workload penalty (ratio of current load to max capacity)
-        load_ratio = resp.current_load / max(1, resp.max_capacity)
-        load_penalty = int(load_ratio * 20)
-
-        total_score = max(0, cap_score + status_bonus - dist_penalty - load_penalty)
-
-        candidates.append(
-            CandidateResponderResponse(
-                id=resp.id,
-                unit_name=resp.unit_name,
-                team_lead=resp.team_lead,
-                vehicle_type=resp.vehicle_type,
-                capability=resp.capability,
-                status=resp.status,
-                latitude=resp.latitude,
-                longitude=resp.longitude,
-                radio_channel=resp.radio_channel,
-                max_capacity=resp.max_capacity,
-                current_load=resp.current_load,
-                assigned_incident_id=resp.assigned_incident_id,
-                distance_km=dist_km,
-                match_score=total_score,
-                match_reason=cap_reason,
-                is_recommended=False,
-            )
-        )
-
-    # Sort candidates by total match score descending, then by distance ascending
-    candidates.sort(key=lambda c: (-c.match_score, c.distance_km))
-
-    # Mark the single highest-scoring available candidate as recommended
-    for cand in candidates:
-        if cand.status in ("AVAILABLE", "NEARBY", "EN_ROUTE"):
-            cand.is_recommended = True
-            break
+    # If requested, enrich top candidates (up to top 4) with real OSRM route geometry
+    if include_routes and candidates:
+        for cand in candidates[:4]:
+            try:
+                profile = "boat" if cand.capability == "FLOOD_BOAT" else "driving"
+                route_res = await get_route(
+                    origin_lat=cand.latitude,
+                    origin_lon=cand.longitude,
+                    dest_lat=incident.latitude,
+                    dest_lon=incident.longitude,
+                    profile=profile,
+                )
+                cand.distance_km = route_res.distance_km
+                cand.eta_minutes = route_res.duration_minutes
+                cand.eta_formatted = route_res.eta_formatted
+                cand.route_geometry = route_res.coordinates
+                cand.route_status = route_res.status.value
+            except Exception as e:
+                print(f"[ResponderService] Route enrichment skipped for {cand.unit_name}: {e}")
 
     return candidates

@@ -22,7 +22,9 @@ from app.realtime.socket_manager import sio
 from app.routes.health import router as health_router
 from app.routes.incidents import router as incidents_router
 from app.routes.responders import router as responders_router
+from app.routes.routing import router as routing_router
 from app.routes.shelters import router as shelters_router
+from app.routes.simulation import router as simulation_router
 
 load_dotenv()
 
@@ -81,7 +83,9 @@ app.add_exception_handler(Exception, generic_exception_handler)
 app.include_router(health_router)
 app.include_router(incidents_router)
 app.include_router(responders_router)
+app.include_router(routing_router)
 app.include_router(shelters_router)
+app.include_router(simulation_router)
 
 
 @app.get("/")

@@ -6,7 +6,7 @@ import L from 'leaflet'
  *
  * High-performance OpenStreetMap tactical surface with calm styling,
  * standardized semantic markers, smooth camera transitions,
- * and automatic viewport resize handling.
+ * dynamic OSRM / vector corridor polyline rendering, and automatic viewport resize handling.
  */
 
 const DEFAULT_CENTER = [22.5726, 88.3639]
@@ -21,7 +21,9 @@ export const SalvusLeafletMap = ({
   userLocation = null,
   shelters = [],
   responders = [],
-  showLayers = { incidents: true, shelters: true, responders: true },
+  activeRoute = null, // { coordinates: [[lat, lon], ...], distanceKm, etaFormatted, status, isFallback, label }
+  previewRoute = null, // { coordinates: [[lat, lon], ...], label, color }
+  showLayers = { incidents: true, shelters: true, responders: true, routes: true },
   interactive = true,
   className = 'h-full w-full',
   autoFocusSelected = true,
@@ -29,6 +31,7 @@ export const SalvusLeafletMap = ({
   const mapContainerRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const markersGroupRef = useRef(null)
+  const routesGroupRef = useRef(null)
   const userMarkerRef = useRef(null)
 
   // ---------------------------------------------------------------------------
@@ -58,11 +61,14 @@ export const SalvusLeafletMap = ({
     L.control
       .attribution({
         position: 'bottomright',
-        prefix: '<span class="text-[9px] text-slate-500 font-mono">© OpenStreetMap</span>',
+        prefix: '<span class="text-[9px] text-slate-500 font-mono">© OpenStreetMap · OSRM</span>',
       })
       .addTo(map)
 
+    const routesGroup = L.layerGroup().addTo(map)
     const markersGroup = L.layerGroup().addTo(map)
+
+    routesGroupRef.current = routesGroup
     markersGroupRef.current = markersGroup
     mapInstanceRef.current = map
 
@@ -79,6 +85,7 @@ export const SalvusLeafletMap = ({
       map.remove()
       mapInstanceRef.current = null
       markersGroupRef.current = null
+      routesGroupRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -93,13 +100,101 @@ export const SalvusLeafletMap = ({
     const map = mapInstanceRef.current
     if (!map) return
 
-    if (centerLat != null && centerLng != null) {
+    if (centerLat != null && centerLng != null && !activeRoute?.coordinates?.length) {
       map.panTo([centerLat, centerLng], { animate: true, duration: 0.5 })
     }
-  }, [centerLat, centerLng])
+  }, [centerLat, centerLng, activeRoute])
 
   // ---------------------------------------------------------------------------
-  // 3. Render User Location Marker
+  // 3. Render Tactical Route Polylines (Active & Preview)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    const routeGroup = routesGroupRef.current
+    if (!map || !routeGroup) return
+
+    routeGroup.clearLayers()
+
+    if (!showLayers.routes) return
+
+    // A. Candidate Preview Route (Dashed amber or slate)
+    if (
+      previewRoute &&
+      Array.isArray(previewRoute.coordinates) &&
+      previewRoute.coordinates.length >= 2
+    ) {
+      const previewPolyline = L.polyline(previewRoute.coordinates, {
+        color: previewRoute.color || '#f59e0b',
+        weight: 3,
+        opacity: 0.8,
+        dashArray: '5, 5',
+        lineCap: 'round',
+        lineJoin: 'round',
+      })
+      routeGroup.addLayer(previewPolyline)
+    }
+
+    // B. Primary Active Dispatch Route (Glowing tactical corridor)
+    if (
+      activeRoute &&
+      Array.isArray(activeRoute.coordinates) &&
+      activeRoute.coordinates.length >= 2
+    ) {
+      const coords = activeRoute.coordinates
+      const isFallback = activeRoute.isFallback || activeRoute.status === 'FALLBACK_CORRIDOR'
+
+      // Outer glow corridor
+      const outerCorridor = L.polyline(coords, {
+        color: isFallback ? '#0369a1' : '#0284c7',
+        weight: 8,
+        opacity: 0.25,
+        lineCap: 'round',
+        lineJoin: 'round',
+      })
+      routeGroup.addLayer(outerCorridor)
+
+      // Core route vector
+      const coreRoute = L.polyline(coords, {
+        color: isFallback ? '#38bdf8' : '#0ea5e9',
+        weight: 3.5,
+        opacity: 0.95,
+        dashArray: isFallback ? '6, 6' : undefined,
+        lineCap: 'round',
+        lineJoin: 'round',
+      })
+      routeGroup.addLayer(coreRoute)
+
+      // Midpoint ETA / Distance tactical pill badge
+      const midIdx = Math.floor(coords.length / 2)
+      const midPoint = coords[midIdx]
+      if (midPoint && (activeRoute.etaFormatted || activeRoute.distanceKm)) {
+        const etaBadgeIcon = L.divIcon({
+          className: 'custom-route-badge',
+          html: `
+            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#080E17]/95 border border-sky-500/60 shadow-lg text-[10px] font-mono font-bold text-sky-300 whitespace-nowrap">
+              <span class="h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping"></span>
+              <span>${activeRoute.etaFormatted || 'ETA 4m'}</span>
+              <span class="text-slate-400 font-normal">(${activeRoute.distanceKm || '1.2'} km)</span>
+            </div>
+          `,
+          iconSize: [110, 22],
+          iconAnchor: [55, 11],
+        })
+
+        const etaMarker = L.marker(midPoint, { icon: etaBadgeIcon, zIndexOffset: 200 })
+        routeGroup.addLayer(etaMarker)
+      }
+
+      // Auto-fit bounds if requested
+      if (coords.length > 0) {
+        const bounds = L.latLngBounds(coords)
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15, animate: true })
+      }
+    }
+  }, [activeRoute, previewRoute, showLayers.routes])
+
+  // ---------------------------------------------------------------------------
+  // 4. Render User Location Marker
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const map = mapInstanceRef.current
@@ -159,7 +254,7 @@ export const SalvusLeafletMap = ({
   }, [userLocation])
 
   // ---------------------------------------------------------------------------
-  // 4. Render Tactical Layer Markers (Incidents, Shelters, Responders)
+  // 5. Render Tactical Layer Markers (Incidents, Shelters, Responders)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const map = mapInstanceRef.current
@@ -208,19 +303,32 @@ export const SalvusLeafletMap = ({
       responders.forEach((unit) => {
         if (!unit.lat || !unit.lng) return
 
+        const isAssigned =
+          unit.status === 'ASSIGNED' || unit.status === 'EN_ROUTE' || unit.status === 'NEARBY'
+        const isSelectedUnit = activeRoute && unit.id === activeRoute.responderId
+
         const unitIcon = L.divIcon({
           className: 'custom-responder-pin',
           html: `
-            <div class="flex items-center justify-center w-6 h-6 rounded-full bg-[#0F1724] border border-blue-400/80 text-blue-300 shadow-md text-xs">
-              <span class="text-[10px]">🚤</span>
+            <div class="relative flex items-center justify-center w-7 h-7 rounded-full ${
+              isSelectedUnit
+                ? 'bg-sky-500 border-2 border-white shadow-[0_0_12px_#38BDF8] text-white'
+                : isAssigned
+                  ? 'bg-blue-600 border-2 border-sky-300 text-white shadow-md'
+                  : 'bg-[#0F1724] border border-blue-400/80 text-blue-300 shadow-md'
+            } text-xs">
+              <span class="text-[11px]">🚤</span>
             </div>
           `,
-          iconSize: [24, 24],
-          iconAnchor: [12, 12],
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
         })
 
-        const unitMarker = L.marker([unit.lat, unit.lng], { icon: unitIcon }).bindPopup(`
-          <div class="p-3 text-slate-200 text-xs font-sans min-w-[200px]">
+        const unitMarker = L.marker([unit.lat, unit.lng], {
+          icon: unitIcon,
+          zIndexOffset: isSelectedUnit ? 600 : 300,
+        }).bindPopup(`
+          <div class="p-3 text-slate-200 text-xs font-sans min-w-[210px]">
             <div class="font-bold text-slate-100 flex items-center gap-1.5 mb-1">
               <span class="text-blue-400">🚤</span>
               <span>${unit.name || 'NDRF Unit'}</span>
@@ -228,7 +336,7 @@ export const SalvusLeafletMap = ({
             <p class="text-slate-400 text-[11px]">${unit.vessel || 'Rescue Vehicle'}</p>
             <div class="mt-2 flex items-center justify-between text-[10px] text-slate-400 bg-slate-900/90 px-2 py-1 rounded border border-slate-800 font-mono">
               <span>FIELD STATUS</span>
-              <span class="text-blue-300 font-semibold">ACTIVE</span>
+              <span class="text-blue-300 font-semibold uppercase">${unit.status || 'ACTIVE'}</span>
             </div>
           </div>
         `)
@@ -259,6 +367,15 @@ export const SalvusLeafletMap = ({
           bgStyle = 'bg-slate-600'
           borderStyle = 'border-slate-400'
           statusBadge = 'bg-slate-900 text-slate-400 border-slate-700'
+        } else if (
+          inc.status === 'ASSIGNED' ||
+          inc.status === 'EN_ROUTE' ||
+          inc.status === 'NEARBY' ||
+          inc.status === 'ON_SCENE'
+        ) {
+          bgStyle = 'bg-sky-500'
+          borderStyle = 'border-sky-300'
+          statusBadge = 'bg-sky-950/60 text-sky-300 border-sky-500/40'
         } else if (inc.status === 'VERIFIED') {
           bgStyle = 'bg-blue-500'
           borderStyle = 'border-blue-300'
@@ -329,13 +446,21 @@ export const SalvusLeafletMap = ({
         group.addLayer(marker)
       })
     }
-  }, [incidents, selectedIncidentId, shelters, responders, showLayers, onSelectIncident])
+  }, [
+    incidents,
+    selectedIncidentId,
+    shelters,
+    responders,
+    showLayers,
+    onSelectIncident,
+    activeRoute,
+  ])
 
   // ---------------------------------------------------------------------------
-  // 5. Auto Focus Selected Incident
+  // 6. Auto Focus Selected Incident
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (!autoFocusSelected || !selectedIncidentId) return
+    if (!autoFocusSelected || !selectedIncidentId || activeRoute?.coordinates?.length) return
     const map = mapInstanceRef.current
     if (!map) return
 
@@ -350,7 +475,7 @@ export const SalvusLeafletMap = ({
         duration: 0.4,
       })
     }
-  }, [selectedIncidentId, autoFocusSelected, incidents])
+  }, [selectedIncidentId, autoFocusSelected, incidents, activeRoute])
 
   return (
     <div className={`relative overflow-hidden rounded-xl border border-slate-800 ${className}`}>

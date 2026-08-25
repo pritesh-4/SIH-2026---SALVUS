@@ -368,6 +368,118 @@ export const updateShelterOccupancy = async (
 }
 
 // ---------------------------------------------------------------------------
+// Routing & Simulation API Calls
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch calculated route between origin and destination coordinates.
+ */
+export const fetchRouteApi = async (
+  originLat,
+  originLon,
+  destLat,
+  destLon,
+  profile = 'driving'
+) => {
+  try {
+    const response = await apiClient.get('/api/routing/route', {
+      params: {
+        origin_lat: originLat,
+        origin_lng: originLon,
+        dest_lat: destLat,
+        dest_lng: destLon,
+        profile,
+      },
+    })
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to calculate route'
+    return {
+      success: false,
+      error: { message, code: error.code || 'ROUTING_ERROR' },
+      data: null,
+    }
+  }
+}
+
+/**
+ * Advance responder through operational journey lifecycle (ASSIGNED -> EN_ROUTE -> NEARBY -> ON_SCENE -> RESOLVED).
+ */
+export const advanceResponderLifecycle = async (
+  responderId,
+  targetStatus,
+  actor = 'authority',
+  notes = null
+) => {
+  try {
+    const response = await apiClient.post(`/api/responders/${responderId}/lifecycle`, {
+      target_status: targetStatus,
+      actor,
+      notes,
+    })
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to advance responder lifecycle'
+    return {
+      success: false,
+      error: { message, code: error.code || 'LIFECYCLE_ERROR' },
+      data: null,
+    }
+  }
+}
+
+/**
+ * Send simulated GPS telemetry step along active route.
+ */
+export const sendSimulationStep = async (stepPayload) => {
+  try {
+    const response = await apiClient.post('/api/simulation/step', stepPayload)
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: { message: error.message },
+      data: null,
+    }
+  }
+}
+
+/**
+ * Reset all simulated fleet units to base seed locations.
+ */
+export const resetSimulationFleet = async () => {
+  try {
+    const response = await apiClient.post('/api/simulation/reset-fleet')
+    return {
+      success: true,
+      data: response.data,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: { message: error.message },
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Developer & Demo Helpers
 // ---------------------------------------------------------------------------
 

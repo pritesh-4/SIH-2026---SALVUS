@@ -8,6 +8,7 @@ import {
   onSocketStatusChange,
 } from '../../../lib/realtime/socket'
 import { watchEmergencyLocation, getCurrentLocation } from '../../../lib/location'
+import { haversineDistanceKm } from '../../../services/routingService'
 
 export const STATE_ORDER = [
   'SOS_ACTIVE',
@@ -37,13 +38,30 @@ const STATUS_TO_STATE_MAP = {
   NEW: 'SOS_ACTIVE',
   TRIAGE_PENDING: 'TRIAGING',
   VERIFIED: 'VERIFIED',
+  ASSIGNED: 'ASSIGNED',
+  EN_ROUTE: 'EN_ROUTE',
+  NEARBY: 'NEARBY',
+  ON_SCENE: 'ON_SCENE',
   RESOLVED: 'RESOLVED',
   CANCELLED: 'CANCELLED',
+}
+
+const STATUS_RANKS = {
+  NEW: 1,
+  TRIAGE_PENDING: 2,
+  VERIFIED: 3,
+  ASSIGNED: 4,
+  EN_ROUTE: 5,
+  NEARBY: 6,
+  ON_SCENE: 7,
+  RESOLVED: 8,
+  CANCELLED: 8,
 }
 
 export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId = null) => {
   const [incidentId, setIncidentId] = useState(activeIncidentId)
   const [liveIncident, setLiveIncident] = useState(null)
+  const [assignedResponder, setAssignedResponder] = useState(null)
   const [currentState, setCurrentState] = useState(initialState)
   const [isAutoPlaying, setIsAutoPlaying] = useState(false)
   const [simulationSpeed, setSimulationSpeed] = useState(1) // 1x, 1.5x, 2x
@@ -91,14 +109,6 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
         console.log(`[Citizen Realtime] Status updated for ${incidentId} -> ${payload.status}`)
         const mappedState = STATUS_TO_STATE_MAP[payload.status] || 'SOS_ACTIVE'
 
-        const STATUS_RANKS = {
-          NEW: 1,
-          TRIAGE_PENDING: 2,
-          VERIFIED: 3,
-          RESOLVED: 4,
-          CANCELLED: 4,
-        }
-
         setLiveIncident((prev) => {
           if (prev) {
             const currentRank = STATUS_RANKS[prev.status] || 0
@@ -114,6 +124,37 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
       }
     })
 
+    // Listen for assignment created event
+    const unsubscribeAssign = subscribeToEvent('assignment:created', (payload) => {
+      if (!isMounted) return
+      if (payload.incident_id === incidentId || payload.id === incidentId) {
+        console.log('[Citizen Realtime] Responder assigned:', payload.responder?.unit_name)
+        if (payload.responder) {
+          setAssignedResponder(payload.responder)
+        }
+        setCurrentState('ASSIGNED')
+      }
+    })
+
+    // Listen for live responder location telemetry
+    const unsubscribeLoc = subscribeToEvent('responder:location_updated', (payload) => {
+      if (!isMounted) return
+      if (payload.assigned_incident_id === incidentId || assignedResponder?.id === payload.id) {
+        setAssignedResponder((prev) => (prev ? { ...prev, ...payload } : payload))
+      }
+    })
+
+    // Listen for live responder status updates
+    const unsubscribeRespStatus = subscribeToEvent('responder:status_changed', (payload) => {
+      if (!isMounted) return
+      if (payload.assigned_incident_id === incidentId || assignedResponder?.id === payload.id) {
+        setAssignedResponder((prev) => (prev ? { ...prev, ...payload } : payload))
+        if (STATUS_TO_STATE_MAP[payload.status]) {
+          setCurrentState(STATUS_TO_STATE_MAP[payload.status])
+        }
+      }
+    })
+
     // Listen for socket connectivity health
     const unsubscribeConn = onSocketStatusChange((status) => {
       if (isMounted) {
@@ -125,9 +166,12 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
       isMounted = false
       leaveRoom(roomName)
       unsubscribeStatus()
+      unsubscribeAssign()
+      unsubscribeLoc()
+      unsubscribeRespStatus()
       unsubscribeConn()
     }
-  }, [incidentId])
+  }, [incidentId, assignedResponder?.id])
 
   // -------------------------------------------------------------------------
   // 2. Emergency Mode Geolocation Watcher (Privacy-compliant)
@@ -166,7 +210,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
   }, [currentState])
 
   // -------------------------------------------------------------------------
-  // 3. Computed State Metadata
+  // 3. Computed State Metadata & Live Distance/ETA
   // -------------------------------------------------------------------------
   const currentInfo = useMemo(() => {
     return emergencyFlowData.states[currentState] || emergencyFlowData.states.SOS_ACTIVE
@@ -180,20 +224,48 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     )
   }, [currentState])
 
+  // Dynamic live distance calculation if live telemetry is active
+  const dynamicDistanceKm = useMemo(() => {
+    if (
+      assignedResponder?.latitude &&
+      assignedResponder?.longitude &&
+      liveIncident?.latitude &&
+      liveIncident?.longitude
+    ) {
+      return haversineDistanceKm(
+        assignedResponder.latitude,
+        assignedResponder.longitude,
+        liveIncident.latitude,
+        liveIncident.longitude
+      )
+    }
+    return null
+  }, [assignedResponder, liveIncident])
+
+  const distanceText = useMemo(() => {
+    if (dynamicDistanceKm !== null) {
+      return dynamicDistanceKm < 0.1 ? '< 100m' : `${dynamicDistanceKm} km`
+    }
+    return currentInfo.distanceText || '1.4 km'
+  }, [dynamicDistanceKm, currentInfo])
+
   const etaMinutes = useMemo(() => {
+    if (dynamicDistanceKm !== null) {
+      const speedKmh = assignedResponder?.capability === 'FLOOD_BOAT' ? 24 : 35
+      return Math.max(1, Math.round((dynamicDistanceKm / speedKmh) * 60))
+    }
     if (typeof currentInfo.etaMinutes !== 'undefined') {
       return currentInfo.etaMinutes
     }
-    return 7
-  }, [currentInfo])
-
-  const distanceText = useMemo(() => {
-    return currentInfo.distanceText || '1.8 km'
-  }, [currentInfo])
+    return 5
+  }, [dynamicDistanceKm, assignedResponder, currentInfo])
 
   const responderPos = useMemo(() => {
+    if (currentState === 'NEARBY') return { x: 62, y: 38 }
+    if (currentState === 'ON_SCENE' || currentState === 'RESOLVED') return { x: 68, y: 34 }
+    if (currentState === 'EN_ROUTE') return { x: 44, y: 55 }
     return currentInfo.responderPos || { x: 22, y: 76 }
-  }, [currentInfo])
+  }, [currentState, currentInfo])
 
   const focalCategory = useMemo(() => {
     switch (currentState) {
@@ -248,6 +320,19 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
       userLocation,
     }
   }, [liveIncident, userLocation])
+
+  const dynamicResponder = useMemo(() => {
+    if (assignedResponder) {
+      return {
+        unitName: assignedResponder.unit_name || 'NDRF Unit 4',
+        lead: assignedResponder.team_lead || 'Capt. A. Roy',
+        vehicle: assignedResponder.vehicle_type || 'Gemini Z-Craft Inflatable',
+        channel: assignedResponder.radio_channel || 'VHF Ch. 4',
+        status: assignedResponder.status || 'ASSIGNED',
+      }
+    }
+    return emergencyFlowData.responder
+  }, [assignedResponder])
 
   // Dynamic timeline mapping
   const timelineSteps = useMemo(() => {
@@ -329,6 +414,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     setCurrentState('SOS_ACTIVE')
     setLocationStatus('ACTIVE')
     setConnectivityStatus('CONNECTED')
+    setAssignedResponder(null)
   }, [])
 
   const triggerSos = useCallback(() => {
@@ -405,7 +491,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     confirmCancelEmergency,
     incident: dynamicIncident,
     aiTriage: emergencyFlowData.aiTriage,
-    responder: emergencyFlowData.responder,
+    responder: dynamicResponder,
     routes: emergencyFlowData.routes,
     timelineSteps,
     instructions: currentInstructions,
