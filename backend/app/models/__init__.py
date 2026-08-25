@@ -447,6 +447,7 @@ class RouteProfile(StrEnum):
 class RouteStatus(StrEnum):
     OPTIMAL_OSRM = "OPTIMAL_OSRM"
     FALLBACK_CORRIDOR = "FALLBACK_CORRIDOR"
+    ROUTE_UNAVAILABLE = "ROUTE_UNAVAILABLE"
     ERROR = "ERROR"
 
 
@@ -467,11 +468,15 @@ class RouteResponse(BaseModel):
     distance_meters: float
     duration_seconds: float
     duration_minutes: float
+    eta_seconds: float | None = None
     eta_formatted: str
-    coordinates: list[list[float]]
+    coordinates: list[list[float]]  # Leaflet [lat, lon] pairs
+    geometry: list[list[float]] | None = None  # GeoJSON / coordinate alias
     profile: str
     status: RouteStatus
     summary: str | None = None
+    provider: str = "osrm"  # "osrm" or "salvus_fallback"
+    calculated_at: str | None = None  # ISO timestamp
     is_fallback: bool = False
 
 

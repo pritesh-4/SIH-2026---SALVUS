@@ -127,12 +127,9 @@ export const SalvusLeafletMap = ({
     if (!showLayers.routes) return
 
     // A. Candidate Preview Route (Dashed amber or slate)
-    if (
-      previewRoute &&
-      Array.isArray(previewRoute.coordinates) &&
-      previewRoute.coordinates.length >= 2
-    ) {
-      const previewPolyline = L.polyline(previewRoute.coordinates, {
+    const prevCoords = previewRoute?.coordinates || previewRoute?.geometry
+    if (previewRoute && Array.isArray(prevCoords) && prevCoords.length >= 2) {
+      const previewPolyline = L.polyline(prevCoords, {
         color: previewRoute.color || '#f59e0b',
         weight: 3,
         opacity: 0.8,
@@ -144,19 +141,19 @@ export const SalvusLeafletMap = ({
     }
 
     // B. Primary Active Dispatch Route (Glowing tactical corridor)
-    if (
-      activeRoute &&
-      Array.isArray(activeRoute.coordinates) &&
-      activeRoute.coordinates.length >= 2
-    ) {
-      const coords = activeRoute.coordinates
-      const isFallback = activeRoute.isFallback || activeRoute.status === 'FALLBACK_CORRIDOR'
+    const activeCoords = activeRoute?.coordinates || activeRoute?.geometry
+    if (activeRoute && Array.isArray(activeCoords) && activeCoords.length >= 2) {
+      const coords = activeCoords
+      const isFallback =
+        activeRoute.isFallback ||
+        activeRoute.is_fallback ||
+        activeRoute.status === 'FALLBACK_CORRIDOR'
 
-      // Outer glow corridor
+      // Outer glow corridor (calm restrained styling)
       const outerCorridor = L.polyline(coords, {
         color: isFallback ? '#0369a1' : '#0284c7',
-        weight: 8,
-        opacity: 0.25,
+        weight: 7,
+        opacity: 0.22,
         lineCap: 'round',
         lineJoin: 'round',
       })
@@ -176,28 +173,31 @@ export const SalvusLeafletMap = ({
       // Midpoint ETA / Distance tactical pill badge
       const midIdx = Math.floor(coords.length / 2)
       const midPoint = coords[midIdx]
-      if (midPoint && (activeRoute.etaFormatted || activeRoute.distanceKm)) {
+      const distKm = activeRoute.distanceKm || activeRoute.distance_km
+      const etaStr = activeRoute.etaFormatted || activeRoute.eta_formatted
+
+      if (midPoint && (etaStr || distKm != null)) {
         const etaBadgeIcon = L.divIcon({
           className: 'custom-route-badge',
           html: `
-            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#080E17]/95 border border-sky-500/60 shadow-lg text-[10px] font-mono font-bold text-sky-300 whitespace-nowrap">
+            <div class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#080E17]/95 border border-sky-500/60 shadow-lg text-[10px] font-mono font-bold text-sky-300 whitespace-nowrap">
               <span class="h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping"></span>
-              <span>${activeRoute.etaFormatted || 'ETA 4m'}</span>
-              <span class="text-slate-400 font-normal">(${activeRoute.distanceKm || '1.2'} km)</span>
+              <span>${etaStr || 'ETA 4m'}</span>
+              ${distKm != null ? `<span class="text-slate-400 font-normal">(${distKm} km)</span>` : ''}
             </div>
           `,
-          iconSize: [110, 22],
-          iconAnchor: [55, 11],
+          iconSize: [120, 22],
+          iconAnchor: [60, 11],
         })
 
         const etaMarker = L.marker(midPoint, { icon: etaBadgeIcon, zIndexOffset: 200 })
         routeGroup.addLayer(etaMarker)
       }
 
-      // Auto-fit bounds if requested
-      if (coords.length > 0) {
+      // Auto-fit bounds
+      if (coords.length > 1) {
         const bounds = L.latLngBounds(coords)
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15, animate: true })
+        map.fitBounds(bounds, { padding: [45, 45], maxZoom: 15, animate: true })
       }
     }
   }, [activeRoute, previewRoute, showLayers.routes])

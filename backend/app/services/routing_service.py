@@ -1,7 +1,7 @@
 """Salvus Routing Service — Dedicated OSRM integration with resilient fallback.
 
 Provides clean routing abstraction with:
-- Async OSRM API integration (driving, walking, emergency transit)
+- Async OSRM API integration (driving, walking, emergency watercraft transit)
 - In-memory TTL caching to prevent excessive redundant API calls
 - Offline resilient vector corridor calculation if OSRM is unreachable
 - Normalized distance, duration, ETA, and coordinate arrays [[lat, lon], ...]
@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 import os
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -22,12 +23,30 @@ from app.models import RouteProfile, RouteResponse, RouteStatus
 # Configuration & Constants
 # ---------------------------------------------------------------------------
 
-OSRM_BASE_URL = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org").rstrip("/")
+DEFAULT_OSRM_URL = "https://router.project-osrm.org"
 REQUEST_TIMEOUT_SECONDS = 3.0
 CACHE_TTL_SECONDS = 300.0  # 5-minute route cache
 
+
+def get_osrm_base_url() -> str:
+    """Resolve OSRM base URL dynamically from environment."""
+    return os.getenv("OSRM_BASE_URL", DEFAULT_OSRM_URL).rstrip("/")
+
+
 # In-memory LRU/TTL Route Cache: {(lat1, lon1, lat2, lon2, profile): (RouteResponse, expire_time)}
 _ROUTE_CACHE: dict[tuple[float, float, float, float, str], tuple[RouteResponse, float]] = {}
+
+
+def validate_coordinates(lat1: float, lon1: float, lat2: float, lon2: float) -> None:
+    """Validate geographic coordinates bounds."""
+    for name, val, min_v, max_v in [
+        ("origin_latitude", lat1, -90.0, 90.0),
+        ("origin_longitude", lon1, -180.0, 180.0),
+        ("destination_latitude", lat2, -90.0, 90.0),
+        ("destination_longitude", lon2, -180.0, 180.0),
+    ]:
+        if not isinstance(val, (int, float)) or math.isnan(val) or val < min_v or val > max_v:
+            raise ValueError(f"Invalid coordinate {name}={val}; must be within [{min_v}, {max_v}]")
 
 
 def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -45,6 +64,8 @@ def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) ->
 
 def format_eta(seconds: float) -> str:
     """Format duration in seconds into clean human-readable ETA (e.g., '4 min', '1 hr 12 min')."""
+    if seconds <= 30:
+        return "1 min"
     minutes = max(1, round(seconds / 60))
     if minutes < 60:
         return f"{minutes} min"
@@ -74,44 +95,51 @@ def _generate_fallback_corridor(
         speed_kmh = 24.0
 
     duration_hours = dist_km / max(1.0, speed_kmh)
-    duration_seconds = max(30.0, round(duration_hours * 3600, 1))
+    duration_seconds = max(30.0, round(duration_hours * 3600, 1)) if dist_km > 0.01 else 0.0
     duration_minutes = round(duration_seconds / 60, 1)
 
-    # Generate 15 interpolated waypoints with slight realistic curvature
-    num_points = 15
-    coordinates: list[list[float]] = []
+    # Handle identical origin and destination
+    if dist_km < 0.001:
+        coordinates = [[round(origin_lat, 6), round(origin_lon, 6)]]
+    else:
+        # Generate 15 interpolated waypoints with slight realistic curvature
+        num_points = 15
+        coordinates = []
 
-    # Perpendicular vector for slight curve offset (arc)
-    mid_lat = (origin_lat + dest_lat) / 2.0
-    mid_lon = (origin_lon + dest_lon) / 2.0
-    dlat = dest_lat - origin_lat
-    dlon = dest_lon - origin_lon
+        mid_lat = (origin_lat + dest_lat) / 2.0
+        mid_lon = (origin_lon + dest_lon) / 2.0
+        dlat = dest_lat - origin_lat
+        dlon = dest_lon - origin_lon
 
-    # Small orthogonal displacement based on distance
-    perp_scale = 0.08  # 8% arc height
-    offset_lat = -dlon * perp_scale
-    offset_lon = dlat * perp_scale
+        perp_scale = 0.08  # 8% arc height
+        offset_lat = -dlon * perp_scale
+        offset_lon = dlat * perp_scale
 
-    for i in range(num_points):
-        t = i / (num_points - 1)
-        # Quadratic bezier interpolation: (1-t)^2*P0 + 2(1-t)t*Pctrl + t^2*P1
-        ctrl_lat = mid_lat + offset_lat
-        ctrl_lon = mid_lon + offset_lon
+        for i in range(num_points):
+            t = i / (num_points - 1)
+            ctrl_lat = mid_lat + offset_lat
+            ctrl_lon = mid_lon + offset_lon
 
-        lat = (1 - t) ** 2 * origin_lat + 2 * (1 - t) * t * ctrl_lat + t**2 * dest_lat
-        lon = (1 - t) ** 2 * origin_lon + 2 * (1 - t) * t * ctrl_lon + t**2 * dest_lon
-        coordinates.append([round(lat, 6), round(lon, 6)])
+            lat = (1 - t) ** 2 * origin_lat + 2 * (1 - t) * t * ctrl_lat + t**2 * dest_lat
+            lon = (1 - t) ** 2 * origin_lon + 2 * (1 - t) * t * ctrl_lon + t**2 * dest_lon
+            coordinates.append([round(lat, 6), round(lon, 6)])
+
+    now_iso = datetime.now(UTC).isoformat()
 
     return RouteResponse(
         distance_km=dist_km,
         distance_meters=dist_meters,
         duration_seconds=duration_seconds,
         duration_minutes=duration_minutes,
-        eta_formatted=format_eta(duration_seconds),
+        eta_seconds=duration_seconds,
+        eta_formatted=format_eta(duration_seconds) if dist_km > 0.001 else "Immediate",
         coordinates=coordinates,
+        geometry=coordinates,
         profile=profile,
         status=RouteStatus.FALLBACK_CORRIDOR,
         summary="Emergency Vector Corridor (Offline/Fallback)",
+        provider="salvus_fallback",
+        calculated_at=now_iso,
         is_fallback=True,
     )
 
@@ -140,6 +168,8 @@ async def get_route(
 
     Queries OSRM service with automatic fallback to vector corridor on timeout/error.
     """
+    validate_coordinates(origin_lat, origin_lon, dest_lat, dest_lon)
+
     profile_str = profile.value if isinstance(profile, RouteProfile) else str(profile).lower()
     cache_key = _get_cache_key(origin_lat, origin_lon, dest_lat, dest_lon, profile_str)
 
@@ -160,10 +190,11 @@ async def get_route(
 
     # Map profile to OSRM profiles ('driving' or 'walking')
     osrm_profile = "driving" if profile_str in ("driving", "car") else "walking"
+    base_url = get_osrm_base_url()
 
     # OSRM coordinate format: lon,lat;lon,lat
     url = (
-        f"{OSRM_BASE_URL}/route/v1/{osrm_profile}/"
+        f"{base_url}/route/v1/{osrm_profile}/"
         f"{origin_lon},{origin_lat};{dest_lon},{dest_lat}"
         "?overview=full&geometries=geojson"
     )
@@ -190,7 +221,7 @@ async def get_route(
                     [round(pt[1], 6), round(pt[0], 6)] for pt in raw_coords
                 ]
 
-                # If OSRM returned empty coordinates, generate points
+                # If OSRM returned empty coordinates, generate direct segment
                 if not coordinates:
                     coordinates = [
                         [origin_lat, origin_lon],
@@ -198,17 +229,22 @@ async def get_route(
                     ]
 
                 summary = best_route.get("legs", [{}])[0].get("summary", "OSRM Navigated Route")
+                now_iso = datetime.now(UTC).isoformat()
 
                 route_resp = RouteResponse(
                     distance_km=dist_km,
                     distance_meters=dist_meters,
                     duration_seconds=dur_seconds,
                     duration_minutes=dur_minutes,
+                    eta_seconds=dur_seconds,
                     eta_formatted=format_eta(dur_seconds),
                     coordinates=coordinates,
+                    geometry=coordinates,
                     profile=profile_str,
                     status=RouteStatus.OPTIMAL_OSRM,
                     summary=summary or "OSRM Optimized Route",
+                    provider="osrm",
+                    calculated_at=now_iso,
                     is_fallback=False,
                 )
 

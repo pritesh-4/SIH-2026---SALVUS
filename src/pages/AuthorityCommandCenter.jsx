@@ -97,6 +97,7 @@ export const AuthorityCommandCenter = () => {
   // Map Route Vectors
   const [activeRoute, setActiveRoute] = useState(null)
   const [previewRoute, setPreviewRoute] = useState(null)
+  const lastRouteKeyRef = useRef(null)
 
   const loadSituationIntelligence = useCallback(async () => {
     setIsRefreshingSituation(true)
@@ -224,31 +225,43 @@ export const AuthorityCommandCenter = () => {
         const primaryTarget =
           assigned || candRes.data.find((c) => c.is_recommended) || candRes.data[0]
 
-        if (primaryTarget) {
-          const profile = primaryTarget.capability === 'FLOOD_BOAT' ? 'boat' : 'driving'
-          const routeRes = await fetchRoute(
-            primaryTarget.latitude,
-            primaryTarget.longitude,
-            selectedIncident.latitude,
-            selectedIncident.longitude,
-            profile
-          )
-          if (routeRes.success && isMounted) {
-            setActiveRoute({
-              responderId: primaryTarget.id,
-              coordinates: routeRes.data.coordinates,
-              distanceKm: routeRes.data.distance_km,
-              etaFormatted: routeRes.data.eta_formatted,
-              status: routeRes.data.status,
-              isFallback: routeRes.data.is_fallback,
-              label: `${primaryTarget.unit_name || primaryTarget.unitName} Route`,
-            })
+        if (primaryTarget && primaryTarget.latitude && primaryTarget.longitude) {
+          const routeKey = `${selectedIncident.id}_${primaryTarget.id}_${primaryTarget.latitude}_${primaryTarget.longitude}_${selectedIncident.latitude}_${selectedIncident.longitude}`
+          if (lastRouteKeyRef.current !== routeKey) {
+            lastRouteKeyRef.current = routeKey
+            const profile = primaryTarget.capability === 'FLOOD_BOAT' ? 'boat' : 'driving'
+            const routeRes = await fetchRoute(
+              primaryTarget.latitude,
+              primaryTarget.longitude,
+              selectedIncident.latitude,
+              selectedIncident.longitude,
+              profile
+            )
+            if (routeRes.success && isMounted && routeRes.data) {
+              setActiveRoute({
+                responderId: primaryTarget.id,
+                coordinates: routeRes.data.coordinates || routeRes.data.geometry || [],
+                geometry: routeRes.data.geometry || routeRes.data.coordinates || [],
+                distanceKm: routeRes.data.distance_km,
+                distanceMeters: routeRes.data.distance_meters,
+                durationSeconds: routeRes.data.duration_seconds,
+                etaFormatted: routeRes.data.eta_formatted,
+                provider: routeRes.data.provider,
+                status: routeRes.data.status,
+                isFallback: routeRes.data.is_fallback,
+                label: `${primaryTarget.unit_name || primaryTarget.unitName || 'Unit'} Route`,
+              })
+            }
           }
         }
-      } else {
+      } else if (isMounted) {
         setCandidateList([])
+        setActiveRoute(null)
+        lastRouteKeyRef.current = null
       }
-      setIsLoadingCandidates(false)
+      if (isMounted) {
+        setIsLoadingCandidates(false)
+      }
     }
 
     loadCandidatesAndRoute()
@@ -441,6 +454,26 @@ export const AuthorityCommandCenter = () => {
   const topRecommendedCandidate = useMemo(() => {
     return candidateResponders.find((c) => c.is_recommended) || candidateResponders[0] || null
   }, [candidateResponders])
+
+  const activeTargetResponder = useMemo(() => {
+    if (!selectedIncident) return null
+    if (currentlyAssignedResponder) return currentlyAssignedResponder
+    if (activeRoute?.responderId) {
+      return (
+        liveResponders.find((r) => r.id === activeRoute.responderId) ||
+        candidateResponders.find((c) => c.id === activeRoute.responderId) ||
+        null
+      )
+    }
+    return topRecommendedCandidate || null
+  }, [
+    selectedIncident,
+    currentlyAssignedResponder,
+    activeRoute,
+    liveResponders,
+    candidateResponders,
+    topRecommendedCandidate,
+  ])
 
   const alternativeCandidates = useMemo(() => {
     return candidateResponders.slice(0, 3)
@@ -1168,6 +1201,58 @@ export const AuthorityCommandCenter = () => {
                     isVerifying={isVerifyingTriage}
                     isAnalyzing={isAnalyzingTriage}
                   />
+
+                  {/* RESTRAINED TACTICAL PATHWAY (RESPONDER -> ROUTE -> INCIDENT) */}
+                  {activeRoute && activeTargetResponder && (
+                    <div className="bg-[#080E17] border border-[#162230] p-2.5 rounded-lg space-y-1.5 font-mono text-[10px]">
+                      <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold flex items-center justify-between pb-1 border-b border-[#141C28]">
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
+                          Tactical Dispatch Pathway
+                        </span>
+                        <span className="text-sky-400/90 text-[8px] bg-sky-950/60 px-1.5 py-0.2 rounded border border-sky-500/30">
+                          {activeRoute.isFallback ? 'Vector Fallback' : 'OSRM Validated'}
+                        </span>
+                      </div>
+
+                      {/* 1. Responder */}
+                      <div className="flex items-center gap-2 text-slate-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0"></span>
+                        <span className="text-slate-400 shrink-0">RESPONDER:</span>
+                        <span className="font-bold text-slate-100 truncate">
+                          {activeTargetResponder.unit_name || activeTargetResponder.unitName}
+                        </span>
+                        <span className="text-[9px] text-slate-500 truncate">
+                          (
+                          {activeTargetResponder.vehicle_type ||
+                            activeTargetResponder.capability ||
+                            'Unit'}
+                          )
+                        </span>
+                      </div>
+
+                      {/* 2. Route */}
+                      <div className="flex items-center gap-2 pl-3 text-sky-300 py-0.5 border-l border-sky-500/30 ml-0.5 my-0.5">
+                        <span className="text-[9px] text-slate-400">↓ ROUTE:</span>
+                        <span className="font-bold">{activeRoute.distanceKm} km</span>
+                        <span className="text-slate-500">·</span>
+                        <span className="font-bold">{activeRoute.etaFormatted} ETA</span>
+                      </div>
+
+                      {/* 3. Incident */}
+                      <div className="flex items-center gap-2 text-slate-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-400 shrink-0"></span>
+                        <span className="text-slate-400 shrink-0">INCIDENT:</span>
+                        <span className="font-bold text-slate-100">
+                          {selectedIncident.ticket_id ||
+                            `#${(selectedIncident.id || '').slice(-4)}`}
+                        </span>
+                        <span className="text-[9px] text-slate-400 truncate max-w-[130px]">
+                          ({selectedIncident.location_name || 'Target Grid'})
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* EXPLAINABLE ALLOCATION SECTION OR ACTIVE MISSION */}
                   {currentlyAssignedResponder ? (
