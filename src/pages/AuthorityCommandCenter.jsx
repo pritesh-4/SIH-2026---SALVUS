@@ -1138,6 +1138,7 @@ export const AuthorityCommandCenter = () => {
               onSelectIncident={(inc) => handleSelectIncident(inc)}
               activeRoute={activeRoute}
               previewRoute={previewRoute}
+              onClearRoute={() => setActiveRoute(null)}
               showLayers={mapLayers}
               className="h-full w-full"
             />
@@ -1296,9 +1297,19 @@ export const AuthorityCommandCenter = () => {
                           <span className="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
                           Tactical Dispatch Pathway
                         </span>
-                        <span className="text-sky-400/90 text-[8px] bg-sky-950/60 px-1.5 py-0.2 rounded border border-sky-500/30">
-                          {activeRoute.isFallback ? 'Vector Fallback' : 'OSRM Validated'}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sky-400/90 text-[8px] bg-sky-950/60 px-1.5 py-0.2 rounded border border-sky-500/30">
+                            {activeRoute.isFallback ? 'Vector Fallback' : 'OSRM Validated'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveRoute(null)}
+                            className="text-slate-400 hover:text-slate-200 text-[8px] font-mono uppercase bg-slate-800 hover:bg-slate-700 px-1.5 py-0.2 rounded border border-slate-700 cursor-pointer"
+                            title="Clear route visualization"
+                          >
+                            ✕ Clear
+                          </button>
+                        </div>
                       </div>
 
                       {/* 1. Responder */}
@@ -1700,6 +1711,18 @@ export const AuthorityCommandCenter = () => {
                     <div className="bg-[#121B27] p-1.5 rounded text-[10px] font-mono text-blue-300">
                       Assigned to Ticket #{selectedResponderDetail.assigned_incident_id}
                     </div>
+                  )}
+                  {selectedIncident && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectCandidateRoute(selectedResponderDetail)}
+                      className="w-full py-1.5 px-2 rounded-lg bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 text-sky-300 text-[10px] font-mono font-bold uppercase transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <span>
+                        📍 Plot Route to Incident #
+                        {selectedIncident.ticket_id || selectedIncident.id?.slice(0, 6)}
+                      </span>
+                    </button>
                   )}
                   <div className="grid grid-cols-3 gap-1 pt-1">
                     <button

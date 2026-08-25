@@ -286,3 +286,60 @@ Fetches single evacuation shelter hub.
 ### `PATCH /api/shelters/{id}`
 
 Updates shelter bed availability, occupancy percentage, or supplies readiness state.
+
+---
+
+## 6. Routing & Navigational Geometry API (IMPLEMENTED ✅)
+
+> **Architectural Boundary Notice:**
+>
+> - `ROUTING SERVICE FOUNDATION (OSRM + Normalized Fallback)` = **IMPLEMENTED & ACTIVE ✅**
+> - `RESPONDER SCORING & ALLOCATION` = **FUTURE ⏳**
+> - `AI DISPATCH OPTIMIZATION` = **FUTURE ⏳**
+
+The routing layer provides a clean, normalized abstraction for distance, ETA, and geometry between GPS coordinates. React components and frontend modules never call OSRM directly; all routing requests pass through the Salvus backend.
+
+### `GET /api/routes` / `GET /api/routing/route`
+
+Computes route distance, ETA, and geometry between origin and destination coordinates using OSRM with automatic resilient fallback.
+
+- **Query Parameters:**
+  - `origin_lat`, `origin_lng` (or `origin` as `"lat,lon"`)
+  - `dest_lat`, `dest_lng` (or `destination` as `"lat,lon"`)
+  - `profile`: `driving` | `walking` | `boat` (Default: `driving`)
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "distance_km": 4.2,
+      "distance_meters": 4200.5,
+      "duration_seconds": 540.0,
+      "duration_minutes": 9.0,
+      "eta_seconds": 540.0,
+      "eta_formatted": "9 min",
+      "coordinates": [
+        [22.5726, 88.3639],
+        [22.575, 88.39],
+        [22.58, 88.435]
+      ],
+      "geometry": [
+        [22.5726, 88.3639],
+        [22.575, 88.39],
+        [22.58, 88.435]
+      ],
+      "profile": "driving",
+      "status": "OPTIMAL_OSRM",
+      "summary": "Sector V Expressway",
+      "provider": "osrm",
+      "calculated_at": "2026-08-25T18:15:00+00:00",
+      "is_fallback": false
+    }
+  }
+  ```
+- **Error Responses:**
+  - `422 Unprocessable Entity` (`INVALID_COORDINATES`): Invalid coordinate bounds (latitude outside [-90, 90] or longitude outside [-180, 180]).
+
+### `POST /api/routes` / `POST /api/routing/route`
+
+Computes route from request body payload (`origin_latitude`, `origin_longitude`, `destination_latitude`, `destination_longitude`, `profile`).

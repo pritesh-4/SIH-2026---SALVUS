@@ -6,7 +6,8 @@ import L from 'leaflet'
  *
  * High-performance OpenStreetMap tactical surface with calm styling,
  * standardized semantic markers, smooth camera transitions,
- * dynamic OSRM / vector corridor polyline rendering, and automatic viewport resize handling.
+ * dynamic OSRM / vector corridor polyline rendering, marker recession,
+ * and automatic viewport resize handling.
  */
 
 const DEFAULT_CENTER = [22.5726, 88.3639]
@@ -23,8 +24,9 @@ export const SalvusLeafletMap = ({
   responders = [],
   hazards = [],
   clusters = [],
-  activeRoute = null, // { coordinates: [[lat, lon], ...], distanceKm, etaFormatted, status, isFallback, label }
+  activeRoute = null, // { coordinates: [[lat, lon], ...], distanceKm, etaFormatted, status, isFallback, label, responderId }
   previewRoute = null, // { coordinates: [[lat, lon], ...], label, color }
+  onClearRoute = null,
   showLayers = {
     incidents: true,
     shelters: true,
@@ -180,24 +182,24 @@ export const SalvusLeafletMap = ({
         const etaBadgeIcon = L.divIcon({
           className: 'custom-route-badge',
           html: `
-            <div class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#080E17]/95 border border-sky-500/60 shadow-lg text-[10px] font-mono font-bold text-sky-300 whitespace-nowrap">
+            <div class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#080E17]/95 border border-sky-500/60 shadow-lg text-[10px] font-mono font-bold text-sky-300 whitespace-nowrap backdrop-blur-sm">
               <span class="h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping"></span>
               <span>${etaStr || 'ETA 4m'}</span>
               ${distKm != null ? `<span class="text-slate-400 font-normal">(${distKm} km)</span>` : ''}
             </div>
           `,
-          iconSize: [120, 22],
-          iconAnchor: [60, 11],
+          iconSize: [130, 22],
+          iconAnchor: [65, 11],
         })
 
         const etaMarker = L.marker(midPoint, { icon: etaBadgeIcon, zIndexOffset: 200 })
         routeGroup.addLayer(etaMarker)
       }
 
-      // Auto-fit bounds
+      // Auto-fit bounds including all path waypoints with comfortable padding
       if (coords.length > 1) {
         const bounds = L.latLngBounds(coords)
-        map.fitBounds(bounds, { padding: [45, 45], maxZoom: 15, animate: true })
+        map.fitBounds(bounds, { padding: [55, 55], maxZoom: 15, animate: true })
       }
     }
   }, [activeRoute, previewRoute, showLayers.routes])
@@ -263,7 +265,7 @@ export const SalvusLeafletMap = ({
   }, [userLocation])
 
   // ---------------------------------------------------------------------------
-  // 5. Render Tactical Layer Markers (Incidents, Shelters, Responders)
+  // 5. Render Tactical Layer Markers (with Visual Recession when Route is Active)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const map = mapInstanceRef.current
@@ -271,6 +273,9 @@ export const SalvusLeafletMap = ({
     if (!map || !group) return
 
     group.clearLayers()
+
+    const isRouteActive = Boolean(activeRoute?.coordinates?.length)
+    const targetResponderId = activeRoute?.responderId
 
     // 0. Hazards Layer (Perimeter Circles & Risk Zones)
     if (showLayers.hazards !== false && hazards.length > 0) {
@@ -286,9 +291,9 @@ export const SalvusLeafletMap = ({
           radius: (hz.affected_radius_km || 2.0) * 1000,
           color: strokeColor,
           weight: 1.5,
-          opacity: 0.7,
+          opacity: isRouteActive ? 0.4 : 0.7,
           fillColor: fillColor,
-          fillOpacity: 0.12,
+          fillOpacity: isRouteActive ? 0.06 : 0.12,
           dashArray: isCritical ? null : '4, 6',
         }).bindPopup(`
           <div class="p-3 text-slate-200 text-xs font-sans min-w-[220px]">
@@ -322,10 +327,12 @@ export const SalvusLeafletMap = ({
           className: 'custom-cluster-pin',
           html: `
             <div class="flex items-center gap-1 px-2 py-1 rounded-full ${
+              isRouteActive ? 'opacity-40' : ''
+            } ${
               isCritCluster
                 ? 'bg-rose-950/90 border border-rose-500 text-rose-300 shadow-[0_0_10px_#F43F5E]'
                 : 'bg-slate-900/90 border border-sky-500/80 text-sky-300'
-            } text-[10px] font-mono font-bold whitespace-nowrap shadow-lg">
+            } text-[10px] font-mono font-bold whitespace-nowrap shadow-lg transition-opacity">
               <span>📍</span>
               <span>${cl.incident_count} reports</span>
             </div>
@@ -352,7 +359,7 @@ export const SalvusLeafletMap = ({
       })
     }
 
-    // A. Shelters Layer
+    // A. Shelters Layer (Subtly recedes when route is actively inspected)
     if (showLayers.shelters && shelters.length > 0) {
       shelters.forEach((shelter) => {
         if (!shelter.lat || !shelter.lng) return
@@ -364,10 +371,12 @@ export const SalvusLeafletMap = ({
           className: 'custom-shelter-pin',
           html: `
             <div class="flex items-center justify-center w-6 h-6 rounded-md ${
+              isRouteActive ? 'opacity-40 grayscale-40' : ''
+            } ${
               isUnsafe
                 ? 'bg-[#2A1115] border border-rose-500 text-rose-300 shadow-md animate-pulse'
                 : 'bg-[#0F1D1A] border border-emerald-500/60 text-emerald-300 shadow-md'
-            } text-xs">
+            } text-xs transition-opacity">
               <span class="text-[10px]">${isUnsafe ? '⚠️' : '🏠'}</span>
             </div>
           `,
@@ -399,21 +408,24 @@ export const SalvusLeafletMap = ({
       })
     }
 
-    // B. Responders Layer
+    // B. Responders Layer (Target responder highlighted; others softly recede if route is active)
     if (showLayers.responders && responders.length > 0) {
       responders.forEach((unit) => {
         if (!unit.lat || !unit.lng) return
 
         const isAssigned =
           unit.status === 'ASSIGNED' || unit.status === 'EN_ROUTE' || unit.status === 'NEARBY'
-        const isSelectedUnit = activeRoute && unit.id === activeRoute.responderId
+        const isSelectedUnit = targetResponderId && unit.id === targetResponderId
+        const shouldRecede = isRouteActive && !isSelectedUnit
 
         const unitIcon = L.divIcon({
           className: 'custom-responder-pin',
           html: `
-            <div class="relative flex items-center justify-center w-7 h-7 rounded-full ${
+            <div class="relative flex items-center justify-center w-7 h-7 rounded-full transition-all ${
+              shouldRecede ? 'opacity-40 grayscale-40 hover:opacity-100 hover:grayscale-0' : ''
+            } ${
               isSelectedUnit
-                ? 'bg-sky-500 border-2 border-white shadow-[0_0_12px_#38BDF8] text-white'
+                ? 'bg-sky-500 border-2 border-white shadow-[0_0_14px_#38BDF8] ring-2 ring-sky-400 text-white scale-110'
                 : isAssigned
                   ? 'bg-blue-600 border-2 border-sky-300 text-white shadow-md'
                   : 'bg-[#0F1724] border border-blue-400/80 text-blue-300 shadow-md'
@@ -427,7 +439,7 @@ export const SalvusLeafletMap = ({
 
         const unitMarker = L.marker([unit.lat, unit.lng], {
           icon: unitIcon,
-          zIndexOffset: isSelectedUnit ? 600 : 300,
+          zIndexOffset: isSelectedUnit ? 700 : 300,
         }).bindPopup(`
           <div class="p-3 text-slate-200 text-xs font-sans min-w-[210px]">
             <div class="font-bold text-slate-100 flex items-center gap-1.5 mb-1">
@@ -446,12 +458,13 @@ export const SalvusLeafletMap = ({
       })
     }
 
-    // C. Incidents Layer
+    // C. Incidents Layer (Target incident prioritized; others recede when a route is active)
     if (showLayers.incidents && incidents.length > 0) {
       incidents.forEach((inc) => {
         if (typeof inc.latitude !== 'number' || typeof inc.longitude !== 'number') return
 
         const isSelected = inc.id === selectedIncidentId
+        const shouldRecede = isRouteActive && !isSelected
         const isResolved = inc.status === 'RESOLVED'
         const isCancelled = inc.status === 'CANCELLED'
         const isCritical = inc.severity === 'CRITICAL' && !isResolved && !isCancelled
@@ -489,9 +502,11 @@ export const SalvusLeafletMap = ({
 
         const size = isSelected ? 32 : 24
         const pinHtml = `
-          <div class="relative flex items-center justify-center cursor-pointer transition-transform ${
+          <div class="relative flex items-center justify-center cursor-pointer transition-all ${
+            shouldRecede ? 'opacity-40 grayscale-30 hover:opacity-100 hover:grayscale-0' : ''
+          } ${
             isSelected
-              ? 'scale-115 z-50 ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 rounded-full'
+              ? 'scale-115 z-50 ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-900 rounded-full shadow-[0_0_15px_rgba(56,189,248,0.5)]'
               : 'hover:scale-105'
           }" style="width:${size}px; height:${size}px;">
             ${isCritical ? `<span class="absolute inset-0 rounded-full ${bgStyle} opacity-30 animate-ping"></span>` : ''}
@@ -510,7 +525,7 @@ export const SalvusLeafletMap = ({
 
         const marker = L.marker([inc.latitude, inc.longitude], {
           icon: markerIcon,
-          zIndexOffset: isSelected ? 500 : 100,
+          zIndexOffset: isSelected ? 600 : 100,
         })
 
         const popupContent = document.createElement('div')
@@ -582,7 +597,45 @@ export const SalvusLeafletMap = ({
 
   return (
     <div className={`relative overflow-hidden rounded-xl border border-slate-800 ${className}`}>
+      {/* Map Surface */}
       <div ref={mapContainerRef} className="h-full w-full" />
+
+      {/* Floating Tactical Route HUD Overlay (Progressive Disclosure) */}
+      {activeRoute && (
+        <div className="absolute top-3 left-3 z-[400] max-w-sm bg-[#080E17]/90 border border-sky-500/40 rounded-lg p-2.5 shadow-xl backdrop-blur-md font-mono text-[10px] text-slate-200 flex items-center justify-between gap-3 animate-fadeIn">
+          <div className="space-y-0.5 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-pulse shrink-0"></span>
+              <span className="font-bold text-sky-300 truncate">
+                {activeRoute.label || 'Active Tactical Route'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-300 text-[9px]">
+              <span>
+                Distance: <strong>{activeRoute.distanceKm || activeRoute.distance_km} km</strong>
+              </span>
+              <span>·</span>
+              <span>
+                ETA: <strong>{activeRoute.etaFormatted || activeRoute.eta_formatted}</strong>
+              </span>
+              <span className="text-slate-500 text-[8px] bg-slate-800 px-1 py-0.2 rounded border border-slate-700">
+                {activeRoute.isFallback || activeRoute.is_fallback ? 'Vector' : 'OSRM'}
+              </span>
+            </div>
+          </div>
+
+          {onClearRoute && (
+            <button
+              type="button"
+              onClick={onClearRoute}
+              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 text-[9px] font-bold uppercase transition-colors shrink-0 cursor-pointer"
+              title="Clear active route polyline from map"
+            >
+              ✕ Clear
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

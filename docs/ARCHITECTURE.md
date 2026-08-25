@@ -52,7 +52,7 @@ flowchart TB
 > **Architectural Boundary Notice:**
 >
 > - `ASSIGNMENT DOMAIN FOUNDATION` = **IMPLEMENTED & ACTIVE ✅**
-> - `ROUTING = future` (Live OSRM / Corridor routing decoupled)
+> - `ROUTING SERVICE FOUNDATION (OSRM + Normalized Fallback)` = **IMPLEMENTED & ACTIVE ✅**
 > - `SCORING = future` (Deterministic / Multi-factor ranking decoupled)
 > - `AI = future` (Automated dispatch optimization decoupled)
 

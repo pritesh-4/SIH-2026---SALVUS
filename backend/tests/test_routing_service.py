@@ -1,6 +1,7 @@
 """Unit and integration tests for the Salvus routing service and API endpoints."""
 
-from unittest.mock import AsyncMock
+import os
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -10,6 +11,7 @@ from app.models import RouteProfile, RouteStatus
 from app.services.routing_service import (
     clear_route_cache,
     format_eta,
+    get_osrm_base_url,
     get_route,
     haversine_distance_km,
     validate_coordinates,
@@ -55,6 +57,12 @@ def test_validate_coordinates():
 
     with pytest.raises(ValueError, match="destination_longitude"):
         validate_coordinates(22.5726, 88.3639, 22.5800, 185.0)
+
+
+def test_configuration_osrm_url():
+    """Verify OSRM base URL is dynamically read from environment."""
+    with patch.dict(os.environ, {"OSRM_BASE_URL": "http://custom-osrm.internal:5000/"}):
+        assert get_osrm_base_url() == "http://custom-osrm.internal:5000"
 
 
 @pytest.mark.asyncio
@@ -173,6 +181,100 @@ async def test_osrm_timeout_resilience():
     assert route.is_fallback is True
     assert route.provider == "salvus_fallback"
     assert len(route.coordinates) >= 2
+
+
+@pytest.mark.asyncio
+async def test_osrm_provider_error_500_resilience():
+    """Verify fallback corridor when OSRM provider returns HTTP 500/503."""
+    mock_response = Response(
+        status_code=503,
+        text="Service Unavailable",
+        request=httpx.Request("GET", "http://test"),
+    )
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.get.return_value = mock_response
+
+    route = await get_route(
+        origin_lat=22.5726,
+        origin_lon=88.3639,
+        dest_lat=22.5800,
+        dest_lon=88.4350,
+        profile=RouteProfile.DRIVING,
+        client=mock_client,
+    )
+
+    assert route.status == RouteStatus.FALLBACK_CORRIDOR
+    assert route.is_fallback is True
+    assert route.provider == "salvus_fallback"
+
+
+@pytest.mark.asyncio
+async def test_osrm_no_route_code_resilience():
+    """Verify fallback corridor when OSRM returns NoRoute."""
+    mock_response = Response(
+        status_code=200,
+        json={"code": "NoRoute", "routes": []},
+        request=httpx.Request("GET", "http://test"),
+    )
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.get.return_value = mock_response
+
+    route = await get_route(
+        origin_lat=22.5726,
+        origin_lon=88.3639,
+        dest_lat=22.5800,
+        dest_lon=88.4350,
+        profile=RouteProfile.DRIVING,
+        client=mock_client,
+    )
+
+    assert route.status == RouteStatus.FALLBACK_CORRIDOR
+    assert route.is_fallback is True
+    assert route.provider == "salvus_fallback"
+
+
+@pytest.mark.asyncio
+async def test_osrm_network_connection_error():
+    """Verify fallback corridor on network connection failure."""
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.get.side_effect = httpx.ConnectError("Connection refused")
+
+    route = await get_route(
+        origin_lat=22.5726,
+        origin_lon=88.3639,
+        dest_lat=22.5800,
+        dest_lon=88.4350,
+        profile=RouteProfile.DRIVING,
+        client=mock_client,
+    )
+
+    assert route.status == RouteStatus.FALLBACK_CORRIDOR
+    assert route.is_fallback is True
+    assert route.provider == "salvus_fallback"
+
+
+@pytest.mark.asyncio
+async def test_responder_to_incident_routing_integration():
+    """Verify responder-to-incident routing produces normalized distance, ETA, and geometry."""
+    responder_lat = 22.5740
+    responder_lon = 88.3720
+    incident_lat = 22.5780
+    incident_lon = 88.3680
+
+    route = await get_route(
+        origin_lat=responder_lat,
+        origin_lon=responder_lon,
+        dest_lat=incident_lat,
+        dest_lon=incident_lon,
+        profile=RouteProfile.DRIVING,
+    )
+
+    assert route.distance_meters > 0
+    assert route.duration_seconds > 0
+    assert route.eta_formatted is not None
+    assert len(route.geometry) >= 2
+    assert route.provider in ("osrm", "salvus_fallback")
+    assert route.calculated_at is not None
 
 
 @pytest.mark.asyncio
