@@ -7,20 +7,22 @@ Endpoints:
     PATCH  /api/incidents/{id}/status  — Transition incident status
     POST   /api/incidents/dev/seed     — Seed demo incidents (Dev tool)
     POST   /api/incidents/dev/reset    — Reset demo database (Dev tool)
+    GET    /api/incidents/{id}/candidate-pool — Get filtered candidate pool
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.db import get_database
 from app.models import (
+    CandidateGenerationResponse,
     IncidentCreate,
     IncidentListResponse,
     IncidentSingleResponse,
     IncidentStatusUpdate,
 )
-from app.services import incident_service
+from app.services import candidate_generation, incident_service
 
 router = APIRouter(prefix="/api/incidents", tags=["incidents"])
 
@@ -48,6 +50,32 @@ async def list_incidents():
     db = await get_database()
     incidents = await incident_service.get_all_incidents(db)
     return IncidentListResponse(data=incidents, count=len(incidents))
+
+
+@router.get("/{incident_id}/candidate-pool", response_model=CandidateGenerationResponse)
+async def get_incident_candidate_pool(
+    incident_id: str,
+    required_capability: str | None = Query(
+        None, description="Optional required capability override"
+    ),
+):
+    """Retrieve filtered candidate pool (eligible vs excluded) for an incident."""
+    db = await get_database()
+    result = await candidate_generation.get_candidate_pool_for_incident(
+        db, incident_id, required_capability=required_capability
+    )
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "INCIDENT_NOT_FOUND",
+                    "message": f"No incident found with ID '{incident_id}'.",
+                },
+            },
+        )
+    return CandidateGenerationResponse(data=result)
 
 
 @router.get("/{incident_id}", response_model=IncidentSingleResponse)

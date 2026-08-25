@@ -309,6 +309,16 @@ class ScoreBreakdown(BaseModel):
     workload_score: int
     availability_score: int
     severity_fit_score: int
+    max_weights: dict[str, int] = Field(
+        default_factory=lambda: {
+            "capability": 30,
+            "availability": 20,
+            "distance": 15,
+            "eta": 15,
+            "workload": 10,
+            "severity_fit": 10,
+        }
+    )
     severity_alignment: int | None = None
     proximity_score: int | None = None
     workload_penalty: int | None = None
@@ -345,6 +355,7 @@ class CandidateResponderResponse(BaseModel):
     match_score: int
     match_reason: str
     is_recommended: bool
+    rank: int = 1
     explanation: CandidateExplanation | None = None
     route_geometry: list[list[float]] = []
     route_status: str = "ESTIMATED"
@@ -377,6 +388,52 @@ class CandidateEvaluationResponse(BaseModel):
     message: str | None = None
     data: list[CandidateResponderResponse]
     count: int
+
+
+# ---------------------------------------------------------------------------
+# Candidate Generation (Decision Support Filtering) Models
+# ---------------------------------------------------------------------------
+
+
+class CandidateFilterItem(BaseModel):
+    """Individual evaluated responder item with eligibility classification."""
+
+    responder_id: str
+    unit_name: str
+    capability: str
+    status: str
+    is_eligible: bool
+    exclusion_reason: str | None = None
+    match_reason: str | None = None
+    responder: ResponderResponse | None = None
+
+
+class CandidateGenerationResult(BaseModel):
+    """Factual eligibility partition separating eligible from excluded responders."""
+
+    incident_id: str
+    incident_type: str
+    required_capability: str | None = None
+    eligible_responders: list[CandidateFilterItem]
+    excluded_responders: list[CandidateFilterItem]
+    total_evaluated: int
+    total_eligible: int
+    total_excluded: int
+
+
+class CandidateGenerationResponse(BaseModel):
+    """Response envelope for candidate generation / filtering API."""
+
+    success: bool = True
+    data: CandidateGenerationResult
+
+
+class CandidateFilterRequest(BaseModel):
+    """Payload for offline candidate eligibility evaluation."""
+
+    incident: IncidentResponse
+    responders: list[ResponderResponse]
+    required_capability: str | None = None
 
 
 class ResponderLifecycleAdvanceRequest(BaseModel):

@@ -134,3 +134,43 @@ src/
 └── services/
     └── api.js                          # Centralized REST client with dev tools, responders & shelters API
 ```
+
+---
+
+## 6. Explainable Deterministic Allocation Engine (IMPLEMENTED ✅)
+
+> **Architectural Boundary Notice:**
+>
+> - `ASSIGNMENT DOMAIN FOUNDATION` = **IMPLEMENTED & ACTIVE ✅**
+> - `ROUTING SERVICE FOUNDATION (OSRM + Normalized Fallback)` = **IMPLEMENTED & ACTIVE ✅**
+> - `TACTICAL ROUTE VISUALIZATION` = **IMPLEMENTED & ACTIVE ✅**
+> - `RESPONDER CANDIDATE GENERATION (FILTERING)` = **IMPLEMENTED & ACTIVE ✅**
+> - `EXPLAINABLE DETERMINISTIC ALLOCATION ENGINE` = **IMPLEMENTED & ACTIVE ✅**
+> - `AI DISPATCH OPTIMIZATION` = **FUTURE ⏳**
+
+The Allocation Engine evaluates eligible emergency response craft against distress incidents using mathematically auditable, deterministic scoring formulas:
+
+$$S_{\text{total}} = S_{\text{capability}} + S_{\text{availability}} + S_{\text{distance}} + S_{\text{eta}} + S_{\text{workload}} + S_{\text{severity\_fit}}$$
+
+### Centralized Auditable Weights (Max = 100):
+
+| Component                    | Max Weight | Factor Meaning                                                         | Normalization Formula                                                    |
+| ---------------------------- | ---------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| **Capability Match**         | 30         | Specialized equipment fit for hazard type                              | $\text{norm\_cap} \times 30$                                             |
+| **Operational Availability** | 20         | Readiness state (`AVAILABLE` = 1.0, `NEARBY` = 0.75, `EN_ROUTE` = 0.4) | $\text{norm\_avail} \times 20$                                           |
+| **Spatial Proximity**        | 15         | Distance decay within 25 km operational radius                         | $\max(0, 1 - (d / 25)) \times 15$                                        |
+| **Transit ETA**              | 15         | Estimated arrival time within 35 min limit                             | $\max(0, 1 - (t / 35)) \times 15$                                        |
+| **Workload Capacity**        | 10         | Remaining crew / vehicle capacity ratio                                | $(\frac{C_{\text{max}} - C_{\text{current}}}{C_{\text{max}}}) \times 10$ |
+| **Severity Fit**             | 10         | Capacity & tier alignment with urgency tier                            | $\text{norm\_sev} \times 10$                                             |
+
+### Deterministic Multi-Level Tie-Breaking:
+
+1. `match_score DESC`
+2. `distance_km ASC`
+3. `eta_minutes ASC`
+4. `current_load ASC`
+5. `responder.id ASC` (strictly reproducible)
+
+### Human-in-the-Loop Governance:
+
+The engine designates the top choice as **`RECOMMENDED`**, never **`DISPATCHED`**. The human dispatcher retains complete authority to review the mathematical explanation bullets and manually confirm or override the dispatch.

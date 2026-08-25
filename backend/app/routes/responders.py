@@ -17,6 +17,8 @@ from fastapi import APIRouter, HTTPException, Query
 from app.db import get_database
 from app.models import (
     CandidateEvaluationRequest,
+    CandidateFilterRequest,
+    CandidateGenerationResponse,
     ResponderAssignmentRequest,
     ResponderCandidateListResponse,
     ResponderLifecycleAdvanceRequest,
@@ -31,7 +33,7 @@ from app.realtime.socket_manager import (
     emit_responder_location_updated,
     emit_responder_status_changed,
 )
-from app.services import responder_service
+from app.services import candidate_generation, responder_service
 from app.services.allocation_engine import rank_and_explain_candidates
 
 router = APIRouter(prefix="/api/responders", tags=["responders"])
@@ -43,6 +45,43 @@ async def get_responders():
     db = await get_database()
     responders = await responder_service.get_all_responders(db)
     return ResponderListResponse(data=responders, count=len(responders))
+
+
+@router.get("/candidate-pool/{incident_id}", response_model=CandidateGenerationResponse)
+async def get_candidate_pool(
+    incident_id: str,
+    required_capability: str | None = Query(
+        None, description="Optional required capability override"
+    ),
+):
+    """Retrieve filtered candidate pool separating eligible from excluded responders."""
+    db = await get_database()
+    result = await candidate_generation.get_candidate_pool_for_incident(
+        db, incident_id, required_capability=required_capability
+    )
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "INCIDENT_NOT_FOUND",
+                    "message": f"No incident found with ID '{incident_id}'.",
+                },
+            },
+        )
+    return CandidateGenerationResponse(data=result)
+
+
+@router.post("/candidate-pool/evaluate", response_model=CandidateGenerationResponse)
+async def evaluate_candidate_pool(payload: CandidateFilterRequest):
+    """Evaluate candidate eligibility for an incident payload without database coupling."""
+    result = candidate_generation.generate_candidate_pool(
+        incident=payload.incident,
+        responders=payload.responders,
+        required_capability=payload.required_capability,
+    )
+    return CandidateGenerationResponse(data=result)
 
 
 @router.get("/candidates/{incident_id}", response_model=ResponderCandidateListResponse)

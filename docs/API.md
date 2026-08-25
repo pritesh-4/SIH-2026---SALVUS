@@ -343,3 +343,101 @@ Computes route distance, ETA, and geometry between origin and destination coordi
 ### `POST /api/routes` / `POST /api/routing/route`
 
 Computes route from request body payload (`origin_latitude`, `origin_longitude`, `destination_latitude`, `destination_longitude`, `profile`).
+
+---
+
+## 7. Responder Candidate Generation API (IMPLEMENTED ✅)
+
+> **Architectural Boundary Notice:**
+>
+> - `CANDIDATE GENERATION (FILTERING & ELIGIBILITY)` = **IMPLEMENTED & ACTIVE ✅**
+> - `RESPONDER SCORING & RANKING` = **FUTURE ⏳**
+> - `AUTOMATIC DISPATCH & ALLOCATION` = **FUTURE ⏳**
+> - `AI DISPATCH OPTIMIZATION` = **FUTURE ⏳**
+
+The Candidate Generation service provides deterministic, explainable decision-support filtering that evaluates a responder fleet against an emergency incident. It applies strict hard filters and deterministic capability rules to partition responders into **Eligible** and **Excluded** sets with auditable exclusion reasons.
+
+### `GET /api/responders/candidate-pool/{incident_id}` / `GET /api/incidents/{incident_id}/candidate-pool`
+
+Retrieves the partitioned candidate pool for an active emergency incident.
+
+- **Query Parameters:**
+  - `required_capability` (optional): Filter to an explicit required capability (e.g. `FLOOD_BOAT`).
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "incident_id": "909ec355-6bcf-46d4-a035-71fa2e022f42",
+      "incident_type": "flood",
+      "required_capability": null,
+      "eligible_responders": [
+        {
+          "responder_id": "resp-101",
+          "unit_name": "NDRF Rescue Unit 4",
+          "capability": "FLOOD_BOAT",
+          "status": "AVAILABLE",
+          "is_eligible": true,
+          "exclusion_reason": null,
+          "match_reason": "Specialized Inflatable Flood Rescue Watercraft",
+          "responder": {
+            "id": "resp-101",
+            "unit_name": "NDRF Rescue Unit 4",
+            "team_lead": "Capt. A. Roy",
+            "vehicle_type": "Gemini Z-Craft Inflatable",
+            "capability": "FLOOD_BOAT",
+            "status": "AVAILABLE",
+            "latitude": 22.574,
+            "longitude": 88.372,
+            "radio_channel": "VHF-14",
+            "max_capacity": 8,
+            "current_load": 0,
+            "assigned_incident_id": null,
+            "last_seen": "2026-08-25T18:00:00Z",
+            "created_at": "2026-08-25T18:00:00Z",
+            "updated_at": "2026-08-25T18:00:00Z"
+          }
+        }
+      ],
+      "excluded_responders": [
+        {
+          "responder_id": "resp-102",
+          "unit_name": "Hazmat Team 2",
+          "capability": "HAZMAT",
+          "status": "AVAILABLE",
+          "is_eligible": false,
+          "exclusion_reason": "Capability mismatch ('HAZMAT' cannot service 'flood' incident)",
+          "match_reason": null,
+          "responder": { ... }
+        },
+        {
+          "responder_id": "resp-103",
+          "unit_name": "Medic Bravo",
+          "capability": "AMBULANCE",
+          "status": "OFFLINE",
+          "is_eligible": false,
+          "exclusion_reason": "Unit is OFFLINE / Out of Service",
+          "match_reason": null,
+          "responder": { ... }
+        }
+      ],
+      "total_evaluated": 4,
+      "total_eligible": 1,
+      "total_excluded": 3
+    }
+  }
+  ```
+
+### `POST /api/responders/candidate-pool/evaluate`
+
+Evaluates candidate eligibility for an incident payload and responder list in a stateless manner (without DB dependency).
+
+- **Request Payload:**
+  ```json
+  {
+    "incident": { ... },
+    "responders": [ ... ],
+    "required_capability": null
+  }
+  ```
+- **Response (200 OK):** `CandidateGenerationResponse`
