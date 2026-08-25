@@ -49,6 +49,13 @@ flowchart TB
 
 ## 2. Dispatch & Assignment Domain Architecture (IMPLEMENTED ✅)
 
+> **Architectural Boundary Notice:**
+>
+> - `ASSIGNMENT DOMAIN FOUNDATION` = **IMPLEMENTED & ACTIVE ✅**
+> - `ROUTING = future` (Live OSRM / Corridor routing decoupled)
+> - `SCORING = future` (Deterministic / Multi-factor ranking decoupled)
+> - `AI = future` (Automated dispatch optimization decoupled)
+
 Salvus establishes responder assignment as an explicit first-class domain entity:
 
 $$\text{INCIDENT} \longleftrightarrow \text{ASSIGNMENT} \longleftrightarrow \text{RESPONDER}$$
@@ -58,9 +65,13 @@ $$\text{INCIDENT} \longleftrightarrow \text{ASSIGNMENT} \longleftrightarrow \tex
 $$\text{PROPOSED} \longrightarrow \text{ASSIGNED} \longrightarrow \text{EN\_ROUTE} \longrightarrow \text{NEARBY} \longrightarrow \text{ON\_SCENE} \longrightarrow \text{COMPLETED}$$
 $$\text{Active States } (\text{PROPOSED, ASSIGNED, EN\_ROUTE, NEARBY, ON\_SCENE}) \longrightarrow \text{CANCELLED}$$
 
-- **Single Active Assignment Rule:** A responder unit cannot belong to multiple active assignments concurrently.
-- **Transactional Consistency:** Every assignment state change synchronously updates the linked responder and incident records, appending an auditable event to `incident_events`.
-- **Score Data Model Contract:** Includes structured factor storage (`capability`, `distance`, `eta`, `workload`, `severity_fit`) and assignment justification notes. Dynamic routing and scoring calculations will be added in **NEXT PHASE**.
+- **Single Active Assignment Constraints:**
+  - One active assignment per responder.
+  - One active assignment per incident.
+  - Active assignments encompass states: `PROPOSED`, `ASSIGNED`, `EN_ROUTE`, `NEARBY`, `ON_SCENE`.
+  - Duplicate active assignment creation attempts are rejected with structured error codes (`RESPONDER_ALREADY_ASSIGNED`, `INCIDENT_ALREADY_ASSIGNED`).
+- **Transactional Consistency:** Every assignment state change synchronously updates the linked responder and incident records, appending an auditable event to `incident_events`. Zero partial state commits occur upon failure.
+- **Score Data Model Contract:** Includes structured factor storage (`capability`, `distance`, `eta`, `workload`, `severity_fit`) and assignment justification notes. Scoring and routing algorithms remain decoupled as future extensions.
 
 ---
 

@@ -1,16 +1,19 @@
-"""Tests for the unified incident and responder lifecycle state machine."""
+"""Tests for the unified incident, responder, and assignment lifecycle state machine."""
 
 import pytest
 
 from app.services.state_machine import (
+    get_assignment_rank,
     get_rank,
+    is_assignment_terminal,
     is_terminal,
+    validate_assignment_transition,
     validate_responder_transition,
     validate_transition,
 )
 
 # -----------------------------------------------------------------------
-# Valid forward transitions
+# Valid forward incident transitions
 # -----------------------------------------------------------------------
 
 
@@ -67,7 +70,62 @@ class TestResponderTransitions:
 
 
 # -----------------------------------------------------------------------
-# Cancellation from any active state
+# Assignment transitions
+# -----------------------------------------------------------------------
+
+
+class TestAssignmentTransitions:
+    """Verify first-class assignment lifecycle transitions."""
+
+    def test_proposed_to_assigned(self):
+        assert validate_assignment_transition("PROPOSED", "ASSIGNED") is True
+
+    def test_assigned_to_en_route(self):
+        assert validate_assignment_transition("ASSIGNED", "EN_ROUTE") is True
+
+    def test_en_route_to_nearby(self):
+        assert validate_assignment_transition("EN_ROUTE", "NEARBY") is True
+
+    def test_en_route_to_on_scene(self):
+        assert validate_assignment_transition("EN_ROUTE", "ON_SCENE") is True
+
+    def test_nearby_to_on_scene(self):
+        assert validate_assignment_transition("NEARBY", "ON_SCENE") is True
+
+    def test_on_scene_to_completed(self):
+        assert validate_assignment_transition("ON_SCENE", "COMPLETED") is True
+
+    @pytest.mark.parametrize(
+        "status",
+        ["PROPOSED", "ASSIGNED", "EN_ROUTE", "NEARBY", "ON_SCENE"],
+    )
+    def test_cancel_from_any_active_assignment_state(self, status):
+        assert validate_assignment_transition(status, "CANCELLED") is True
+
+    def test_cannot_cancel_completed_assignment(self):
+        assert validate_assignment_transition("COMPLETED", "CANCELLED") is False
+
+    def test_cannot_cancel_already_cancelled_assignment(self):
+        assert validate_assignment_transition("CANCELLED", "CANCELLED") is False
+
+    def test_cannot_skip_proposed_to_completed(self):
+        assert validate_assignment_transition("PROPOSED", "COMPLETED") is False
+
+    def test_cannot_skip_assigned_to_completed(self):
+        assert validate_assignment_transition("ASSIGNED", "COMPLETED") is False
+
+    def test_cannot_transition_backwards(self):
+        assert validate_assignment_transition("ON_SCENE", "EN_ROUTE") is False
+        assert validate_assignment_transition("COMPLETED", "ON_SCENE") is False
+        assert validate_assignment_transition("CANCELLED", "PROPOSED") is False
+
+    def test_invalid_assignment_status_strings(self):
+        assert validate_assignment_transition("INVALID", "ASSIGNED") is False
+        assert validate_assignment_transition("PROPOSED", "INVALID") is False
+
+
+# -----------------------------------------------------------------------
+# Cancellation from any active state (Incident)
 # -----------------------------------------------------------------------
 
 
@@ -136,6 +194,19 @@ class TestTerminalStates:
     def test_invalid_status_not_terminal(self):
         assert is_terminal("FAKE") is False
 
+    def test_assignment_completed_is_terminal(self):
+        assert is_assignment_terminal("COMPLETED") is True
+
+    def test_assignment_cancelled_is_terminal(self):
+        assert is_assignment_terminal("CANCELLED") is True
+
+    @pytest.mark.parametrize(
+        "status",
+        ["PROPOSED", "ASSIGNED", "EN_ROUTE", "NEARBY", "ON_SCENE"],
+    )
+    def test_assignment_active_states_not_terminal(self, status):
+        assert is_assignment_terminal(status) is False
+
 
 # -----------------------------------------------------------------------
 # Status ranking
@@ -159,3 +230,12 @@ class TestStatusRanking:
 
     def test_invalid_status_rank_zero(self):
         assert get_rank("NONSENSE") == 0
+
+    def test_assignment_rank_ordering(self):
+        assert get_assignment_rank("PROPOSED") < get_assignment_rank("ASSIGNED")
+        assert get_assignment_rank("ASSIGNED") < get_assignment_rank("EN_ROUTE")
+        assert get_assignment_rank("EN_ROUTE") < get_assignment_rank("NEARBY")
+        assert get_assignment_rank("NEARBY") < get_assignment_rank("ON_SCENE")
+        assert get_assignment_rank("ON_SCENE") < get_assignment_rank("COMPLETED")
+        assert get_assignment_rank("COMPLETED") == get_assignment_rank("CANCELLED")
+        assert get_assignment_rank("UNKNOWN") == 0

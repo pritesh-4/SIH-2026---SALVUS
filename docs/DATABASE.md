@@ -77,6 +77,13 @@ Active rescue craft, medical ambulances, and disaster response units.
 
 First-class domain entity linking one incident to one responder with explicit lifecycle milestones and audit score breakdown.
 
+> **Architectural Boundary Notice:**
+>
+> - `ASSIGNMENT DOMAIN FOUNDATION` = **IMPLEMENTED & ACTIVE ✅**
+> - `ROUTING ENGINE (OSRM / Corridor)` = **FUTURE ⏳**
+> - `RESPONDER SCORING & ALLOCATION` = **FUTURE ⏳**
+> - `AI DISPATCH OPTIMIZATION` = **FUTURE ⏳**
+
 | Column              | Type   | Constraints                                        | Description                                                                        |
 | ------------------- | ------ | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `id`                | `TEXT` | `PRIMARY KEY`                                      | UUIDv4 string                                                                      |
@@ -87,11 +94,12 @@ First-class domain entity linking one incident to one responder with explicit li
 | `assigned_at`       | `TEXT` | `NOT NULL`                                         | ISO 8601 UTC creation timestamp                                                    |
 | `accepted_at`       | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when assignment transitioned to `ASSIGNED`                  |
 | `started_at`        | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when responder moved `EN_ROUTE`                             |
+| `nearby_at`         | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when responder arrived `NEARBY`                             |
 | `arrived_at`        | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when responder arrived `ON_SCENE`                           |
 | `completed_at`      | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when mission `COMPLETED`                                    |
 | `cancelled_at`      | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when assignment was `CANCELLED`                             |
-| `score`             | `REAL` | `NULL`                                             | Match score (0-100)                                                                |
-| `score_breakdown`   | `TEXT` | `NULL`                                             | JSON `{ capability, distance, eta, workload, severity_fit }`                       |
+| `score`             | `REAL` | `NULL`                                             | Match score (0-100) (Future scoring integration)                                   |
+| `score_breakdown`   | `TEXT` | `NULL`                                             | JSON `{ capability, distance, eta, workload, severity_fit }` (Future breakdown)    |
 | `assignment_reason` | `TEXT` | `NULL`                                             | Tactical justification text                                                        |
 | `created_at`        | `TEXT` | `NOT NULL`                                         | ISO 8601 UTC timestamp                                                             |
 | `updated_at`        | `TEXT` | `NOT NULL`                                         | ISO 8601 UTC timestamp                                                             |

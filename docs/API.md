@@ -138,9 +138,16 @@ Updates real-time GPS telemetry coordinates of a response unit and emits `respon
 
 ## 4. Assignment Domain API (IMPLEMENTED ✅)
 
+> **Architectural Boundary Notice:**
+>
+> - `ASSIGNMENT DOMAIN FOUNDATION` = **IMPLEMENTED & ACTIVE ✅**
+> - `ROUTING ENGINE (OSRM / Corridor)` = **FUTURE ⏳**
+> - `RESPONDER SCORING & ALLOCATION` = **FUTURE ⏳**
+> - `AI DISPATCH OPTIMIZATION` = **FUTURE ⏳**
+
 ### `POST /api/assignments`
 
-Authoritatively creates a first-class assignment linking an emergency incident to a responder unit. Transactionally synchronizes responder state (`ASSIGNED`) and incident state (`ASSIGNED`), and appends an auditable `assignment.created` event to the incident timeline.
+Authoritatively creates a first-class assignment linking an emergency incident to a responder unit. Transactionally synchronizes responder state (`ASSIGNED`) and incident state (`ASSIGNED`), and appends an auditable `assignment.created` event to the incident timeline. Rejects duplicate active assignments per responder or per incident.
 
 - **Authorization:** Requires authority role (`assigned_by != "citizen"`).
 - **Request Payload:**
@@ -174,6 +181,7 @@ Authoritatively creates a first-class assignment linking an emergency incident t
       "assigned_at": "2026-08-25T12:00:00+00:00",
       "accepted_at": "2026-08-25T12:00:00+00:00",
       "started_at": null,
+      "nearby_at": null,
       "arrived_at": null,
       "completed_at": null,
       "cancelled_at": null,
@@ -193,6 +201,7 @@ Authoritatively creates a first-class assignment linking an emergency incident t
   ```
 - **Error Responses:**
   - `400 Bad Request` (`RESPONDER_ALREADY_ASSIGNED`): Responder already has an active assignment.
+  - `400 Bad Request` (`INCIDENT_ALREADY_ASSIGNED`): Incident already has an active assignment.
   - `400 Bad Request` (`RESPONDER_OFFLINE`): Responder is OFFLINE.
   - `400 Bad Request` (`TERMINAL_INCIDENT`): Cannot assign responder to resolved/cancelled incident.
   - `403 Forbidden`: Citizens cannot create assignments.
@@ -231,7 +240,7 @@ Transitions an assignment along its controlled lifecycle (`PROPOSED` $\rightarro
     "notes": "Unit underway on tactical channel 4"
   }
   ```
-- **Response (200 OK):** Updated `AssignmentResponse` object.
+- **Response (200 OK):** Updated `AssignmentResponse` object with updated milestone timestamps (`started_at`, `nearby_at`, `arrived_at`, `completed_at`, `cancelled_at`).
 - **Error Responses:**
   - `400 Bad Request` (`INVALID_TRANSITION`): Disallowed jump or attempting to modify a terminal assignment.
   - `403 Forbidden`: Citizens cannot mutate assignment status.

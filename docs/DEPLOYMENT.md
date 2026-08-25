@@ -13,8 +13,8 @@ This document tracks planned build and deploy configurations for the Salvus plat
 
 ### Backend: Railway / Render
 
-- **Environment:** Containerized environment deploying the Express service via Docker.
-- **Health Check Endpoint:** `GET /api/health` checking database and socket responsiveness.
+- **Environment:** Containerized environment deploying the FastAPI service via Docker.
+- **Health Check Endpoint:** `GET /health` checking database and socket responsiveness.
 
 ### Database: Supabase Cloud Instance
 

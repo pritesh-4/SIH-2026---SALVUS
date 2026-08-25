@@ -112,6 +112,7 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
             assigned_at TEXT NOT NULL,
             accepted_at TEXT,
             started_at TEXT,
+            nearby_at TEXT,
             arrived_at TEXT,
             completed_at TEXT,
             cancelled_at TEXT,
@@ -125,9 +126,14 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         )
     """)
 
-    # Column migrations if table already existed without amenities
+    # Column migrations if table already existed without amenities or nearby_at
     try:
         await db.execute("ALTER TABLE shelters ADD COLUMN amenities TEXT NOT NULL DEFAULT '[]'")
+    except Exception:
+        pass  # Column already exists
+
+    try:
+        await db.execute("ALTER TABLE assignments ADD COLUMN nearby_at TEXT")
     except Exception:
         pass  # Column already exists
 

@@ -35,7 +35,7 @@ This roadmap tracks the development progress, completed frontend deliverables, a
 
 ### Phase 2: Real-time Backend & Ingestion Pipeline — **NEXT PHASE** 🚀
 
-- [ ] **Node.js / Express API Gateway:** REST endpoints for incident creation, triage ingestion, and shelter queries.
+- [ ] **FastAPI API Gateway:** REST endpoints for incident creation, triage ingestion, and shelter queries.
 - [ ] **Live Geospatial Database (Supabase / PostgreSQL + PostGIS):** Coordinate indexing and nearest-neighbor spatial queries.
 - [ ] **Bi-directional WebSockets (Socket.io):** Instant state synchronization between citizen emergency beacons and authority command centers.
 - [ ] **Live AI Pipeline (Gemini / Groq LLM):** Dynamic parsing of raw text messages and multi-modal photo analysis.

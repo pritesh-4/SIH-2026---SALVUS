@@ -4,10 +4,15 @@ validation rules, lifecycle transitions, authorization, transactional consistenc
 and audit timeline event generation.
 """
 
+from unittest.mock import patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.db import get_database
 from app.main import app
+from app.models import AssignmentCreate
+from app.services import assignment_service, incident_service, responder_service
 
 
 @pytest.fixture
@@ -70,6 +75,7 @@ async def test_create_assignment_success_and_events():
         assert assignment["score"] == 92.5
         assert assignment["score_breakdown"]["capability"] == 30.0
         assert assignment["accepted_at"] is not None
+        assert assignment["nearby_at"] is None
         assert assignment["completed_at"] is None
 
         # 4. Verify responder record synchronized
@@ -92,7 +98,7 @@ async def test_create_assignment_success_and_events():
 
 
 @pytest.mark.asyncio
-async def test_duplicate_active_assignment_rejection():
+async def test_duplicate_active_assignment_rejection_responder():
     """Verify that a responder cannot be assigned to multiple active incidents."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Create incident 1 & 2
@@ -142,6 +148,48 @@ async def test_duplicate_active_assignment_rejection():
         assert res2.status_code == 400
         error_detail = res2.json()["detail"]["error"]
         assert error_detail["code"] == "RESPONDER_ALREADY_ASSIGNED"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_active_assignment_rejection_incident():
+    """Verify that an incident cannot receive multiple active assignments."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # Create incident
+        inc = (
+            await client.post(
+                "/api/incidents",
+                json={
+                    "type": "hazard",
+                    "severity": "HIGH",
+                    "description": "Gas leak near market",
+                    "latitude": 22.56,
+                    "longitude": 88.36,
+                },
+            )
+        ).json()["data"]
+
+        # Fetch two available responders
+        responders = (await client.get("/api/responders")).json()["data"]
+        available = [r for r in responders if r["status"] == "AVAILABLE"]
+        assert len(available) >= 2
+        resp1_id = available[0]["id"]
+        resp2_id = available[1]["id"]
+
+        # 1st assignment succeeds
+        res1 = await client.post(
+            "/api/assignments",
+            json={"incident_id": inc["id"], "responder_id": resp1_id},
+        )
+        assert res1.status_code == 201
+
+        # 2nd assignment for same incident must be rejected
+        res2 = await client.post(
+            "/api/assignments",
+            json={"incident_id": inc["id"], "responder_id": resp2_id},
+        )
+        assert res2.status_code == 400
+        error_detail = res2.json()["detail"]["error"]
+        assert error_detail["code"] == "INCIDENT_ALREADY_ASSIGNED"
 
 
 @pytest.mark.asyncio
@@ -322,6 +370,7 @@ async def test_full_assignment_lifecycle_progression():
         )
         assert res_nearby.status_code == 200
         assert res_nearby.json()["data"]["status"] == "NEARBY"
+        assert res_nearby.json()["data"]["nearby_at"] is not None
 
         # 6. Transition NEARBY -> ON_SCENE
         res_onscene = await client.patch(
@@ -464,3 +513,66 @@ async def test_assignment_listing_and_incident_query():
         assert inc_assign_res.status_code == 200
         assert inc_assign_res.json()["count"] >= 1
         assert inc_assign_res.json()["data"][0]["id"] == assignment_id
+
+        # 404 for non-existent incident
+        inc_404_res = await client.get("/api/incidents/non-existent-inc-id/assignments")
+        assert inc_404_res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_transactional_rollback_on_assignment_creation_failure():
+    """Verify that if an error occurs midway through assignment creation,
+    everything is rolled back.
+    """
+    db = await get_database()
+
+    # Create fresh incident and pick responder
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        inc_res = await client.post(
+            "/api/incidents",
+            json={
+                "type": "structural",
+                "severity": "MEDIUM",
+                "description": "Crack in overpass",
+                "latitude": 22.58,
+                "longitude": 88.38,
+            },
+        )
+        incident_id = inc_res.json()["data"]["id"]
+
+        resp_list = (await client.get("/api/responders")).json()["data"]
+        available_resp = next(r for r in resp_list if r["status"] == "AVAILABLE")
+        responder_id = available_resp["id"]
+
+    # Mock execute on incident_events insertion to simulate failure mid-transaction
+    original_execute = db.execute
+
+    async def fail_on_incident_events(sql, *args, **kwargs):
+        if "INSERT INTO incident_events" in sql and "assignment.created" in str(sql):
+            raise RuntimeError("Simulated Database I/O Crash on event insert")
+        return await original_execute(sql, *args, **kwargs)
+
+    with patch.object(db, "execute", side_effect=fail_on_incident_events):
+        with pytest.raises(RuntimeError, match="Simulated Database I/O Crash"):
+            await assignment_service.create_assignment(
+                db,
+                AssignmentCreate(
+                    incident_id=incident_id,
+                    responder_id=responder_id,
+                    status="ASSIGNED",
+                ),
+            )
+
+    # Verify that nothing was committed:
+    # 1. No active assignment exists
+    active_assign = await assignment_service.get_active_assignment_for_responder(db, responder_id)
+    assert active_assign is None
+
+    # 2. Responder is still AVAILABLE
+    resp_after = await responder_service.get_responder_by_id(db, responder_id)
+    assert resp_after.status == "AVAILABLE"
+    assert resp_after.assigned_incident_id is None
+
+    # 3. Incident is still NEW
+    inc_after = await incident_service.get_incident_by_id(db, incident_id)
+    assert inc_after.status == "NEW"

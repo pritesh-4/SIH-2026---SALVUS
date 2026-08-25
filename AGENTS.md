@@ -19,14 +19,14 @@ $$\text{Detect} \longrightarrow \text{Understand} \longrightarrow \text{Prioriti
 
 Conceptually, Salvus consists of:
 
-1. **Citizen Application**: High-performance, low-bandwidth portal for geo-tagged SOS reporting and shelter discovery.
-2. **Authority/Responder Dashboard**: Map-centric command center monitoring incidents, resources, and dispatches.
-3. **Backend API**: Node.js/Express server routing requests, coordinating DB, and connecting AI pipelines.
-4. **Realtime Communication**: Socket.io pushing incident and GPS telemetry updates instantaneously.
-5. **Database/Geospatial Layer**: PostgreSQL/PostGIS running spatial queries (e.g. proximity, containment).
-6. **AI Orchestration Layer**: Gemini (primary) and Groq (fallback) handling classification and summarization.
-7. **External Disaster Feeds**: GDACS, USGS, and Open-Meteo pulling current disaster metrics.
-8. **Routing Engines**: OSRM/Nominatim tracking and plotting viable rescue routes.
+1. **Citizen Application**: High-performance, low-bandwidth portal for geo-tagged SOS reporting and shelter discovery (React 19 + Leaflet + Vite + Tailwind CSS).
+2. **Authority/Responder Dashboard**: Map-centric command center monitoring incidents, resources, and dispatches (React 19 + Leaflet + Vite + Tailwind CSS).
+3. **Backend API**: **Python FastAPI 3.12+** server with async SQLite (aiosqlite + WAL Mode) for development, PostgreSQL/PostGIS migration path for production.
+4. **Realtime Communication**: **Socket.IO** WebSocket server with room-based architecture (authorities room, incident:{id} rooms) pushing incident and GPS telemetry updates instantaneously.
+5. **Database/Geospatial Layer**: **SQLite (dev) → PostgreSQL/PostGIS (prod)** running spatial queries (e.g. proximity, containment).
+6. **AI Orchestration Layer**: **Gemini (primary) + Groq (fallback)** handling classification, severity scoring, entity extraction — **HUMAN-IN-THE-LOOP ONLY**.
+7. **External Disaster Feeds**: GDACS, USGS, Open-Meteo (live); Nominatim, OSRM (live with fallbacks); Responder GPS, Flood Sensors (simulated).
+8. **Routing Engines**: OSRM/Nominatim for rescue route planning with Euclidean fallback.
 
 ---
 
@@ -40,7 +40,7 @@ As an agent, you **MUST**:
 4. **Decouple UI and Business Logic**: Keep React components visual; isolate logic into custom hooks, context, or utilities.
 5. **Enforce Explicit API Contracts**: Always handle backend errors, latency, and parse statuses before rendering.
 6. **Validate User Inputs**: Implement robust formatting checks on user coordinates and inputs.
-7. **Never Hardcode Secrets**: Access keys using `import.meta.env` and document placeholders in `.env.example`.
+7. **Never Hardcode Secrets**: Access keys using `import.meta.env` (frontend) / `os.getenv()` (backend) and document placeholders in `.env.example`.
 8. **Handle Lifecycle & States**: Gracefully render loading spinners, empty lists, and failure error messages.
 9. **Never Disable CI Quality Gates**: Do not mock, modify `.github/workflows/ci.yml`, or bypass hooks to make a PR pass.
 10. **Never Invent APIs**: Do not write mock routes or pretend backend endpoints exist unless they are officially introduced.
@@ -68,6 +68,7 @@ As an agent, you **MUST**:
 
 - **Visual Labeling**: Simulated movements or mocked flood sensor data must be labeled with `[SIMULATION]` or `[MOCKED]` badges in the UI.
 - **Transparency**: Never display generated test data as live emergency telemetry.
+- **Data Provenance Badges**: All external data sources must display `LiveBadge` (green) or `SimulatedBadge` (amber) indicators per `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -75,6 +76,8 @@ As an agent, you **MUST**:
 
 - **Consent First**: Location tracking must only trigger when the user explicitly clicks the emergency toggle.
 - **Automatic Termination**: Continuous tracking must immediately stop when the incident is resolved or cancelled.
+- **Emergency-Only Tracking**: Use `getCurrentLocation` (on-demand) and `watchEmergencyLocation` (SOS-only) — no background tracking.
+- **Accuracy Translation**: 4-tier accuracy display (Precise → Approximate → Coarse → Unknown) with landmark fallback selectors.
 
 ---
 
@@ -95,7 +98,7 @@ As an agent, you **MUST**:
 
 ### Phase C: After Coding
 
-1. Run local verification: `npm run lint` and `npm run build`.
+1. Run local verification: `npm run lint` and `npm run build` (frontend); `ruff check` and `pytest` (backend).
 2. Update relevant documentation if architecture changes were approved (e.g. update `docs/API.md` when introducing routes).
 3. Summarize all files edited.
 4. Flag any risks or remaining gaps for human review.

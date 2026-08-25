@@ -433,6 +433,7 @@ class AssignmentResponse(BaseModel):
     assigned_at: str
     accepted_at: str | None = None
     started_at: str | None = None
+    nearby_at: str | None = None
     arrived_at: str | None = None
     completed_at: str | None = None
     cancelled_at: str | None = None

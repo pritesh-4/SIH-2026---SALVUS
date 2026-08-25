@@ -20,8 +20,13 @@ export default defineConfig({
     },
   },
   build: {
+    target: 'es2022',
+    reportCompressedSize: false,
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
+      checks: {
+        pluginTimings: false,
+      },
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/leaflet')) {

@@ -56,8 +56,10 @@ async def create_assignment(payload: AssignmentCreate):
             code = "NOT_FOUND"
         elif "OFFLINE" in err_msg:
             code = "RESPONDER_OFFLINE"
-        elif "already has an active assignment" in err_msg:
+        elif "Responder" in err_msg and "already has an active assignment" in err_msg:
             code = "RESPONDER_ALREADY_ASSIGNED"
+        elif "Incident" in err_msg and "already has an active assignment" in err_msg:
+            code = "INCIDENT_ALREADY_ASSIGNED"
         elif "terminal status" in err_msg:
             code = "TERMINAL_INCIDENT"
 

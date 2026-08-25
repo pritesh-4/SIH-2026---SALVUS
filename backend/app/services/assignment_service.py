@@ -39,6 +39,10 @@ def _row_to_assignment(row: aiosqlite.Row) -> AssignmentResponse:
         except Exception:
             breakdown = None
 
+    row_keys = row.keys() if hasattr(row, "keys") else []
+    nearby_at = row["nearby_at"] if "nearby_at" in row_keys else None
+    accepted_at = row["accepted_at"] if "accepted_at" in row_keys else None
+
     return AssignmentResponse(
         id=row["id"],
         incident_id=row["incident_id"],
@@ -46,8 +50,9 @@ def _row_to_assignment(row: aiosqlite.Row) -> AssignmentResponse:
         status=row["status"],
         assigned_by=row["assigned_by"],
         assigned_at=row["assigned_at"],
-        accepted_at=row["accepted_at"],
+        accepted_at=accepted_at,
         started_at=row["started_at"],
+        nearby_at=nearby_at,
         arrived_at=row["arrived_at"],
         completed_at=row["completed_at"],
         cancelled_at=row["cancelled_at"],
@@ -112,6 +117,24 @@ async def get_active_assignment_for_responder(
     return _row_to_assignment(row)
 
 
+async def get_active_assignment_for_incident(
+    db: aiosqlite.Connection, incident_id: str
+) -> AssignmentResponse | None:
+    """Fetch active assignment for an incident if one exists."""
+    active_statuses = tuple(s.value for s in ACTIVE_ASSIGNMENT_STATUSES)
+    placeholders = ",".join("?" for _ in active_statuses)
+    query = f"""
+        SELECT * FROM assignments
+        WHERE incident_id = ? AND status IN ({placeholders})
+        LIMIT 1
+    """
+    cursor = await db.execute(query, (incident_id, *active_statuses))
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    return _row_to_assignment(row)
+
+
 async def list_assignments(
     db: aiosqlite.Connection,
     incident_id: str | None = None,
@@ -159,7 +182,15 @@ async def create_assignment(
             f"with terminal status '{incident.status}'."
         )
 
-    # 2. Validate responder existence and non-offline status
+    # 2. Validate single active assignment constraint per incident
+    active_inc_assignment = await get_active_assignment_for_incident(db, payload.incident_id)
+    if active_inc_assignment:
+        raise ValueError(
+            f"Incident #{incident.ticket_id} already has an active assignment "
+            f"({active_inc_assignment.id}) with status '{active_inc_assignment.status}'."
+        )
+
+    # 3. Validate responder existence and non-offline status
     responder = await get_responder_by_id(db, payload.responder_id)
     if not responder:
         raise ValueError(f"Responder with ID '{payload.responder_id}' does not exist.")
@@ -167,12 +198,15 @@ async def create_assignment(
     if responder.status == ResponderStatus.OFFLINE.value:
         raise ValueError(f"Responder '{responder.unit_name}' is OFFLINE and cannot be assigned.")
 
-    # 3. Validate single active assignment constraint per responder
-    active_assignment = await get_active_assignment_for_responder(db, payload.responder_id)
-    if active_assignment:
+    # 4. Validate single active assignment constraint per responder
+    active_resp_assignment = await get_active_assignment_for_responder(db, payload.responder_id)
+    if active_resp_assignment or responder.status != ResponderStatus.AVAILABLE.value:
+        existing_status = (
+            active_resp_assignment.status if active_resp_assignment else responder.status
+        )
         raise ValueError(
             f"Responder '{responder.unit_name}' already has an active assignment "
-            f"({active_assignment.id}) with status '{active_assignment.status}'."
+            f"with status '{existing_status}'."
         )
 
     now = datetime.now(UTC).isoformat()
@@ -181,96 +215,101 @@ async def create_assignment(
     accepted_at = now if payload.status == AssignmentStatus.ASSIGNED else None
     breakdown_json = payload.score_breakdown.model_dump_json() if payload.score_breakdown else None
 
-    # 4. Insert assignment record
-    await db.execute(
-        """
-        INSERT INTO assignments (
-            id, incident_id, responder_id, status, assigned_by,
-            assigned_at, accepted_at, started_at, arrived_at, completed_at, cancelled_at,
-            score, score_breakdown, assignment_reason, created_at, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)
-        """,
-        (
-            assignment_id,
-            payload.incident_id,
-            payload.responder_id,
-            status_val,
-            payload.assigned_by,
-            now,
-            accepted_at,
-            payload.score,
-            breakdown_json,
-            payload.assignment_reason,
-            now,
-            now,
-        ),
-    )
-
-    # 5. Synchronize responder status if ASSIGNED
-    if payload.status == AssignmentStatus.ASSIGNED:
+    try:
+        # 5. Insert assignment record
         await db.execute(
             """
-            UPDATE responders
-            SET status = 'ASSIGNED', assigned_incident_id = ?, updated_at = ?
-            WHERE id = ?
+            INSERT INTO assignments (
+                id, incident_id, responder_id, status, assigned_by,
+                assigned_at, accepted_at, started_at, nearby_at,
+                arrived_at, completed_at, cancelled_at,
+                score, score_breakdown, assignment_reason, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)
             """,
-            (payload.incident_id, now, payload.responder_id),
-        )
-
-    # 6. Synchronize incident status if ASSIGNED
-    new_inc_status = incident.status
-    if payload.status == AssignmentStatus.ASSIGNED and incident.status in (
-        IncidentStatus.NEW.value,
-        IncidentStatus.TRIAGE_PENDING.value,
-        IncidentStatus.VERIFIED.value,
-    ):
-        new_inc_status = IncidentStatus.ASSIGNED.value
-        await db.execute(
-            """
-            UPDATE incidents
-            SET status = 'ASSIGNED', updated_at = ?
-            WHERE id = ?
-            """,
-            (now, payload.incident_id),
-        )
-
-    # 7. Add audit event to incident timeline
-    event_id = str(uuid.uuid4())
-    event_metadata = json.dumps(
-        {
-            "assignment_id": assignment_id,
-            "responder_id": responder.id,
-            "unit_name": responder.unit_name,
-            "assignment_status": status_val,
-            "score": payload.score,
-            "score_breakdown": (
-                payload.score_breakdown.model_dump() if payload.score_breakdown else None
+            (
+                assignment_id,
+                payload.incident_id,
+                payload.responder_id,
+                status_val,
+                payload.assigned_by,
+                now,
+                accepted_at,
+                payload.score,
+                breakdown_json,
+                payload.assignment_reason,
+                now,
+                now,
             ),
-            "assignment_reason": payload.assignment_reason,
-        }
-    )
-    await db.execute(
-        """
-        INSERT INTO incident_events (
-            id, incident_id, event_type, previous_status,
-            new_status, actor, metadata, created_at
         )
-        VALUES (?, ?, 'assignment.created', ?, ?, ?, ?, ?)
-        """,
-        (
-            event_id,
-            payload.incident_id,
-            incident.status,
-            new_inc_status,
-            payload.assigned_by,
-            event_metadata,
-            now,
-        ),
-    )
 
-    # Commit all changes atomically
-    await db.commit()
+        # 6. Synchronize responder status if ASSIGNED
+        if payload.status == AssignmentStatus.ASSIGNED:
+            await db.execute(
+                """
+                UPDATE responders
+                SET status = 'ASSIGNED', assigned_incident_id = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (payload.incident_id, now, payload.responder_id),
+            )
+
+        # 7. Synchronize incident status if ASSIGNED
+        new_inc_status = incident.status
+        if payload.status == AssignmentStatus.ASSIGNED and incident.status in (
+            IncidentStatus.NEW.value,
+            IncidentStatus.TRIAGE_PENDING.value,
+            IncidentStatus.VERIFIED.value,
+        ):
+            new_inc_status = IncidentStatus.ASSIGNED.value
+            await db.execute(
+                """
+                UPDATE incidents
+                SET status = 'ASSIGNED', updated_at = ?
+                WHERE id = ?
+                """,
+                (now, payload.incident_id),
+            )
+
+        # 8. Add audit event to incident timeline
+        event_id = str(uuid.uuid4())
+        event_metadata = json.dumps(
+            {
+                "assignment_id": assignment_id,
+                "responder_id": responder.id,
+                "unit_name": responder.unit_name,
+                "assignment_status": status_val,
+                "score": payload.score,
+                "score_breakdown": (
+                    payload.score_breakdown.model_dump() if payload.score_breakdown else None
+                ),
+                "assignment_reason": payload.assignment_reason,
+            }
+        )
+        await db.execute(
+            """
+            INSERT INTO incident_events (
+                id, incident_id, event_type, previous_status,
+                new_status, actor, metadata, created_at
+            )
+            VALUES (?, ?, 'assignment.created', ?, ?, ?, ?, ?)
+            """,
+            (
+                event_id,
+                payload.incident_id,
+                incident.status,
+                new_inc_status,
+                payload.assigned_by,
+                event_metadata,
+                now,
+            ),
+        )
+
+        # Commit all changes atomically
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
 
     created = await get_assignment_by_id(db, assignment_id)
     if not created:
@@ -304,6 +343,7 @@ async def update_assignment_status(
     # Milestone timestamps
     accepted_at = assignment.accepted_at
     started_at = assignment.started_at
+    nearby_at = assignment.nearby_at
     arrived_at = assignment.arrived_at
     completed_at = assignment.completed_at
     cancelled_at = assignment.cancelled_at
@@ -312,6 +352,8 @@ async def update_assignment_status(
         accepted_at = now
     elif target_status == AssignmentStatus.EN_ROUTE.value and not started_at:
         started_at = now
+    elif target_status == AssignmentStatus.NEARBY.value and not nearby_at:
+        nearby_at = now
     elif target_status == AssignmentStatus.ON_SCENE.value and not arrived_at:
         arrived_at = now
     elif target_status == AssignmentStatus.COMPLETED.value:
@@ -319,121 +361,126 @@ async def update_assignment_status(
     elif target_status == AssignmentStatus.CANCELLED.value:
         cancelled_at = now
 
-    # 1. Update assignment record
-    await db.execute(
-        """
-        UPDATE assignments
-        SET status = ?, accepted_at = ?, started_at = ?, arrived_at = ?,
-            completed_at = ?, cancelled_at = ?, updated_at = ?
-        WHERE id = ?
-        """,
-        (
-            target_status,
-            accepted_at,
-            started_at,
-            arrived_at,
-            completed_at,
-            cancelled_at,
-            now,
-            assignment_id,
-        ),
-    )
-
-    # 2. Synchronize responder operational state
-    if target_status in (
-        AssignmentStatus.ASSIGNED.value,
-        AssignmentStatus.EN_ROUTE.value,
-        AssignmentStatus.NEARBY.value,
-        AssignmentStatus.ON_SCENE.value,
-    ):
+    try:
+        # 1. Update assignment record
         await db.execute(
             """
-            UPDATE responders
-            SET status = ?, assigned_incident_id = ?, updated_at = ?
+            UPDATE assignments
+            SET status = ?, accepted_at = ?, started_at = ?, nearby_at = ?, arrived_at = ?,
+                completed_at = ?, cancelled_at = ?, updated_at = ?
             WHERE id = ?
             """,
-            (target_status, assignment.incident_id, now, assignment.responder_id),
-        )
-    elif target_status in (AssignmentStatus.COMPLETED.value, AssignmentStatus.CANCELLED.value):
-        await db.execute(
-            """
-            UPDATE responders
-            SET status = 'AVAILABLE', assigned_incident_id = NULL, updated_at = ?
-            WHERE id = ?
-            """,
-            (now, assignment.responder_id),
+            (
+                target_status,
+                accepted_at,
+                started_at,
+                nearby_at,
+                arrived_at,
+                completed_at,
+                cancelled_at,
+                now,
+                assignment_id,
+            ),
         )
 
-    # 3. Synchronize incident operational state
-    incident = await get_incident_by_id(db, assignment.incident_id)
-    if incident and incident.status not in (
-        IncidentStatus.RESOLVED.value,
-        IncidentStatus.CANCELLED.value,
-    ):
-        previous_inc_status = incident.status
-        new_inc_status = previous_inc_status
-
+        # 2. Synchronize responder operational state
         if target_status in (
             AssignmentStatus.ASSIGNED.value,
             AssignmentStatus.EN_ROUTE.value,
             AssignmentStatus.NEARBY.value,
             AssignmentStatus.ON_SCENE.value,
         ):
-            new_inc_status = target_status
-        elif target_status == AssignmentStatus.COMPLETED.value:
-            new_inc_status = IncidentStatus.RESOLVED.value
-        elif target_status == AssignmentStatus.CANCELLED.value:
-            # Check if there are other active assignments for this incident
-            other_active = [
-                a
-                for a in await get_assignments_for_incident(db, assignment.incident_id)
-                if a.id != assignment_id
-                and a.status in [s.value for s in ACTIVE_ASSIGNMENT_STATUSES]
-            ]
-            if not other_active:
-                new_inc_status = IncidentStatus.VERIFIED.value
-
-        if new_inc_status != previous_inc_status:
             await db.execute(
                 """
-                UPDATE incidents
-                SET status = ?, updated_at = ?
+                UPDATE responders
+                SET status = ?, assigned_incident_id = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (new_inc_status, now, assignment.incident_id),
+                (target_status, assignment.incident_id, now, assignment.responder_id),
+            )
+        elif target_status in (AssignmentStatus.COMPLETED.value, AssignmentStatus.CANCELLED.value):
+            await db.execute(
+                """
+                UPDATE responders
+                SET status = 'AVAILABLE', assigned_incident_id = NULL, updated_at = ?
+                WHERE id = ?
+                """,
+                (now, assignment.responder_id),
             )
 
-        # 4. Record auditable incident event
-        event_id = str(uuid.uuid4())
-        event_metadata = json.dumps(
-            {
-                "assignment_id": assignment_id,
-                "responder_id": assignment.responder_id,
-                "previous_assignment_status": current_status,
-                "new_assignment_status": target_status,
-                "notes": notes,
-            }
-        )
-        await db.execute(
-            """
-            INSERT INTO incident_events (
-                id, incident_id, event_type, previous_status,
-                new_status, actor, metadata, created_at
-            )
-            VALUES (?, ?, 'assignment.status_changed', ?, ?, ?, ?, ?)
-            """,
-            (
-                event_id,
-                assignment.incident_id,
-                current_status,
-                target_status,
-                actor,
-                event_metadata,
-                now,
-            ),
-        )
+        # 3. Synchronize incident operational state
+        incident = await get_incident_by_id(db, assignment.incident_id)
+        if incident and incident.status not in (
+            IncidentStatus.RESOLVED.value,
+            IncidentStatus.CANCELLED.value,
+        ):
+            previous_inc_status = incident.status
+            new_inc_status = previous_inc_status
 
-    # Commit all updates atomically
-    await db.commit()
+            if target_status in (
+                AssignmentStatus.ASSIGNED.value,
+                AssignmentStatus.EN_ROUTE.value,
+                AssignmentStatus.NEARBY.value,
+                AssignmentStatus.ON_SCENE.value,
+            ):
+                new_inc_status = target_status
+            elif target_status == AssignmentStatus.COMPLETED.value:
+                new_inc_status = IncidentStatus.RESOLVED.value
+            elif target_status == AssignmentStatus.CANCELLED.value:
+                # Check if there are other active assignments for this incident
+                other_active = [
+                    a
+                    for a in await get_assignments_for_incident(db, assignment.incident_id)
+                    if a.id != assignment_id
+                    and a.status in [s.value for s in ACTIVE_ASSIGNMENT_STATUSES]
+                ]
+                if not other_active:
+                    new_inc_status = IncidentStatus.VERIFIED.value
+
+            if new_inc_status != previous_inc_status:
+                await db.execute(
+                    """
+                    UPDATE incidents
+                    SET status = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (new_inc_status, now, assignment.incident_id),
+                )
+
+            # 4. Record auditable incident event
+            event_id = str(uuid.uuid4())
+            event_metadata = json.dumps(
+                {
+                    "assignment_id": assignment_id,
+                    "responder_id": assignment.responder_id,
+                    "previous_assignment_status": current_status,
+                    "new_assignment_status": target_status,
+                    "notes": notes,
+                }
+            )
+            await db.execute(
+                """
+                INSERT INTO incident_events (
+                    id, incident_id, event_type, previous_status,
+                    new_status, actor, metadata, created_at
+                )
+                VALUES (?, ?, 'assignment.status_changed', ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    assignment.incident_id,
+                    current_status,
+                    target_status,
+                    actor,
+                    event_metadata,
+                    now,
+                ),
+            )
+
+        # Commit all updates atomically
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
 
     return await get_assignment_by_id(db, assignment_id)
