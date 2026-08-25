@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { Navbar } from '../components/citizen/Navbar'
 import { BottomNav } from '../components/citizen/BottomNav'
+import { ActiveEmergencyBanner } from '../components/citizen/ActiveEmergencyBanner'
 import { DevDemoControls } from '../components/common/DevDemoControls'
 import { GlobalNotificationBanner } from '../components/common/GlobalNotificationBanner'
 
@@ -12,6 +13,9 @@ export const CitizenLayout = () => {
 
       {/* Top Persistent Navigation */}
       <Navbar unreadAlertsCount={1} />
+
+      {/* Active Emergency Cross-Page Status Banner */}
+      <ActiveEmergencyBanner />
 
       {/* Main Page Area */}
       <main className="flex-1 w-full pb-20 md:pb-10">

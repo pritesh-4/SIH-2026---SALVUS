@@ -95,11 +95,15 @@ async def emit_incident_status_changed(incident: IncidentResponse, new_status: s
     # Notify the authority dashboard
     await sio.emit("incident.status_changed", payload, room="authorities")
     await sio.emit("incident:status_changed", payload, room="authorities")
+    await sio.emit("incident.response_state_changed", payload, room="authorities")
+    await sio.emit("incident:response_state_changed", payload, room="authorities")
 
     # Notify subscribers of this specific incident (citizen app, responders)
     incident_room = f"incident:{incident.id}"
     await sio.emit("incident.status_changed", payload, room=incident_room)
     await sio.emit("incident:status_changed", payload, room=incident_room)
+    await sio.emit("incident.response_state_changed", payload, room=incident_room)
+    await sio.emit("incident:response_state_changed", payload, room=incident_room)
 
     print(
         f"[Socket.IO] Emitted incident.status_changed → authorities + {incident_room} "

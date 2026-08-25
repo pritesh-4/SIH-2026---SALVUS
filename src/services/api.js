@@ -662,10 +662,25 @@ export const sendSimulationStep = async (stepPayload) => {
       success: true,
       data: response.data.data,
     }
-  } catch (error) {
+  } catch {
+    // Fallback: update responder location and status directly via responder endpoints
+    if (stepPayload.responder_id && stepPayload.latitude && stepPayload.longitude) {
+      await updateResponderLocation(
+        stepPayload.responder_id,
+        stepPayload.latitude,
+        stepPayload.longitude
+      )
+      if (stepPayload.target_status) {
+        await advanceResponderLifecycle(
+          stepPayload.responder_id,
+          stepPayload.target_status,
+          'simulation_engine'
+        )
+      }
+      return { success: true }
+    }
     return {
       success: false,
-      error: { message: error.message },
       data: null,
     }
   }

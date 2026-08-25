@@ -23,7 +23,7 @@ import {
   fetchSituationSummary,
 } from '../services/api'
 import { fetchRoute } from '../services/routingService'
-import { subscribeToEvent } from '../lib/realtime/socket'
+import { subscribeToEvent, joinRoom, leaveRoom } from '../lib/realtime/socket'
 
 const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
   if (!lat1 || !lon1 || !lat2 || !lon2) return 1.2
@@ -166,40 +166,59 @@ export const AuthorityCommandCenter = () => {
     if (isMounted) {
       init()
     }
+    joinRoom('authorities')
 
-    const unsubStatus = subscribeToEvent('responder:status_changed', (updatedResp) => {
+    const handleResponderStatus = (updatedResp) => {
       setLiveResponders((prev) =>
         prev.map((r) => (r.id === updatedResp.id ? { ...r, ...updatedResp } : r))
       )
-    })
+    }
 
-    const unsubLoc = subscribeToEvent('responder:location_updated', (updatedResp) => {
+    const handleResponderLocation = (updatedResp) => {
       setLiveResponders((prev) =>
         prev.map((r) => (r.id === updatedResp.id ? { ...r, ...updatedResp } : r))
       )
-    })
+    }
 
-    const unsubAssign = subscribeToEvent('assignment:created', (payload) => {
+    const handleAssignment = (payload) => {
       if (payload.responder) {
         setLiveResponders((prev) =>
           prev.map((r) => (r.id === payload.responder.id ? { ...r, ...payload.responder } : r))
         )
       }
       refetch(true)
-    })
+    }
 
-    const unsubShelter = subscribeToEvent('shelter:updated', (updatedShelter) => {
+    const handleShelter = (updatedShelter) => {
       setLiveShelters((prev) =>
         prev.map((s) => (s.id === updatedShelter.id ? { ...s, ...updatedShelter } : s))
       )
-    })
+    }
+
+    const unsub1 = subscribeToEvent('responder:status_changed', handleResponderStatus)
+    const unsub2 = subscribeToEvent('responder.status_changed', handleResponderStatus)
+    const unsub3 = subscribeToEvent('responder:location_updated', handleResponderLocation)
+    const unsub4 = subscribeToEvent('responder.location_updated', handleResponderLocation)
+    const unsub5 = subscribeToEvent('assignment:created', handleAssignment)
+    const unsub6 = subscribeToEvent('assignment.created', handleAssignment)
+    const unsub7 = subscribeToEvent('assignment:status_changed', handleAssignment)
+    const unsub8 = subscribeToEvent('assignment.status_changed', handleAssignment)
+    const unsub9 = subscribeToEvent('shelter:updated', handleShelter)
+    const unsub10 = subscribeToEvent('shelter.updated', handleShelter)
 
     return () => {
       isMounted = false
-      unsubStatus()
-      unsubLoc()
-      unsubAssign()
-      unsubShelter()
+      leaveRoom('authorities')
+      unsub1()
+      unsub2()
+      unsub3()
+      unsub4()
+      unsub5()
+      unsub6()
+      unsub7()
+      unsub8()
+      unsub9()
+      unsub10()
     }
   }, [loadFleetAndShelters, refetch])
 

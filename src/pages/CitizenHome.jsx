@@ -50,6 +50,7 @@ export const CitizenHome = () => {
       setIsSubmittingSos(false)
 
       if (result.success && result.data) {
+        localStorage.setItem('salvus_active_incident_id', result.data.id)
         navigate(`/citizen/sos?incidentId=${result.data.id}`)
       } else {
         // Fallback to standalone SOS mode if backend is unreachable

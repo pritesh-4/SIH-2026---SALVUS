@@ -59,7 +59,11 @@ const STATUS_RANKS = {
 }
 
 export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId = null) => {
-  const [incidentId, setIncidentId] = useState(activeIncidentId)
+  const [incidentId, setIncidentId] = useState(() => {
+    return activeIncidentId || localStorage.getItem('salvus_active_incident_id') || null
+  })
+  const effectiveIncidentId = activeIncidentId || incidentId
+
   const [liveIncident, setLiveIncident] = useState(null)
   const [assignedResponder, setAssignedResponder] = useState(null)
   const [currentState, setCurrentState] = useState(initialState)
@@ -76,13 +80,13 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
   // 1. Initial Load & Realtime Sync for Live Incident
   // -------------------------------------------------------------------------
   useEffect(() => {
-    if (!incidentId) return
+    if (!effectiveIncidentId) return
 
     let isMounted = true
 
     // Fetch initial state from backend
     const loadIncident = async () => {
-      const result = await fetchIncidentById(incidentId)
+      const result = await fetchIncidentById(effectiveIncidentId)
       if (result.success && result.data && isMounted) {
         setLiveIncident(result.data)
         const mappedState = STATUS_TO_STATE_MAP[result.data.status] || 'SOS_ACTIVE'
@@ -99,14 +103,16 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     loadIncident()
 
     // Join the incident-specific Socket.IO room
-    const roomName = `incident:${incidentId}`
+    const roomName = `incident:${effectiveIncidentId}`
     joinRoom(roomName)
 
-    // Listen for live status change broadcasts with ordering guard
-    const unsubscribeStatus = subscribeToEvent('incident:status_changed', (payload) => {
+    // Helper for handling incident status updates
+    const handleStatusChange = (payload) => {
       if (!isMounted) return
-      if (payload.incident_id === incidentId || payload.id === incidentId) {
-        console.log(`[Citizen Realtime] Status updated for ${incidentId} -> ${payload.status}`)
+      if (payload.incident_id === effectiveIncidentId || payload.id === effectiveIncidentId) {
+        console.log(
+          `[Citizen Realtime] Status updated for ${effectiveIncidentId} -> ${payload.status}`
+        )
         const mappedState = STATUS_TO_STATE_MAP[payload.status] || 'SOS_ACTIVE'
 
         setLiveIncident((prev) => {
@@ -122,56 +128,93 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
           return payload.incident || (prev ? { ...prev, status: payload.status } : null)
         })
       }
-    })
+    }
 
-    // Listen for assignment created event
-    const unsubscribeAssign = subscribeToEvent('assignment:created', (payload) => {
+    // Helper for handling assignment creation & status change
+    const handleAssignmentChange = (payload) => {
       if (!isMounted) return
-      if (payload.incident_id === incidentId || payload.id === incidentId) {
+      if (payload.incident_id === effectiveIncidentId || payload.id === effectiveIncidentId) {
         console.log('[Citizen Realtime] Responder assigned:', payload.responder?.unit_name)
         if (payload.responder) {
           setAssignedResponder(payload.responder)
         }
-        setCurrentState('ASSIGNED')
+        if (payload.status) {
+          const mapped = STATUS_TO_STATE_MAP[payload.status] || 'ASSIGNED'
+          setCurrentState(mapped)
+        } else {
+          setCurrentState('ASSIGNED')
+        }
       }
-    })
+    }
 
-    // Listen for live responder location telemetry
-    const unsubscribeLoc = subscribeToEvent('responder:location_updated', (payload) => {
+    // Helper for handling responder telemetry
+    const handleResponderLocation = (payload) => {
       if (!isMounted) return
-      if (payload.assigned_incident_id === incidentId || assignedResponder?.id === payload.id) {
+      if (
+        payload.assigned_incident_id === effectiveIncidentId ||
+        assignedResponder?.id === payload.id
+      ) {
         setAssignedResponder((prev) => (prev ? { ...prev, ...payload } : payload))
       }
-    })
+    }
 
-    // Listen for live responder status updates
-    const unsubscribeRespStatus = subscribeToEvent('responder:status_changed', (payload) => {
+    const handleResponderStatus = (payload) => {
       if (!isMounted) return
-      if (payload.assigned_incident_id === incidentId || assignedResponder?.id === payload.id) {
+      if (
+        payload.assigned_incident_id === effectiveIncidentId ||
+        assignedResponder?.id === payload.id
+      ) {
         setAssignedResponder((prev) => (prev ? { ...prev, ...payload } : payload))
         if (STATUS_TO_STATE_MAP[payload.status]) {
           setCurrentState(STATUS_TO_STATE_MAP[payload.status])
         }
       }
-    })
+    }
 
-    // Listen for socket connectivity health
+    // Listen to both dot and colon format events
+    const unsub1 = subscribeToEvent('incident:status_changed', handleStatusChange)
+    const unsub2 = subscribeToEvent('incident.status_changed', handleStatusChange)
+    const unsub3 = subscribeToEvent('incident:response_state_changed', handleStatusChange)
+    const unsub4 = subscribeToEvent('incident.response_state_changed', handleStatusChange)
+
+    const unsub5 = subscribeToEvent('assignment:created', handleAssignmentChange)
+    const unsub6 = subscribeToEvent('assignment.created', handleAssignmentChange)
+    const unsub7 = subscribeToEvent('assignment:status_changed', handleAssignmentChange)
+    const unsub8 = subscribeToEvent('assignment.status_changed', handleAssignmentChange)
+
+    const unsub9 = subscribeToEvent('responder:location_updated', handleResponderLocation)
+    const unsub10 = subscribeToEvent('responder.location_updated', handleResponderLocation)
+    const unsub11 = subscribeToEvent('responder:status_changed', handleResponderStatus)
+    const unsub12 = subscribeToEvent('responder.status_changed', handleResponderStatus)
+
+    // Listen for socket connectivity health with automatic re-sync on reconnect
     const unsubscribeConn = onSocketStatusChange((status) => {
       if (isMounted) {
         setConnectivityStatus(status)
+        if (status === 'CONNECTED') {
+          loadIncident()
+        }
       }
     })
 
     return () => {
       isMounted = false
       leaveRoom(roomName)
-      unsubscribeStatus()
-      unsubscribeAssign()
-      unsubscribeLoc()
-      unsubscribeRespStatus()
+      unsub1()
+      unsub2()
+      unsub3()
+      unsub4()
+      unsub5()
+      unsub6()
+      unsub7()
+      unsub8()
+      unsub9()
+      unsub10()
+      unsub11()
+      unsub12()
       unsubscribeConn()
     }
-  }, [incidentId, assignedResponder?.id])
+  }, [effectiveIncidentId, assignedResponder?.id])
 
   // -------------------------------------------------------------------------
   // 2. Emergency Mode Geolocation Watcher (Privacy-compliant)
