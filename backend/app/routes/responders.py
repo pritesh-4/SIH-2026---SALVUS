@@ -29,11 +29,12 @@ from app.models import (
 )
 from app.realtime.socket_manager import (
     emit_assignment_created,
+    emit_assignment_status_changed,
     emit_incident_status_changed,
     emit_responder_location_updated,
     emit_responder_status_changed,
 )
-from app.services import candidate_generation, responder_service
+from app.services import assignment_service, candidate_generation, responder_service
 from app.services.allocation_engine import rank_and_explain_candidates
 
 router = APIRouter(prefix="/api/responders", tags=["responders"])
@@ -244,7 +245,9 @@ async def assign_responder(responder_id: str, payload: ResponderAssignmentReques
     try:
         await emit_assignment_created(updated_responder, updated_incident)
         await emit_responder_status_changed(updated_responder)
-        await emit_incident_status_changed(updated_incident, updated_incident.status)
+        await emit_incident_status_changed(
+            updated_incident, updated_incident.status, responder=updated_responder
+        )
     except Exception:
         pass
 
@@ -304,8 +307,23 @@ async def advance_lifecycle(responder_id: str, payload: ResponderLifecycleAdvanc
     # Broadcast real-time updates
     try:
         await emit_responder_status_changed(updated_responder)
+        active_assignment = None
         if updated_incident:
-            await emit_incident_status_changed(updated_incident, updated_incident.status)
+            active_assignment = await assignment_service.get_active_assignment_for_incident(
+                db, updated_incident.id
+            )
+            if active_assignment:
+                await emit_assignment_status_changed(
+                    active_assignment,
+                    responder=updated_responder,
+                    incident=updated_incident,
+                )
+            await emit_incident_status_changed(
+                updated_incident,
+                updated_incident.status,
+                assignment=active_assignment,
+                responder=updated_responder,
+            )
     except Exception:
         pass
 

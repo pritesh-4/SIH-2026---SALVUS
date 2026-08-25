@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { X, AlertTriangle, Radio, Clock, MapPin, Send, Loader2 } from 'lucide-react'
+import { X, AlertTriangle, Send, Loader2 } from 'lucide-react'
 
 export const AssignmentConfirmModal = ({
   isOpen,
@@ -34,11 +34,9 @@ export const AssignmentConfirmModal = ({
   if (!isOpen || !candidate || !incident) return null
 
   const unitName = candidate.unit_name || candidate.unitName || 'Response Unit'
-  const vehicleType = candidate.vehicle_type || candidate.vehicle || 'Rescue Vessel'
   const capability = candidate.capability?.replace('_', ' ') || 'General Rescue'
   const distanceKm = candidate.distance_km ?? candidate.distanceKm ?? 1.2
   const etaFormatted = candidate.eta_formatted || candidate.etaFormatted || '5 min'
-  const score = candidate.match_score ?? candidate.matchScore ?? 85
 
   return (
     <div
@@ -75,70 +73,44 @@ export const AssignmentConfirmModal = ({
 
         {/* Content Body */}
         <div className="p-5 space-y-4 text-xs">
-          {/* Target Unit Hero */}
-          <div className="p-3.5 bg-[#0D1B2D] border border-sky-500/40 rounded-xl space-y-2">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-sky-400 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-500/30">
-                  Target Response Asset
-                </span>
-                <h4 className="text-sm font-bold text-slate-100 mt-1">{unitName}</h4>
-                <p className="text-[11px] text-slate-300">
-                  {candidate.team_lead && `Lead: ${candidate.team_lead} · `}
-                  {vehicleType} ({capability})
-                </p>
-              </div>
-
-              <div className="text-right">
-                <div className="bg-sky-950 border border-sky-400/50 px-2.5 py-1 rounded-lg text-center">
-                  <span className="text-sm font-bold text-sky-300 block leading-none">{score}</span>
-                  <span className="text-[8px] text-slate-400 uppercase">Score / 100</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Metrics Grid */}
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#182C48] text-[10px]">
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Clock className="h-3 w-3 text-sky-400 shrink-0" />
-                <span>{etaFormatted} ETA</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <MapPin className="h-3 w-3 text-sky-400 shrink-0" />
-                <span>{distanceKm} km transit</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Radio className="h-3 w-3 text-emerald-400 shrink-0" />
-                <span>{candidate.radio_channel || 'VHF Ch 4'}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Target Incident Destination */}
-          <div className="p-3 bg-[#060B12] border border-[#16253B] rounded-xl space-y-1.5">
-            <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold block">
-              Incident Destination:
-            </span>
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="font-bold text-slate-100">
-                #{incident.ticket_id || incident.id?.slice(-4)}
-              </span>
-              <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-950/60 text-rose-300 border border-rose-500/40">
-                {incident.severity || 'CRITICAL'} · {incident.type?.replace('_', ' ')}
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-400 truncate">
-              {incident.location_name || 'Designated Coordinates Sector'}
+          <div>
+            <h4 className="text-sm font-bold text-slate-100">Assign {unitName}?</h4>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Confirm authoritative dispatch to distress beacon.
             </p>
           </div>
 
-          {/* Operational Advisory Warning */}
+          {/* Structured Assignment Details */}
+          <div className="p-3.5 bg-[#060D17] border border-[#142030] rounded-xl space-y-2.5 text-[11px]">
+            <div className="flex items-center justify-between border-b border-[#101A28] pb-1.5">
+              <span className="text-slate-400 font-semibold">Incident:</span>
+              <span className="font-bold text-slate-100 font-mono">
+                #{incident.ticket_id || incident.id?.slice(-4)}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between border-b border-[#101A28] pb-1.5">
+              <span className="text-slate-400 font-semibold">ETA:</span>
+              <span className="font-bold text-sky-300 font-mono">{etaFormatted}</span>
+            </div>
+
+            <div className="flex items-center justify-between border-b border-[#101A28] pb-1.5">
+              <span className="text-slate-400 font-semibold">Capability:</span>
+              <span className="font-bold text-slate-200">{capability}</span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400 font-semibold">Distance:</span>
+              <span className="font-bold text-slate-200 font-mono">{distanceKm} km</span>
+            </div>
+          </div>
+
+          {/* Operational Notice */}
           <div className="p-2.5 bg-amber-950/20 border border-amber-500/30 rounded-lg flex items-start gap-2 text-[10px] text-amber-200">
             <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
             <p>
-              Authoritatively assigns this crew and transitions incident status to{' '}
-              <strong className="text-amber-300">ASSIGNED</strong>. Response telemetry will initiate
-              immediately.
+              Transitions incident status to <strong className="text-amber-300">ASSIGNED</strong>.
+              Response telemetry will initiate immediately upon confirmation.
             </p>
           </div>
         </div>

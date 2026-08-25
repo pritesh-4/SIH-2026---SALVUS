@@ -162,8 +162,8 @@ export const LocationStatusBanner = ({
           <div className="flex items-center gap-2">
             <span className="text-amber-400 text-sm">⚠️</span>
             <span>
-              <strong>Emergency request remains active in dispatcher queue.</strong> Live updates
-              temporarily reconnecting.
+              <strong>Live response updates temporarily unavailable.</strong> Your emergency remains
+              active in the dispatch grid.
             </span>
           </div>
           <span className="text-[10px] font-mono uppercase bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 text-amber-300">

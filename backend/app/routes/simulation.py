@@ -14,11 +14,12 @@ from app.models import (
     SimulationStepRequest,
 )
 from app.realtime.socket_manager import (
+    emit_assignment_status_changed,
     emit_incident_status_changed,
     emit_responder_location_updated,
     emit_responder_status_changed,
 )
-from app.services import responder_service
+from app.services import assignment_service, responder_service
 
 router = APIRouter(prefix="/api/simulation", tags=["simulation"])
 
@@ -72,7 +73,23 @@ async def process_simulation_step(payload: SimulationStepRequest):
                 try:
                     await emit_responder_status_changed(updated_resp)
                     if updated_inc:
-                        await emit_incident_status_changed(updated_inc, updated_inc.status)
+                        active_assignment = (
+                            await assignment_service.get_active_assignment_for_incident(
+                                db, updated_inc.id
+                            )
+                        )
+                        if active_assignment:
+                            await emit_assignment_status_changed(
+                                active_assignment,
+                                responder=updated_resp,
+                                incident=updated_inc,
+                            )
+                        await emit_incident_status_changed(
+                            updated_inc,
+                            updated_inc.status,
+                            assignment=active_assignment,
+                            responder=updated_resp,
+                        )
                 except Exception:
                     pass
         except ValueError as e:

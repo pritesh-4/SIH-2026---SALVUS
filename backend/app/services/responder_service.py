@@ -157,8 +157,23 @@ async def assign_responder_to_incident(
         )
 
     now = datetime.now(UTC).isoformat()
+    assignment_id = str(uuid.uuid4())
 
-    # 1. Update responder record
+    # 1. Insert/Sync assignment record in assignments table
+    await db.execute(
+        """
+        INSERT INTO assignments (
+            id, incident_id, responder_id, status, assigned_by,
+            assigned_at, accepted_at, started_at, nearby_at,
+            arrived_at, completed_at, cancelled_at,
+            score, score_breakdown, assignment_reason, created_at, updated_at
+        )
+        VALUES (?, ?, ?, 'ASSIGNED', ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
+        """,
+        (assignment_id, incident_id, responder_id, actor, now, now, now, now),
+    )
+
+    # 2. Update responder record
     await db.execute(
         """
         UPDATE responders
@@ -168,7 +183,7 @@ async def assign_responder_to_incident(
         (status, incident_id, now, responder_id),
     )
 
-    # 2. Update incident record lifecycle
+    # 3. Update incident record lifecycle
     previous_inc_status = incident.status
     new_inc_status = "ASSIGNED"
     await db.execute(
@@ -180,10 +195,11 @@ async def assign_responder_to_incident(
         (now, incident_id),
     )
 
-    # 3. Add audit event to incident timeline
+    # 4. Add audit event to incident timeline
     event_id = str(uuid.uuid4())
     event_metadata = json.dumps(
         {
+            "assignment_id": assignment_id,
             "responder_id": responder.id,
             "unit_name": responder.unit_name,
             "team_lead": responder.team_lead,
@@ -199,7 +215,7 @@ async def assign_responder_to_incident(
         """
         INSERT INTO incident_events (id, incident_id, event_type, previous_status,
             new_status, actor, metadata, created_at)
-        VALUES (?, ?, 'RESPONDER_ASSIGNED', ?, ?, ?, ?, ?)
+        VALUES (?, ?, 'assignment.created', ?, ?, ?, ?, ?)
         """,
         (
             event_id,
@@ -248,6 +264,7 @@ async def advance_responder_lifecycle(
     if target_status == "AVAILABLE":
         new_assigned_id = None
 
+    # 1. Update responder record
     await db.execute(
         """
         UPDATE responders
@@ -257,7 +274,51 @@ async def advance_responder_lifecycle(
         (target_status, new_assigned_id, now, responder_id),
     )
 
+    # 2. Update active assignment record if one exists
     if incident_id:
+        target_assignment_status = "COMPLETED" if target_status == "AVAILABLE" else target_status
+        # Set milestone timestamps
+        if target_assignment_status == "EN_ROUTE":
+            await db.execute(
+                """
+                UPDATE assignments
+                SET status = 'EN_ROUTE', started_at = COALESCE(started_at, ?), updated_at = ?
+                WHERE responder_id = ? AND incident_id = ?
+                  AND status IN ('PROPOSED', 'ASSIGNED')
+                """,
+                (now, now, responder_id, incident_id),
+            )
+        elif target_assignment_status == "NEARBY":
+            await db.execute(
+                """
+                UPDATE assignments
+                SET status = 'NEARBY', nearby_at = COALESCE(nearby_at, ?), updated_at = ?
+                WHERE responder_id = ? AND incident_id = ?
+                  AND status IN ('PROPOSED', 'ASSIGNED', 'EN_ROUTE')
+                """,
+                (now, now, responder_id, incident_id),
+            )
+        elif target_assignment_status == "ON_SCENE":
+            await db.execute(
+                """
+                UPDATE assignments
+                SET status = 'ON_SCENE', arrived_at = COALESCE(arrived_at, ?), updated_at = ?
+                WHERE responder_id = ? AND incident_id = ?
+                  AND status IN ('PROPOSED', 'ASSIGNED', 'EN_ROUTE', 'NEARBY')
+                """,
+                (now, now, responder_id, incident_id),
+            )
+        elif target_assignment_status == "COMPLETED":
+            await db.execute(
+                """
+                UPDATE assignments
+                SET status = 'COMPLETED', completed_at = COALESCE(completed_at, ?), updated_at = ?
+                WHERE responder_id = ? AND incident_id = ?
+                  AND status NOT IN ('COMPLETED', 'CANCELLED')
+                """,
+                (now, now, responder_id, incident_id),
+            )
+
         incident = await get_incident_by_id(db, incident_id)
         if incident and incident.status not in ("RESOLVED", "CANCELLED"):
             previous_inc_status = incident.status
@@ -291,7 +352,7 @@ async def advance_responder_lifecycle(
                 """
                 INSERT INTO incident_events (id, incident_id, event_type, previous_status,
                     new_status, actor, metadata, created_at)
-                VALUES (?, ?, 'LIFECYCLE_TRANSITION', ?, ?, ?, ?, ?)
+                VALUES (?, ?, 'assignment.status_changed', ?, ?, ?, ?, ?)
                 """,
                 (
                     event_id,

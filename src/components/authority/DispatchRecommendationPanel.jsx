@@ -87,15 +87,15 @@ export const DispatchRecommendationPanel = ({
 
   return (
     <div className="bg-[#080E17] border border-[#162230] p-3.5 rounded-xl space-y-3 font-mono text-slate-200">
-      {/* Section Header (Explicitly NO AI label) */}
+      {/* Section Header */}
       <div className="flex items-center justify-between border-b border-[#141C28] pb-2">
         <div className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-sky-400"></span>
-          <span className="text-[10px] uppercase tracking-wider font-bold text-slate-300">
-            Recommended Response Unit
+          <span className="text-[10px] uppercase tracking-wider font-bold text-slate-200">
+            RESPONSE RECOMMENDATION
           </span>
         </div>
-        <span className="text-[9px] text-slate-400 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-500/30">
+        <span className="text-[9px] text-sky-400/90 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-500/30">
           Deterministic Scoring
         </span>
       </div>
@@ -167,7 +167,7 @@ export const DispatchRecommendationPanel = ({
         {/* Explainable Why-Factors Box */}
         <div className="p-2.5 bg-[#060B12] rounded-lg border border-[#142030] space-y-1">
           <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
-            Why this unit is recommended:
+            Why:
           </span>
           <div className="space-y-1 text-[10px]">
             {topCandidate.explanation?.positive_factors?.map((bullet, idx) => (
@@ -283,7 +283,7 @@ export const DispatchRecommendationPanel = ({
       {alternatives.length > 0 && (
         <div className="space-y-2 pt-1 border-t border-[#141C28]">
           <span className="text-[9px] uppercase font-bold tracking-wider text-slate-400 block">
-            Top Alternatives (Operator Override)
+            OTHER OPTIONS
           </span>
 
           <div className="space-y-1.5">

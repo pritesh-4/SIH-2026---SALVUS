@@ -66,12 +66,9 @@ export const ActiveEmergencyBanner = () => {
       }
     }
 
-    const unsub1 = subscribeToEvent('incident:status_changed', handleStatus)
-    const unsub2 = subscribeToEvent('incident.status_changed', handleStatus)
-    const unsub3 = subscribeToEvent('assignment:created', handleAssign)
-    const unsub4 = subscribeToEvent('assignment.created', handleAssign)
-    const unsub5 = subscribeToEvent('assignment:status_changed', handleAssign)
-    const unsub6 = subscribeToEvent('assignment.status_changed', handleAssign)
+    const unsub1 = subscribeToEvent('incident.response_state_changed', handleStatus)
+    const unsub2 = subscribeToEvent('assignment.created', handleAssign)
+    const unsub3 = subscribeToEvent('assignment.status_changed', handleAssign)
 
     return () => {
       isMounted = false
@@ -79,9 +76,6 @@ export const ActiveEmergencyBanner = () => {
       unsub1()
       unsub2()
       unsub3()
-      unsub4()
-      unsub5()
-      unsub6()
     }
   }, [activeIncidentId])
 

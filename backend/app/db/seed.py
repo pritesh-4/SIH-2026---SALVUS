@@ -204,14 +204,17 @@ async def seed_database(db) -> dict:
 
     # 1. Seed Incidents
     for inc in SEED_INCIDENTS:
-        cursor = await db.execute("SELECT id FROM incidents WHERE id = ?", (inc["id"],))
+        cursor = await db.execute(
+            "SELECT id FROM incidents WHERE id = ? OR ticket_id = ?",
+            (inc["id"], inc["ticket_id"]),
+        )
         existing = await cursor.fetchone()
         if existing:
             continue
 
         await db.execute(
             """
-            INSERT INTO incidents (id, ticket_id, type, severity, description,
+            INSERT OR IGNORE INTO incidents (id, ticket_id, type, severity, description,
                 reporter_name, reporter_phone, latitude, longitude,
                 affected_count, is_sos, status, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -281,7 +284,7 @@ async def seed_database(db) -> dict:
 
         await db.execute(
             """
-            INSERT INTO responders (id, unit_name, team_lead, vehicle_type, capability,
+            INSERT OR IGNORE INTO responders (id, unit_name, team_lead, vehicle_type, capability,
                 status, latitude, longitude, radio_channel, max_capacity, current_load,
                 assigned_incident_id, last_seen, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -315,7 +318,7 @@ async def seed_database(db) -> dict:
 
         await db.execute(
             """
-            INSERT INTO shelters (id, name, address, latitude, longitude,
+            INSERT OR IGNORE INTO shelters (id, name, address, latitude, longitude,
                 total_beds, available_beds, occupancy_rate, supplies_status,
                 status, amenities, is_active, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

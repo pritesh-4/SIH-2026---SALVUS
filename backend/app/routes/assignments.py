@@ -83,7 +83,9 @@ async def create_assignment(payload: AssignmentCreate):
         if responder:
             await emit_responder_status_changed(responder)
         if incident:
-            await emit_incident_status_changed(incident, incident.status)
+            await emit_incident_status_changed(
+                incident, incident.status, assignment=assignment, responder=responder
+            )
     except Exception:
         pass
 
@@ -225,7 +227,9 @@ async def update_assignment_status(assignment_id: str, payload: AssignmentStatus
         if responder:
             await emit_responder_status_changed(responder)
         if incident:
-            await emit_incident_status_changed(incident, incident.status)
+            await emit_incident_status_changed(
+                incident, incident.status, assignment=updated, responder=responder
+            )
     except Exception:
         pass
 

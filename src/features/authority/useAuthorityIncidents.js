@@ -107,7 +107,7 @@ export const useAuthorityIncidents = () => {
     joinRoom('authorities')
 
     // Listen for new incidents created by citizens
-    const unsubscribeNew = subscribeToEvent('incident:new', (payload) => {
+    const unsubscribeNew = subscribeToEvent('incident.created', (payload) => {
       console.log('[Authority Realtime] New incident received:', payload.ticket_id || payload.id)
 
       setIncidents((prev) => {
@@ -152,12 +152,12 @@ export const useAuthorityIncidents = () => {
     })
 
     // Listen for remote status transitions with out-of-order protection
-    const unsubscribeStatus = subscribeToEvent('incident:status_changed', (payload) => {
+    const handleResponseStateChange = (payload) => {
       const incId = payload.id || payload.incident_id
       const targetStatus = payload.status
 
       console.log(
-        `[Authority Realtime] Incident status changed: ${payload.ticket_id || incId} -> ${targetStatus}`
+        `[Authority Realtime] Incident response state changed: ${payload.ticket_id || incId} -> ${targetStatus}`
       )
 
       setIncidents((prev) =>
@@ -197,10 +197,39 @@ export const useAuthorityIncidents = () => {
           return inc
         })
       )
-    })
+    }
+
+    const unsubscribeStatus = subscribeToEvent(
+      'incident.response_state_changed',
+      handleResponseStateChange
+    )
+
+    const handleAssignmentEvent = (payload) => {
+      const incId = payload.incident_id || payload.id
+      if (!incId) return
+      const targetStatus = payload.status || 'ASSIGNED'
+      setIncidents((prev) =>
+        prev.map((inc) => {
+          if (inc.id === incId) {
+            return {
+              ...inc,
+              status: targetStatus,
+              updated_at: new Date().toISOString(),
+            }
+          }
+          return inc
+        })
+      )
+    }
+
+    const unsubscribeAssignCreated = subscribeToEvent('assignment.created', handleAssignmentEvent)
+    const unsubscribeAssignStatus = subscribeToEvent(
+      'assignment.status_changed',
+      handleAssignmentEvent
+    )
 
     // Listen for AI triage update and verification broadcasts
-    const unsubscribeTriage = subscribeToEvent('incident:triage_updated', (payload) => {
+    const unsubscribeTriage = subscribeToEvent('incident.triage_updated', (payload) => {
       const incId = payload.incident_id || payload.id
       setIncidents((prev) =>
         prev.map((inc) =>
@@ -214,7 +243,7 @@ export const useAuthorityIncidents = () => {
       )
     })
 
-    const unsubscribeTriageVerified = subscribeToEvent('incident:triage_verified', (payload) => {
+    const unsubscribeTriageVerified = subscribeToEvent('incident.triage_verified', (payload) => {
       const incId = payload.incident_id || payload.id
       if (payload.incident) {
         setIncidents((prev) =>
@@ -237,6 +266,8 @@ export const useAuthorityIncidents = () => {
       leaveRoom('authorities')
       unsubscribeNew()
       unsubscribeStatus()
+      unsubscribeAssignCreated()
+      unsubscribeAssignStatus()
       unsubscribeTriage()
       unsubscribeTriageVerified()
       unsubscribeConn()

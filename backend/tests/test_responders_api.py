@@ -103,7 +103,9 @@ async def test_assign_responder_to_incident(client):
     assert inc_resp.status_code == 200
     inc_data = inc_resp.json()["data"]
     assert inc_data["status"] == "ASSIGNED"
-    assert any(e["event_type"] == "RESPONDER_ASSIGNED" for e in inc_data["events"])
+    assert any(
+        e["event_type"] in ("assignment.created", "RESPONDER_ASSIGNED") for e in inc_data["events"]
+    )
 
 
 @pytest.mark.asyncio

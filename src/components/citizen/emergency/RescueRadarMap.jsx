@@ -177,7 +177,7 @@ export const RescueRadarMap = ({
                     : 'bg-slate-950/90 text-sky-300 border-sky-500/40'
               }`}
             >
-              {isOnScene ? 'ARRIVED' : responder.unitName ? 'NDRF UNIT 4' : 'RESCUE CRAFT'}
+              {isOnScene ? 'ARRIVED' : responder.unitName || responder.unit_name || 'NDRF UNIT 04'}
             </div>
           </div>
         )}

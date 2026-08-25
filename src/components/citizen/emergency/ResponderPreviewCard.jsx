@@ -1,5 +1,3 @@
-import { SimulatedBadge } from '../../common/SimulatedBadge'
-
 export const ResponderPreviewCard = ({
   currentState = 'EN_ROUTE',
   responder = {},
@@ -42,13 +40,15 @@ export const ResponderPreviewCard = ({
   return (
     <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl p-6 flex flex-col justify-between transition-all duration-300">
       <div>
-        {/* Header with ETA / Arrival Badge */}
-        <div className="flex items-center justify-between gap-3 mb-4">
+        {/* Header with Status and ETA / Arrival Badge */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold tracking-wider text-slate-400 uppercase">
               ASSIGNED RESCUE TEAM
             </span>
-            <SimulatedBadge label="SIMULATED ASSET" />
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-sky-950/80 text-sky-300 border border-sky-500/40">
+              Status: {currentState}
+            </span>
           </div>
           <div
             className={`px-3 py-1 rounded-full text-xs font-extrabold tracking-wider font-mono border ${
@@ -63,7 +63,7 @@ export const ResponderPreviewCard = ({
               ? 'ARRIVED ON SCENE'
               : isNearby
                 ? 'NEARBY (<100m)'
-                : `ETA: ${etaMinutes} MINS`}
+                : `ETA: ${etaMinutes} MIN`}
           </div>
         </div>
 
@@ -89,13 +89,21 @@ export const ResponderPreviewCard = ({
             🚤
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white tracking-tight">{responder.unitName}</h3>
+            <span className="text-[10px] uppercase font-bold text-sky-400 font-mono block">
+              Responder
+            </span>
+            <h3 className="text-lg font-bold text-white tracking-tight">
+              {responder.unitName || responder.unit_name || 'NDRF Unit 04'}
+            </h3>
             <p className="text-xs text-slate-300 mt-0.5">
-              {responder.teamLead} · <span className="text-slate-400">{responder.vehicle}</span>
+              {responder.teamLead || responder.team_lead || responder.lead || 'Capt. A. Roy'} ·{' '}
+              <span className="text-slate-400">
+                {responder.vehicle || responder.vehicle_type || 'Zodiac Rescue Boat'}
+              </span>
             </p>
             <div className="flex flex-wrap items-center gap-2 mt-2">
               <span className="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded font-semibold">
-                {responder.badge}
+                {responder.badge || 'WATER RESCUE'}
               </span>
               <span className="text-xs font-mono font-bold text-cyan-400">
                 {isOnScene ? 'At your building' : `Dist: ${distanceText}`}

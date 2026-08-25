@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { emergencyFlowData } from '../../../data/emergencyFlow'
-import { fetchIncidentById, updateIncidentStatus, createIncident } from '../../../services/api'
+import {
+  fetchIncidentById,
+  updateIncidentStatus,
+  createIncident,
+  fetchIncidentAssignments,
+  fetchResponders,
+} from '../../../services/api'
 import {
   joinRoom,
   leaveRoom,
@@ -88,6 +94,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     const loadIncident = async () => {
       const result = await fetchIncidentById(effectiveIncidentId)
       if (result.success && result.data && isMounted) {
+        localStorage.setItem('salvus_active_incident_id', result.data.id)
         setLiveIncident(result.data)
         const mappedState = STATUS_TO_STATE_MAP[result.data.status] || 'SOS_ACTIVE'
         setCurrentState(mappedState)
@@ -96,6 +103,26 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
             ...prev,
             coordinates: `${result.data.latitude.toFixed(4)}° N, ${result.data.longitude.toFixed(4)}° E`,
           }))
+        }
+
+        // Also check if responder or active assignment exists for this incident
+        if (['ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE'].includes(result.data.status)) {
+          const [assignRes, respRes] = await Promise.all([
+            fetchIncidentAssignments(effectiveIncidentId),
+            fetchResponders(),
+          ])
+          if (isMounted && assignRes.success && assignRes.data?.length > 0 && respRes.success) {
+            const activeAssign =
+              assignRes.data.find((a) =>
+                ['ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE'].includes(a.status)
+              ) || assignRes.data[0]
+            if (activeAssign) {
+              const matchedResp = respRes.data.find((r) => r.id === activeAssign.responder_id)
+              if (matchedResp) {
+                setAssignedResponder(matchedResp)
+              }
+            }
+          }
         }
       }
     }
@@ -106,7 +133,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     const roomName = `incident:${effectiveIncidentId}`
     joinRoom(roomName)
 
-    // Helper for handling incident status updates
+    // Helper for handling incident response state updates
     const handleStatusChange = (payload) => {
       if (!isMounted) return
       if (payload.incident_id === effectiveIncidentId || payload.id === effectiveIncidentId) {
@@ -114,6 +141,10 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
           `[Citizen Realtime] Status updated for ${effectiveIncidentId} -> ${payload.status}`
         )
         const mappedState = STATUS_TO_STATE_MAP[payload.status] || 'SOS_ACTIVE'
+
+        if (payload.responder) {
+          setAssignedResponder(payload.responder)
+        }
 
         setLiveIncident((prev) => {
           if (prev) {
@@ -134,16 +165,17 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     const handleAssignmentChange = (payload) => {
       if (!isMounted) return
       if (payload.incident_id === effectiveIncidentId || payload.id === effectiveIncidentId) {
-        console.log('[Citizen Realtime] Responder assigned:', payload.responder?.unit_name)
+        console.log(
+          '[Citizen Realtime] Assignment event received:',
+          payload.status,
+          payload.responder?.unit_name
+        )
         if (payload.responder) {
           setAssignedResponder(payload.responder)
         }
-        if (payload.status) {
-          const mapped = STATUS_TO_STATE_MAP[payload.status] || 'ASSIGNED'
-          setCurrentState(mapped)
-        } else {
-          setCurrentState('ASSIGNED')
-        }
+        const mapped = STATUS_TO_STATE_MAP[payload.status] || 'ASSIGNED'
+        setCurrentState(mapped)
+        setLiveIncident((prev) => (prev ? { ...prev, status: payload.status } : null))
       }
     }
 
@@ -171,21 +203,12 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
       }
     }
 
-    // Listen to both dot and colon format events
-    const unsub1 = subscribeToEvent('incident:status_changed', handleStatusChange)
-    const unsub2 = subscribeToEvent('incident.status_changed', handleStatusChange)
-    const unsub3 = subscribeToEvent('incident:response_state_changed', handleStatusChange)
-    const unsub4 = subscribeToEvent('incident.response_state_changed', handleStatusChange)
-
-    const unsub5 = subscribeToEvent('assignment:created', handleAssignmentChange)
-    const unsub6 = subscribeToEvent('assignment.created', handleAssignmentChange)
-    const unsub7 = subscribeToEvent('assignment:status_changed', handleAssignmentChange)
-    const unsub8 = subscribeToEvent('assignment.status_changed', handleAssignmentChange)
-
-    const unsub9 = subscribeToEvent('responder:location_updated', handleResponderLocation)
-    const unsub10 = subscribeToEvent('responder.location_updated', handleResponderLocation)
-    const unsub11 = subscribeToEvent('responder:status_changed', handleResponderStatus)
-    const unsub12 = subscribeToEvent('responder.status_changed', handleResponderStatus)
+    // Listen strictly to canonical Socket.IO events (no aliases)
+    const unsub1 = subscribeToEvent('incident.response_state_changed', handleStatusChange)
+    const unsub2 = subscribeToEvent('assignment.created', handleAssignmentChange)
+    const unsub3 = subscribeToEvent('assignment.status_changed', handleAssignmentChange)
+    const unsub4 = subscribeToEvent('responder.location_updated', handleResponderLocation)
+    const unsub5 = subscribeToEvent('responder.status_changed', handleResponderStatus)
 
     // Listen for socket connectivity health with automatic re-sync on reconnect
     const unsubscribeConn = onSocketStatusChange((status) => {
@@ -205,13 +228,6 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
       unsub3()
       unsub4()
       unsub5()
-      unsub6()
-      unsub7()
-      unsub8()
-      unsub9()
-      unsub10()
-      unsub11()
-      unsub12()
       unsubscribeConn()
     }
   }, [effectiveIncidentId, assignedResponder?.id])

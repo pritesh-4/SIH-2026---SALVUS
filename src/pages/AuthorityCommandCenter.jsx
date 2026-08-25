@@ -195,16 +195,12 @@ export const AuthorityCommandCenter = () => {
       )
     }
 
-    const unsub1 = subscribeToEvent('responder:status_changed', handleResponderStatus)
-    const unsub2 = subscribeToEvent('responder.status_changed', handleResponderStatus)
-    const unsub3 = subscribeToEvent('responder:location_updated', handleResponderLocation)
-    const unsub4 = subscribeToEvent('responder.location_updated', handleResponderLocation)
-    const unsub5 = subscribeToEvent('assignment:created', handleAssignment)
-    const unsub6 = subscribeToEvent('assignment.created', handleAssignment)
-    const unsub7 = subscribeToEvent('assignment:status_changed', handleAssignment)
-    const unsub8 = subscribeToEvent('assignment.status_changed', handleAssignment)
-    const unsub9 = subscribeToEvent('shelter:updated', handleShelter)
-    const unsub10 = subscribeToEvent('shelter.updated', handleShelter)
+    const unsub1 = subscribeToEvent('responder.status_changed', handleResponderStatus)
+    const unsub2 = subscribeToEvent('responder.location_updated', handleResponderLocation)
+    const unsub3 = subscribeToEvent('assignment.created', handleAssignment)
+    const unsub4 = subscribeToEvent('assignment.status_changed', handleAssignment)
+    const unsub5 = subscribeToEvent('incident.response_state_changed', () => refetch(true))
+    const unsub6 = subscribeToEvent('shelter.updated', handleShelter)
 
     return () => {
       isMounted = false
@@ -215,10 +211,6 @@ export const AuthorityCommandCenter = () => {
       unsub4()
       unsub5()
       unsub6()
-      unsub7()
-      unsub8()
-      unsub9()
-      unsub10()
     }
   }, [loadFleetAndShelters, refetch])
 
@@ -731,8 +723,10 @@ export const AuthorityCommandCenter = () => {
       refetch(true)
       setTimeout(() => setActionSuccessMessage(null), 3500)
     } else {
-      const errMsg = result.error?.message || 'Responder is no longer available'
-      setActionSuccessMessage(`❌ Assignment failed: ${errMsg}`)
+      const unitLabel =
+        assignConfirmCandidate?.unit_name || assignConfirmCandidate?.unitName || 'Selected unit'
+      const customMsg = `${unitLabel} is no longer available. Updated recommendations are ready.`
+      setActionSuccessMessage(`⚠️ ${customMsg}`)
       // Automatically refresh candidates on race condition or failure
       setIsLoadingCandidates(true)
       const candRes = await fetchResponderCandidates(selectedIncident.id)
