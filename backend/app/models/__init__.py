@@ -108,8 +108,71 @@ class IncidentEventResponse(BaseModel):
     created_at: str
 
 
+# ---------------------------------------------------------------------------
+# AI Triage Models
+# ---------------------------------------------------------------------------
+
+
+class AITriageAssessment(BaseModel):
+    """Structured decision-support triage output produced by AI or fallback engine."""
+
+    incident_type: IncidentType
+    severity: IncidentSeverity
+    severity_level: int = Field(
+        ge=1, le=5, description="1=LOW, 2=MODERATE, 3=HIGH, 4=CRITICAL, 5=LIFE_THREATENING"
+    )
+    confidence: float = Field(ge=0.0, le=1.0, description="Confidence score between 0.0 and 1.0")
+    hazard_type: str = Field(
+        description="Domain-specific hazard label, e.g. Flash Flood & Surge Inundation"
+    )
+    affected_people: int = Field(default=1, ge=1)
+    key_signals: list[str] = Field(
+        default_factory=list, description="Concrete grounded signals extracted from report"
+    )
+    recommended_capability: ResponderCapability = Field(
+        description="Matched responder equipment requirement"
+    )
+    priority_reasoning: str = Field(
+        description="Concise evidence-grounded justification for operational urgency"
+    )
+    uncertainty_flags: list[str] = Field(
+        default_factory=list, description="Ambiguities or unverified conditions"
+    )
+    image_assessment_hint: str | None = Field(
+        default=None, description="Tagged with 'AI ESTIMATE — UNVERIFIED'"
+    )
+    provider: str = Field(
+        default="gemini-2.0-flash", description="AI Provider or fallback identifier"
+    )
+    model: str = Field(default="gemini-2.0-flash", description="Underlying model name")
+    evaluated_at: str
+    needs_review: bool = Field(
+        default=False, description="True if confidence < 0.75 or critical flags present"
+    )
+    review_status: str = Field(
+        default="PENDING", description="PENDING | VERIFIED | ADJUSTED | REJECTED"
+    )
+
+
+class TriageVerificationRequest(BaseModel):
+    """Operator verification or adjustment payload for human-in-the-loop triage approval."""
+
+    actor: str = Field(default="authority", max_length=200)
+    reviewer_notes: str | None = Field(default=None, max_length=1000)
+    adjusted_severity: IncidentSeverity | None = None
+    adjusted_type: IncidentType | None = None
+    adjusted_capability: ResponderCapability | None = None
+
+
+class AITriageSingleResponse(BaseModel):
+    """Response wrapper for AI triage assessment."""
+
+    success: bool = True
+    data: AITriageAssessment
+
+
 class IncidentResponse(BaseModel):
-    """Full incident response with event history."""
+    """Full incident response with event history and optional AI decision support."""
 
     id: str
     ticket_id: str
@@ -126,6 +189,7 @@ class IncidentResponse(BaseModel):
     created_at: str
     updated_at: str
     events: list[IncidentEventResponse] = []
+    ai_triage: AITriageAssessment | None = None
 
 
 class IncidentListResponse(BaseModel):

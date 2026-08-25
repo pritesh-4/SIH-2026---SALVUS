@@ -83,6 +83,24 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         )
     """)
 
+    # 5. AI Triage Assessments Table (Full Decision Support Audit Trail)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS ai_triage_assessments (
+            id TEXT PRIMARY KEY,
+            incident_id TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            assessment TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            review_status TEXT NOT NULL DEFAULT 'PENDING',
+            operator_adjustments TEXT,
+            operator_id TEXT,
+            created_at TEXT NOT NULL,
+            reviewed_at TEXT,
+            FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
+        )
+    """)
+
     # Column migrations if table already existed without amenities
     try:
         await db.execute("ALTER TABLE shelters ADD COLUMN amenities TEXT NOT NULL DEFAULT '[]'")
@@ -105,6 +123,9 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_responders_assigned ON responders(assigned_incident_id)"
     )
     await db.execute("CREATE INDEX IF NOT EXISTS idx_shelters_status ON shelters(status)")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ai_triage_incident_id ON ai_triage_assessments(incident_id)"
+    )
 
     await db.commit()
-    print("[DB] Migrations complete: incidents, incident_events, responders, shelters.")
+    print("[DB] Migrations complete with triage audit tables.")

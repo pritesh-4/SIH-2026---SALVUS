@@ -242,6 +242,34 @@ async def seed_database(db) -> dict:
             """,
             (str(uuid.uuid4()), inc["id"], inc["status"], now),
         )
+
+        # Seed initial AI triage decision-support assessment
+        from app.services.ai_triage_service import _local_heuristic_triage
+
+        triage_assessment = _local_heuristic_triage(inc)
+        if inc["status"] in ("VERIFIED", "ASSIGNED", "EN_ROUTE", "NEARBY", "ON_SCENE", "RESOLVED"):
+            triage_assessment.review_status = "VERIFIED"
+            triage_assessment.needs_review = False
+
+        await db.execute(
+            """
+            INSERT INTO ai_triage_assessments (
+                id, incident_id, provider, model, assessment,
+                confidence, review_status, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                inc["id"],
+                triage_assessment.provider,
+                triage_assessment.model,
+                triage_assessment.model_dump_json(),
+                triage_assessment.confidence,
+                triage_assessment.review_status,
+                now,
+            ),
+        )
         created_incidents.append(inc)
 
     # 2. Seed Responders

@@ -199,6 +199,32 @@ export const useAuthorityIncidents = () => {
       )
     })
 
+    // Listen for AI triage update and verification broadcasts
+    const unsubscribeTriage = subscribeToEvent('incident:triage_updated', (payload) => {
+      const incId = payload.incident_id || payload.id
+      setIncidents((prev) =>
+        prev.map((inc) =>
+          inc.id === incId
+            ? {
+                ...inc,
+                ai_triage: payload.assessment,
+              }
+            : inc
+        )
+      )
+    })
+
+    const unsubscribeTriageVerified = subscribeToEvent('incident:triage_verified', (payload) => {
+      const incId = payload.incident_id || payload.id
+      if (payload.incident) {
+        setIncidents((prev) =>
+          prev.map((inc) => (inc.id === incId ? normalizeIncident(payload.incident) : inc))
+        )
+      } else {
+        refetch(true)
+      }
+    })
+
     // Listen for socket connection status and refresh on reconnect
     const unsubscribeConn = onSocketStatusChange((status) => {
       setConnectivityStatus(status)
@@ -211,6 +237,8 @@ export const useAuthorityIncidents = () => {
       leaveRoom('authorities')
       unsubscribeNew()
       unsubscribeStatus()
+      unsubscribeTriage()
+      unsubscribeTriageVerified()
       unsubscribeConn()
     }
   }, [refetch])

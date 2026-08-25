@@ -25,6 +25,7 @@ from app.routes.responders import router as responders_router
 from app.routes.routing import router as routing_router
 from app.routes.shelters import router as shelters_router
 from app.routes.simulation import router as simulation_router
+from app.routes.triage import router as triage_router
 
 load_dotenv()
 
@@ -86,6 +87,7 @@ app.include_router(responders_router)
 app.include_router(routing_router)
 app.include_router(shelters_router)
 app.include_router(simulation_router)
+app.include_router(triage_router)
 
 
 @app.get("/")

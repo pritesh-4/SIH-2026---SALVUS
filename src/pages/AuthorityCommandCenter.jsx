@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { authorityData } from '../data/authority/authorityMock'
 import { useAuthorityIncidents } from '../features/authority/useAuthorityIncidents'
 import { SalvusLeafletMap } from '../components/common/SalvusLeafletMap'
+import { AiTriageAssessmentCard } from '../components/authority/AiTriageAssessmentCard'
 import {
   fetchResponders,
   fetchShelters,
@@ -11,6 +12,9 @@ import {
   updateShelterOccupancy,
   advanceResponderLifecycle,
   sendSimulationStep,
+  analyzeIncidentTriage,
+  verifyIncidentTriage,
+  adjustIncidentTriage,
 } from '../services/api'
 import { fetchRoute } from '../services/routingService'
 import { subscribeToEvent } from '../lib/realtime/socket'
@@ -57,6 +61,8 @@ export const AuthorityCommandCenter = () => {
   const [actionSuccessMessage, setActionSuccessMessage] = useState(null)
   const [isAssigningUnit, setIsAssigningUnit] = useState(false)
   const [showScoreBreakdown, setShowScoreBreakdown] = useState(false)
+  const [isAnalyzingTriage, setIsAnalyzingTriage] = useState(false)
+  const [isVerifyingTriage, setIsVerifyingTriage] = useState(false)
 
   // Simulation controls
   const [isSimulatingMovement, setIsSimulatingMovement] = useState(false)
@@ -505,6 +511,60 @@ export const AuthorityCommandCenter = () => {
     if (result.success) {
       setActionSuccessMessage(`✓ Status updated: ${label}`)
       setTimeout(() => setActionSuccessMessage(null), 3000)
+    }
+  }
+
+  const handleVerifyTriage = async (customData = null) => {
+    if (!selectedIncident) return
+    setIsVerifyingTriage(true)
+    const result = await verifyIncidentTriage(
+      selectedIncident.id,
+      customData || { actor: 'Authority Dispatcher' }
+    )
+    setIsVerifyingTriage(false)
+
+    if (result.success) {
+      setActionSuccessMessage(`✓ AI Triage verified for #${selectedIncident.ticket_id}`)
+      refetch(true)
+      setTimeout(() => setActionSuccessMessage(null), 3000)
+    } else {
+      setActionSuccessMessage(`❌ ${result.error?.message || 'Verification failed'}`)
+      setTimeout(() => setActionSuccessMessage(null), 3500)
+    }
+  }
+
+  const handleAdjustTriage = async (adjustmentData) => {
+    if (!selectedIncident) return
+    setIsVerifyingTriage(true)
+    const result = await adjustIncidentTriage(selectedIncident.id, {
+      ...adjustmentData,
+      actor: 'Authority Dispatcher',
+    })
+    setIsVerifyingTriage(false)
+
+    if (result.success) {
+      setActionSuccessMessage(`✓ AI Triage adjusted & verified for #${selectedIncident.ticket_id}`)
+      refetch(true)
+      setTimeout(() => setActionSuccessMessage(null), 3000)
+    } else {
+      setActionSuccessMessage(`❌ ${result.error?.message || 'Adjustment failed'}`)
+      setTimeout(() => setActionSuccessMessage(null), 3500)
+    }
+  }
+
+  const handleReevaluateTriage = async () => {
+    if (!selectedIncident) return
+    setIsAnalyzingTriage(true)
+    const result = await analyzeIncidentTriage(selectedIncident.id)
+    setIsAnalyzingTriage(false)
+
+    if (result.success) {
+      setActionSuccessMessage(`✓ Re-evaluated triage for #${selectedIncident.ticket_id}`)
+      refetch(true)
+      setTimeout(() => setActionSuccessMessage(null), 3000)
+    } else {
+      setActionSuccessMessage(`❌ ${result.error?.message || 'Triage analysis failed'}`)
+      setTimeout(() => setActionSuccessMessage(null), 3500)
     }
   }
 
@@ -980,6 +1040,16 @@ export const AuthorityCommandCenter = () => {
                       </span>
                     </div>
                   </div>
+
+                  {/* AI INCIDENT TRIAGE & DECISION SUPPORT CARD */}
+                  <AiTriageAssessmentCard
+                    incident={selectedIncident}
+                    onVerify={handleVerifyTriage}
+                    onAdjust={handleAdjustTriage}
+                    onReevaluate={handleReevaluateTriage}
+                    isVerifying={isVerifyingTriage}
+                    isAnalyzing={isAnalyzingTriage}
+                  />
 
                   {/* EXPLAINABLE ALLOCATION SECTION OR ACTIVE MISSION */}
                   {currentlyAssignedResponder ? (

@@ -131,6 +131,71 @@ export const updateIncidentStatus = async (incidentId, status, actor = 'authorit
 }
 
 // ---------------------------------------------------------------------------
+// AI Incident Triage API Calls
+// ---------------------------------------------------------------------------
+
+/**
+ * Trigger safety-critical AI decision support triage on an incident.
+ */
+export const analyzeIncidentTriage = async (incidentId) => {
+  try {
+    const response = await apiClient.post(`/api/triage/analyze/${incidentId}`)
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to evaluate AI incident triage'
+    return {
+      success: false,
+      error: { message, code: error.code || 'TRIAGE_ERROR' },
+      data: null,
+    }
+  }
+}
+
+/**
+ * Operator approves AI triage assessment and transitions incident to VERIFIED.
+ */
+export const verifyIncidentTriage = async (incidentId, verificationData = {}) => {
+  try {
+    const response = await apiClient.post(`/api/triage/verify/${incidentId}`, {
+      actor: verificationData.actor || 'Authority Dispatcher',
+      reviewer_notes: verificationData.reviewer_notes || null,
+      adjusted_severity: verificationData.adjusted_severity || null,
+      adjusted_type: verificationData.adjusted_type || null,
+      adjusted_capability: verificationData.adjusted_capability || null,
+    })
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to verify incident triage'
+    return {
+      success: false,
+      error: { message, code: error.code || 'VERIFICATION_ERROR' },
+      data: null,
+    }
+  }
+}
+
+/**
+ * Operator overrides severity, type, or capability, logs audit trail, and confirms verification.
+ */
+export const adjustIncidentTriage = async (incidentId, adjustmentData) => {
+  return verifyIncidentTriage(incidentId, adjustmentData)
+}
+
+// ---------------------------------------------------------------------------
 // Responder Fleet API Calls
 // ---------------------------------------------------------------------------
 
