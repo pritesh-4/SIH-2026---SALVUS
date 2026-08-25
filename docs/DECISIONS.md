@@ -91,3 +91,14 @@ This document records foundational architectural decisions, rationale, and engin
 - **Decision:** Establish isolated `.env.example` templates for root and `backend/` with empty secret placeholders, paired with strict `.gitignore` rules forbidding any `.env*` files from being committed.
 - **Reason:** Guarantees security-first defaults, repeatable local developer onboarding, and smooth CI/CD quality gate runs without dependency on external secret stores during development.
 - **Trade-offs:** Developers must run `cp .env.example .env` during initial setup.
+
+---
+
+## ADR-011: First-Class Assignment Domain Model & Controlled Lifecycle
+
+- **Context:** Previously, `incidents` and `responders` existed as loosely coupled tables with a foreign key column on responders. As operational complexity grows, emergency dispatch requires explicit assignment contracts, milestone timestamp tracking (`accepted_at`, `started_at`, `arrived_at`, `completed_at`, `cancelled_at`), transparent score breakdown storage, and auditable event histories.
+- **Decision:** Elevate **Assignment** into an explicit first-class domain model (`incident ↔ assignment ↔ responder`) governed by a strict forward-only finite state machine (`PROPOSED` $\rightarrow$ `ASSIGNED` $\rightarrow$ `EN_ROUTE` $\rightarrow$ `NEARBY` $\rightarrow$ `ON_SCENE` $\rightarrow$ `COMPLETED` / `CANCELLED`). Enforce a transactional service boundary ensuring zero orphaned or desynchronized responder/incident states.
+- **Reason:** Prevents race conditions, prevents duplicate active responder assignments, and guarantees legal and operational auditability across emergency rescue operations.
+- **Trade-offs / Scope Boundaries:**
+  - Enforces 1 active assignment per responder for Phase 1.
+  - Establishes structured factor score storage schema (`capability`, `distance`, `eta`, `workload`, `severity_fit`); dynamic scoring algorithms and live OSRM routing are deferred to **NEXT PHASE**.

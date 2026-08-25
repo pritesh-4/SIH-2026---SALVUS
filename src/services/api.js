@@ -340,6 +340,151 @@ export const updateResponderLocation = async (responderId, latitude, longitude) 
 }
 
 // ---------------------------------------------------------------------------
+// Assignment Domain API Calls
+// ---------------------------------------------------------------------------
+
+/**
+ * Authoritatively create a first-class incident-to-responder assignment.
+ */
+export const createAssignment = async (payload) => {
+  try {
+    const response = await apiClient.post('/api/assignments', {
+      incident_id: payload.incident_id,
+      responder_id: payload.responder_id,
+      status: payload.status || 'ASSIGNED',
+      assigned_by: payload.assigned_by || 'authority',
+      score: payload.score ?? null,
+      score_breakdown: payload.score_breakdown || null,
+      assignment_reason: payload.assignment_reason || null,
+    })
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to create assignment'
+    return {
+      success: false,
+      error: { message, code: error.response?.data?.detail?.error?.code || 'ASSIGNMENT_ERROR' },
+      data: null,
+    }
+  }
+}
+
+/**
+ * Fetch a single assignment by its unique ID.
+ */
+export const fetchAssignmentById = async (assignmentId) => {
+  try {
+    const response = await apiClient.get(`/api/assignments/${assignmentId}`)
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to fetch assignment'
+    return {
+      success: false,
+      error: { message, code: error.response?.data?.detail?.error?.code || 'FETCH_ERROR' },
+      data: null,
+    }
+  }
+}
+
+/**
+ * Fetch all assignments for an incident.
+ */
+export const fetchIncidentAssignments = async (incidentId) => {
+  try {
+    const response = await apiClient.get(`/api/incidents/${incidentId}/assignments`)
+    return {
+      success: true,
+      data: response.data.data || [],
+      count: response.data.count || 0,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to fetch incident assignments'
+    return {
+      success: false,
+      error: { message, code: error.response?.data?.detail?.error?.code || 'FETCH_ERROR' },
+      data: [],
+      count: 0,
+    }
+  }
+}
+
+/**
+ * Transition assignment lifecycle status.
+ */
+export const updateAssignmentStatus = async (
+  assignmentId,
+  status,
+  actor = 'authority',
+  notes = null
+) => {
+  try {
+    const response = await apiClient.patch(`/api/assignments/${assignmentId}/status`, {
+      status,
+      actor,
+      notes,
+    })
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to update assignment status'
+    return {
+      success: false,
+      error: { message, code: error.response?.data?.detail?.error?.code || 'UPDATE_ERROR' },
+      data: null,
+    }
+  }
+}
+
+/**
+ * Fetch assignments list with optional filters.
+ */
+export const fetchAssignments = async (params = {}) => {
+  try {
+    const response = await apiClient.get('/api/assignments', { params })
+    return {
+      success: true,
+      data: response.data.data || [],
+      count: response.data.count || 0,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to fetch assignments'
+    return {
+      success: false,
+      error: { message, code: error.response?.data?.detail?.error?.code || 'FETCH_ERROR' },
+      data: [],
+      count: 0,
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Shelter Logistics API Calls
 // ---------------------------------------------------------------------------
 

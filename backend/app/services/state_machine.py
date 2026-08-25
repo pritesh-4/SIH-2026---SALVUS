@@ -4,7 +4,7 @@ Enforces deterministic, forward-only status transitions for the emergency
 pipeline across both incident and responder domains.
 """
 
-from app.models import IncidentStatus, ResponderStatus
+from app.models import AssignmentStatus, IncidentStatus, ResponderStatus
 
 # ---------------------------------------------------------------------------
 # Incident Transition Rules
@@ -110,6 +110,61 @@ ALLOWED_RESPONDER_TRANSITIONS: dict[ResponderStatus, set[ResponderStatus]] = {
 
 
 # ---------------------------------------------------------------------------
+# Assignment Transition Rules
+# ---------------------------------------------------------------------------
+
+ALLOWED_ASSIGNMENT_TRANSITIONS: dict[AssignmentStatus, set[AssignmentStatus]] = {
+    AssignmentStatus.PROPOSED: {
+        AssignmentStatus.ASSIGNED,
+        AssignmentStatus.CANCELLED,
+    },
+    AssignmentStatus.ASSIGNED: {
+        AssignmentStatus.EN_ROUTE,
+        AssignmentStatus.CANCELLED,
+    },
+    AssignmentStatus.EN_ROUTE: {
+        AssignmentStatus.NEARBY,
+        AssignmentStatus.ON_SCENE,
+        AssignmentStatus.CANCELLED,
+    },
+    AssignmentStatus.NEARBY: {
+        AssignmentStatus.ON_SCENE,
+        AssignmentStatus.CANCELLED,
+    },
+    AssignmentStatus.ON_SCENE: {
+        AssignmentStatus.COMPLETED,
+        AssignmentStatus.CANCELLED,
+    },
+    # Terminal states — no further transitions allowed
+    AssignmentStatus.COMPLETED: set(),
+    AssignmentStatus.CANCELLED: set(),
+}
+
+TERMINAL_ASSIGNMENT_STATUSES: set[AssignmentStatus] = {
+    AssignmentStatus.COMPLETED,
+    AssignmentStatus.CANCELLED,
+}
+
+ACTIVE_ASSIGNMENT_STATUSES: set[AssignmentStatus] = {
+    AssignmentStatus.PROPOSED,
+    AssignmentStatus.ASSIGNED,
+    AssignmentStatus.EN_ROUTE,
+    AssignmentStatus.NEARBY,
+    AssignmentStatus.ON_SCENE,
+}
+
+ASSIGNMENT_STATUS_RANKS: dict[AssignmentStatus, int] = {
+    AssignmentStatus.PROPOSED: 1,
+    AssignmentStatus.ASSIGNED: 2,
+    AssignmentStatus.EN_ROUTE: 3,
+    AssignmentStatus.NEARBY: 4,
+    AssignmentStatus.ON_SCENE: 5,
+    AssignmentStatus.COMPLETED: 6,
+    AssignmentStatus.CANCELLED: 6,
+}
+
+
+# ---------------------------------------------------------------------------
 # Validation Functions
 # ---------------------------------------------------------------------------
 
@@ -136,10 +191,29 @@ def validate_responder_transition(current: str, target: str) -> bool:
     return target_status in ALLOWED_RESPONDER_TRANSITIONS.get(current_status, set())
 
 
+def validate_assignment_transition(current: str, target: str) -> bool:
+    """Return True if transitioning assignment from *current* to *target* is allowed."""
+    try:
+        current_status = AssignmentStatus(current)
+        target_status = AssignmentStatus(target)
+    except ValueError:
+        return False
+
+    return target_status in ALLOWED_ASSIGNMENT_TRANSITIONS.get(current_status, set())
+
+
 def is_terminal(status: str) -> bool:
-    """Return True if the status is a terminal (end-of-lifecycle) state."""
+    """Return True if the incident status is a terminal (end-of-lifecycle) state."""
     try:
         return IncidentStatus(status) in TERMINAL_INCIDENT_STATUSES
+    except ValueError:
+        return False
+
+
+def is_assignment_terminal(status: str) -> bool:
+    """Return True if the assignment status is a terminal state."""
+    try:
+        return AssignmentStatus(status) in TERMINAL_ASSIGNMENT_STATUSES
     except ValueError:
         return False
 
@@ -148,5 +222,13 @@ def get_rank(status: str) -> int:
     """Return the numeric rank of a status for ordering protection."""
     try:
         return INCIDENT_STATUS_RANKS[IncidentStatus(status)]
+    except (ValueError, KeyError):
+        return 0
+
+
+def get_assignment_rank(status: str) -> int:
+    """Return the numeric rank of an assignment status."""
+    try:
+        return ASSIGNMENT_STATUS_RANKS[AssignmentStatus(status)]
     except (ValueError, KeyError):
         return 0

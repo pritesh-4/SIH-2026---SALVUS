@@ -39,3 +39,15 @@ When connection drops and recovers:
 1. `onSocketStatusChange` transitions from `CONNECTED` $\rightarrow$ `RECONNECTING` $\rightarrow$ `CONNECTED`.
 2. Socket client re-emits room joins for all active subscriptions (`authorities`, `incident:{id}`).
 3. The dashboard executes a silent background refetch (`refetch(true)`) to synchronize any missed status transitions during the disconnect gap.
+
+---
+
+## 5. Assignment Realtime Events (IMPLEMENTED ✅)
+
+The backend broadcasts typed assignment lifecycle events over Socket.IO using standardized dot-delimited conventions (with colon-delimited fallback aliases):
+
+| Event Name                  | Target Rooms                   | Payload Content                                                    | Description                                                                                    |
+| :-------------------------- | :----------------------------- | :----------------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
+| `assignment.created`        | `authorities`, `incident:{id}` | `{ id, assignment, incident_id, responder_id, status }`            | Emitted when authority assigns a responder unit to an incident.                                |
+| `assignment.status_changed` | `authorities`, `incident:{id}` | `{ id, assignment, previous_status, status, responder, incident }` | Emitted on milestone transitions (`EN_ROUTE`, `NEARBY`, `ON_SCENE`, `COMPLETED`, `CANCELLED`). |
+| `assignment.updated`        | `authorities`, `incident:{id}` | `{ id, assignment, incident_id, responder_id, status }`            | Emitted when assignment metadata or notes are updated.                                         |

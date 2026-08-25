@@ -49,6 +49,16 @@ class ResponderStatus(StrEnum):
     OFFLINE = "OFFLINE"
 
 
+class AssignmentStatus(StrEnum):
+    PROPOSED = "PROPOSED"
+    ASSIGNED = "ASSIGNED"
+    EN_ROUTE = "EN_ROUTE"
+    NEARBY = "NEARBY"
+    ON_SCENE = "ON_SCENE"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+
+
 class ResponderCapability(StrEnum):
     FLOOD_BOAT = "FLOOD_BOAT"
     AMBULANCE = "AMBULANCE"
@@ -350,6 +360,77 @@ class ResponderLifecycleAdvanceRequest(BaseModel):
     target_status: ResponderStatus
     actor: str = Field(default="authority", max_length=200)
     notes: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Assignment Models
+# ---------------------------------------------------------------------------
+
+
+class AssignmentScoreBreakdown(BaseModel):
+    """Structured breakdown of deterministic or AI scoring factors."""
+
+    capability: float = Field(default=0.0, description="Capability match factor score")
+    distance: float = Field(default=0.0, description="Proximity factor score")
+    eta: float = Field(default=0.0, description="Travel time factor score")
+    workload: float = Field(default=0.0, description="Load/capacity factor score")
+    severity_fit: float = Field(default=0.0, description="Severity alignment factor score")
+
+
+class AssignmentCreate(BaseModel):
+    """Payload for creating a new incident-to-responder assignment."""
+
+    incident_id: str
+    responder_id: str
+    status: AssignmentStatus = AssignmentStatus.ASSIGNED
+    assigned_by: str = Field(default="authority", max_length=200)
+    score: float | None = None
+    score_breakdown: AssignmentScoreBreakdown | None = None
+    assignment_reason: str | None = Field(default=None, max_length=1000)
+
+
+class AssignmentStatusUpdate(BaseModel):
+    """Payload for transitioning assignment status along its controlled lifecycle."""
+
+    status: AssignmentStatus
+    actor: str = Field(default="authority", max_length=200)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class AssignmentResponse(BaseModel):
+    """Domain model representing an active or historical responder assignment."""
+
+    id: str
+    incident_id: str
+    responder_id: str
+    status: str
+    assigned_by: str
+    assigned_at: str
+    accepted_at: str | None = None
+    started_at: str | None = None
+    arrived_at: str | None = None
+    completed_at: str | None = None
+    cancelled_at: str | None = None
+    score: float | None = None
+    score_breakdown: AssignmentScoreBreakdown | None = None
+    assignment_reason: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class AssignmentSingleResponse(BaseModel):
+    """Response envelope for a single assignment entity."""
+
+    success: bool = True
+    data: AssignmentResponse
+
+
+class AssignmentListResponse(BaseModel):
+    """Response envelope for listing assignments."""
+
+    success: bool = True
+    data: list[AssignmentResponse]
+    count: int
 
 
 # ---------------------------------------------------------------------------

@@ -101,6 +101,30 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         )
     """)
 
+    # 6. Responder Assignments Table
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS assignments (
+            id TEXT PRIMARY KEY,
+            incident_id TEXT NOT NULL,
+            responder_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PROPOSED',
+            assigned_by TEXT NOT NULL DEFAULT 'authority',
+            assigned_at TEXT NOT NULL,
+            accepted_at TEXT,
+            started_at TEXT,
+            arrived_at TEXT,
+            completed_at TEXT,
+            cancelled_at TEXT,
+            score REAL,
+            score_breakdown TEXT,
+            assignment_reason TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+            FOREIGN KEY (responder_id) REFERENCES responders(id) ON DELETE CASCADE
+        )
+    """)
+
     # Column migrations if table already existed without amenities
     try:
         await db.execute("ALTER TABLE shelters ADD COLUMN amenities TEXT NOT NULL DEFAULT '[]'")
@@ -126,6 +150,13 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_ai_triage_incident_id ON ai_triage_assessments(incident_id)"
     )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_assignments_incident ON assignments(incident_id)"
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_assignments_responder ON assignments(responder_id)"
+    )
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_assignments_status ON assignments(status)")
 
     await db.commit()
-    print("[DB] Migrations complete with triage audit tables.")
+    print("[DB] Migrations complete with triage audit and assignment tables.")

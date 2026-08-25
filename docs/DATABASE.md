@@ -73,6 +73,29 @@ Active rescue craft, medical ambulances, and disaster response units.
 | `created_at`           | `TEXT`    | `NOT NULL`                                     | ISO 8601 UTC timestamp                                                |
 | `updated_at`           | `TEXT`    | `NOT NULL`                                     | ISO 8601 UTC timestamp                                                |
 
+### Table: `assignments`
+
+First-class domain entity linking one incident to one responder with explicit lifecycle milestones and audit score breakdown.
+
+| Column              | Type   | Constraints                                        | Description                                                                        |
+| ------------------- | ------ | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `id`                | `TEXT` | `PRIMARY KEY`                                      | UUIDv4 string                                                                      |
+| `incident_id`       | `TEXT` | `NOT NULL, FK -> incidents(id) ON DELETE CASCADE`  | Linked emergency incident                                                          |
+| `responder_id`      | `TEXT` | `NOT NULL, FK -> responders(id) ON DELETE CASCADE` | Linked rescue unit                                                                 |
+| `status`            | `TEXT` | `NOT NULL DEFAULT 'PROPOSED'`                      | `PROPOSED`, `ASSIGNED`, `EN_ROUTE`, `NEARBY`, `ON_SCENE`, `COMPLETED`, `CANCELLED` |
+| `assigned_by`       | `TEXT` | `NOT NULL DEFAULT 'authority'`                     | Dispatcher actor or authority ID                                                   |
+| `assigned_at`       | `TEXT` | `NOT NULL`                                         | ISO 8601 UTC creation timestamp                                                    |
+| `accepted_at`       | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when assignment transitioned to `ASSIGNED`                  |
+| `started_at`        | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when responder moved `EN_ROUTE`                             |
+| `arrived_at`        | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when responder arrived `ON_SCENE`                           |
+| `completed_at`      | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when mission `COMPLETED`                                    |
+| `cancelled_at`      | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when assignment was `CANCELLED`                             |
+| `score`             | `REAL` | `NULL`                                             | Match score (0-100)                                                                |
+| `score_breakdown`   | `TEXT` | `NULL`                                             | JSON `{ capability, distance, eta, workload, severity_fit }`                       |
+| `assignment_reason` | `TEXT` | `NULL`                                             | Tactical justification text                                                        |
+| `created_at`        | `TEXT` | `NOT NULL`                                         | ISO 8601 UTC timestamp                                                             |
+| `updated_at`        | `TEXT` | `NOT NULL`                                         | ISO 8601 UTC timestamp                                                             |
+
 ### Table: `shelters`
 
 Designated evacuation shelters and disaster supply hubs with live bed occupancy.
@@ -102,5 +125,8 @@ CREATE INDEX idx_incidents_created_at ON incidents(created_at DESC);
 CREATE INDEX idx_incident_events_incident_id ON incident_events(incident_id);
 CREATE INDEX idx_responders_status ON responders(status);
 CREATE INDEX idx_responders_assigned ON responders(assigned_incident_id);
+CREATE INDEX idx_assignments_incident ON assignments(incident_id);
+CREATE INDEX idx_assignments_responder ON assignments(responder_id);
+CREATE INDEX idx_assignments_status ON assignments(status);
 CREATE INDEX idx_shelters_status ON shelters(status);
 ```

@@ -30,9 +30,9 @@ flowchart TB
 
     subgraph Backend_App ["Backend Foundation Layer (Python FastAPI)"]
         direction TB
-        APIGateway["FastAPI REST Endpoints (/api/incidents, /api/responders, /api/shelters, /health)"]
+        APIGateway["FastAPI REST Endpoints (/api/incidents, /api/assignments, /api/responders, /api/shelters, /health)"]
         SocketEngine["Async Socket.IO Server (Rooms: authorities, incident:id)"]
-        DomainService["Incident, Responder & Shelter Services"]
+        DomainService["Incident, Assignment, Responder & Shelter Services"]
         DBLayer["Async SQLite Storage (aiosqlite + WAL Mode)"]
 
         APIGateway <--> DomainService
@@ -47,7 +47,24 @@ flowchart TB
 
 ---
 
-## 2. Geospatial Foundation
+## 2. Dispatch & Assignment Domain Architecture (IMPLEMENTED ✅)
+
+Salvus establishes responder assignment as an explicit first-class domain entity:
+
+$$\text{INCIDENT} \longleftrightarrow \text{ASSIGNMENT} \longleftrightarrow \text{RESPONDER}$$
+
+### Assignment Controlled State Progression:
+
+$$\text{PROPOSED} \longrightarrow \text{ASSIGNED} \longrightarrow \text{EN\_ROUTE} \longrightarrow \text{NEARBY} \longrightarrow \text{ON\_SCENE} \longrightarrow \text{COMPLETED}$$
+$$\text{Active States } (\text{PROPOSED, ASSIGNED, EN\_ROUTE, NEARBY, ON\_SCENE}) \longrightarrow \text{CANCELLED}$$
+
+- **Single Active Assignment Rule:** A responder unit cannot belong to multiple active assignments concurrently.
+- **Transactional Consistency:** Every assignment state change synchronously updates the linked responder and incident records, appending an auditable event to `incident_events`.
+- **Score Data Model Contract:** Includes structured factor storage (`capability`, `distance`, `eta`, `workload`, `severity_fit`) and assignment justification notes. Dynamic routing and scoring calculations will be added in **NEXT PHASE**.
+
+---
+
+## 3. Geospatial Foundation
 
 - **Engine:** Leaflet (`L.map`, `L.tileLayer`, `L.divIcon`, `L.circle`).
 - **Base Layer:** OpenStreetMap dark-mode filtered tiles.
@@ -60,14 +77,14 @@ flowchart TB
 
 ---
 
-## 3. Data Provenance & Badging Architecture
+## 4. Data Provenance & Badging Architecture
 
 - `<LiveBadge />`: Stamped on all genuine, database-backed records synced over WebSockets (`SQLITE WAL ENGINE`, `SQLITE FLEET`, `SQLITE SHELTERS`).
 - `<SimulatedBadge />`: Stamped on mock background datasets (simulated weather models).
 
 ---
 
-## 4. Frontend Component Hierarchy
+## 5. Frontend Component Hierarchy
 
 ```
 src/

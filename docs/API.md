@@ -136,7 +136,110 @@ Updates real-time GPS telemetry coordinates of a response unit and emits `respon
 
 ---
 
-## 4. Shelter Logistics API (IMPLEMENTED ✅)
+## 4. Assignment Domain API (IMPLEMENTED ✅)
+
+### `POST /api/assignments`
+
+Authoritatively creates a first-class assignment linking an emergency incident to a responder unit. Transactionally synchronizes responder state (`ASSIGNED`) and incident state (`ASSIGNED`), and appends an auditable `assignment.created` event to the incident timeline.
+
+- **Authorization:** Requires authority role (`assigned_by != "citizen"`).
+- **Request Payload:**
+  ```json
+  {
+    "incident_id": "909ec355-6bcf-46d4-a035-71fa2e022f42",
+    "responder_id": "resp-101",
+    "status": "ASSIGNED",
+    "assigned_by": "dispatcher_alok",
+    "score": 92.5,
+    "score_breakdown": {
+      "capability": 30.0,
+      "distance": 25.0,
+      "eta": 20.0,
+      "workload": 10.0,
+      "severity_fit": 7.5
+    },
+    "assignment_reason": "Optimal flood boat capability match with direct waterway access"
+  }
+  ```
+- **Response (201 Created):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "c7a8b411-e40f-48d6-953e-862ad9b06822",
+      "incident_id": "909ec355-6bcf-46d4-a035-71fa2e022f42",
+      "responder_id": "resp-101",
+      "status": "ASSIGNED",
+      "assigned_by": "dispatcher_alok",
+      "assigned_at": "2026-08-25T12:00:00+00:00",
+      "accepted_at": "2026-08-25T12:00:00+00:00",
+      "started_at": null,
+      "arrived_at": null,
+      "completed_at": null,
+      "cancelled_at": null,
+      "score": 92.5,
+      "score_breakdown": {
+        "capability": 30.0,
+        "distance": 25.0,
+        "eta": 20.0,
+        "workload": 10.0,
+        "severity_fit": 7.5
+      },
+      "assignment_reason": "Optimal flood boat capability match with direct waterway access",
+      "created_at": "2026-08-25T12:00:00+00:00",
+      "updated_at": "2026-08-25T12:00:00+00:00"
+    }
+  }
+  ```
+- **Error Responses:**
+  - `400 Bad Request` (`RESPONDER_ALREADY_ASSIGNED`): Responder already has an active assignment.
+  - `400 Bad Request` (`RESPONDER_OFFLINE`): Responder is OFFLINE.
+  - `400 Bad Request` (`TERMINAL_INCIDENT`): Cannot assign responder to resolved/cancelled incident.
+  - `403 Forbidden`: Citizens cannot create assignments.
+  - `404 Not Found`: Incident or responder does not exist.
+
+---
+
+### `GET /api/assignments`
+
+Lists assignments with optional query filters (`incident_id`, `responder_id`, `status`).
+
+---
+
+### `GET /api/assignments/{id}`
+
+Retrieves single assignment details with milestone timestamps and scoring factor breakdown.
+
+---
+
+### `GET /api/incidents/{incident_id}/assignments`
+
+Retrieves all assignment records associated with an incident.
+
+---
+
+### `PATCH /api/assignments/{id}/status`
+
+Transitions an assignment along its controlled lifecycle (`PROPOSED` $\rightarrow$ `ASSIGNED` $\rightarrow$ `EN_ROUTE` $\rightarrow$ `NEARBY` $\rightarrow$ `ON_SCENE` $\rightarrow$ `COMPLETED` / `CANCELLED`). Synchronously transitions the linked responder and incident states and emits `assignment.status_changed`.
+
+- **Authorization:** Authority dispatcher role (`actor != "citizen"`).
+- **Request Payload:**
+  ```json
+  {
+    "status": "EN_ROUTE",
+    "actor": "dispatcher_alok",
+    "notes": "Unit underway on tactical channel 4"
+  }
+  ```
+- **Response (200 OK):** Updated `AssignmentResponse` object.
+- **Error Responses:**
+  - `400 Bad Request` (`INVALID_TRANSITION`): Disallowed jump or attempting to modify a terminal assignment.
+  - `403 Forbidden`: Citizens cannot mutate assignment status.
+  - `404 Not Found`: Assignment does not exist.
+
+---
+
+## 5. Shelter Logistics API (IMPLEMENTED ✅)
 
 ### `GET /api/shelters`
 
