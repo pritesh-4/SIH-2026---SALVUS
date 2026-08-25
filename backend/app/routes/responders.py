@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.db import get_database
 from app.models import (
+    CandidateEvaluationRequest,
     ResponderAssignmentRequest,
     ResponderCandidateListResponse,
     ResponderLifecycleAdvanceRequest,
@@ -31,12 +32,13 @@ from app.realtime.socket_manager import (
     emit_responder_status_changed,
 )
 from app.services import responder_service
+from app.services.allocation_engine import rank_and_explain_candidates
 
 router = APIRouter(prefix="/api/responders", tags=["responders"])
 
 
 @router.get("", response_model=ResponderListResponse)
-async def list_responders():
+async def get_responders():
     """List all disaster response units."""
     db = await get_database()
     responders = await responder_service.get_all_responders(db)
@@ -58,8 +60,29 @@ async def get_candidate_responders(
     candidates = await responder_service.get_candidate_responders_for_incident(
         db, incident_id, include_routes=include_routes
     )
+    allocation_status = "RECOMMENDED" if candidates else "NO_AVAILABLE_RESPONDER"
+    message = "No suitable response unit is currently available." if not candidates else None
     return ResponderCandidateListResponse(
-        incident_id=incident_id, data=candidates, count=len(candidates)
+        incident_id=incident_id,
+        allocation_status=allocation_status,
+        message=message,
+        data=candidates,
+        count=len(candidates),
+    )
+
+
+@router.post("/candidates/evaluate", response_model=ResponderCandidateListResponse)
+async def evaluate_candidates(payload: CandidateEvaluationRequest):
+    """Evaluate candidate responders from payload against an incident without database coupling."""
+    candidates = rank_and_explain_candidates(payload.incident, payload.responders)
+    allocation_status = "RECOMMENDED" if candidates else "NO_AVAILABLE_RESPONDER"
+    message = "No suitable response unit is currently available." if not candidates else None
+    return ResponderCandidateListResponse(
+        incident_id=payload.incident.id,
+        allocation_status=allocation_status,
+        message=message,
+        data=candidates,
+        count=len(candidates),
     )
 
 

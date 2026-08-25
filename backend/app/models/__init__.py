@@ -300,14 +300,19 @@ class ResponderSingleResponse(BaseModel):
 
 
 class ScoreBreakdown(BaseModel):
-    """Auditable scoring factor breakdown."""
+    """Auditable scoring factor breakdown with normalized components."""
 
+    final_score: int
     capability_score: int
-    severity_alignment: int
+    distance_score: int
+    eta_score: int
+    workload_score: int
     availability_score: int
-    proximity_score: int
-    workload_penalty: int
-    total_score: int
+    severity_fit_score: int
+    severity_alignment: int | None = None
+    proximity_score: int | None = None
+    workload_penalty: int | None = None
+    total_score: int | None = None
 
 
 class CandidateExplanation(BaseModel):
@@ -350,6 +355,26 @@ class ResponderCandidateListResponse(BaseModel):
 
     success: bool = True
     incident_id: str
+    allocation_status: str = "RECOMMENDED"
+    message: str | None = None
+    data: list[CandidateResponderResponse]
+    count: int
+
+
+class CandidateEvaluationRequest(BaseModel):
+    """Payload for evaluating candidates for an incident."""
+
+    incident: IncidentResponse
+    responders: list[ResponderResponse]
+
+
+class CandidateEvaluationResponse(BaseModel):
+    """Response envelope for standalone candidate evaluation."""
+
+    success: bool = True
+    incident_id: str
+    allocation_status: str = "RECOMMENDED"
+    message: str | None = None
     data: list[CandidateResponderResponse]
     count: int
 
