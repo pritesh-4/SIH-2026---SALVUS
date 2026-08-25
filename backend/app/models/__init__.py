@@ -64,6 +64,24 @@ class ShelterStatus(StrEnum):
     CLOSED = "CLOSED"
 
 
+class HazardSeverity(StrEnum):
+    CRITICAL = "CRITICAL"
+    WARNING = "WARNING"
+    WATCH = "WATCH"
+    ADVISORY = "ADVISORY"
+    INFO = "INFO"
+
+
+class HazardType(StrEnum):
+    FLOOD = "FLOOD"
+    EARTHQUAKE = "EARTHQUAKE"
+    WEATHER = "WEATHER"
+    CYCLONE = "CYCLONE"
+    FIRE = "FIRE"
+    INFRASTRUCTURE = "INFRASTRUCTURE"
+    OTHER = "OTHER"
+
+
 # ---------------------------------------------------------------------------
 # Incident Models
 # ---------------------------------------------------------------------------
@@ -446,6 +464,9 @@ class RecommendedShelterResponse(BaseModel):
     suitability_score: int
     recommendation_reason: str
     amenities: list[str] = []
+    is_safe: bool = True
+    safety_status: str = "SAFE"
+    hazard_proximity_warning: str | None = None
 
 
 class ShelterListResponse(BaseModel):
@@ -469,3 +490,91 @@ class ShelterRecommendationListResponse(BaseModel):
     success: bool = True
     data: list[RecommendedShelterResponse]
     count: int
+
+
+# ---------------------------------------------------------------------------
+# Disaster Intelligence & Situation Models
+# ---------------------------------------------------------------------------
+
+
+class NormalizedHazard(BaseModel):
+    """Canonical disaster intelligence hazard signal normalized from external feeds."""
+
+    hazard_id: str
+    source: str = Field(description="Open-Meteo, USGS, GDACS, or Regional Sensor Network")
+    hazard_type: HazardType
+    severity: HazardSeverity
+    title: str
+    description: str
+    why_it_matters: str
+    recommended_action: str
+    latitude: float
+    longitude: float
+    affected_radius_km: float
+    observed_at: str
+    expires_at: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    is_active: bool = True
+    source_timestamp: str
+
+
+class HazardListResponse(BaseModel):
+    """Response for listing active normalized hazards."""
+
+    success: bool = True
+    data: list[NormalizedHazard]
+    count: int
+    source_summary: str = "Multi-Source Normalized Feed"
+
+
+class IncidentCluster(BaseModel):
+    """Geographic cluster of nearby emergency incident reports."""
+
+    cluster_id: str
+    cluster_name: str
+    centroid_lat: float
+    centroid_lon: float
+    incident_count: int
+    critical_count: int
+    verified_count: int
+    radius_km: float
+    incident_ids: list[str] = []
+    primary_hazard_type: str
+
+
+class IncidentClusterListResponse(BaseModel):
+    """Response for spatial incident clusters."""
+
+    success: bool = True
+    data: list[IncidentCluster]
+    count: int
+
+
+class SituationStatistics(BaseModel):
+    """Structured situational intelligence metrics computed strictly from ground truth data."""
+
+    total_active_incidents: int
+    critical_incidents_count: int
+    pending_triage_count: int
+    verified_incidents_count: int
+    assigned_incidents_count: int
+    resolved_incidents_count: int
+    active_clusters_count: int
+    total_responders: int
+    available_responders: int
+    deployed_responders: int
+    total_shelters: int
+    available_beds: int
+    active_hazards_count: int
+    timestamp: str
+
+
+class SituationSummaryResponse(BaseModel):
+    """Complete situation intelligence response with structured stats and grounded AI briefing."""
+
+    success: bool = True
+    statistics: SituationStatistics
+    briefing: str
+    key_priorities: list[str] = []
+    provider: str
+    generated_at: str

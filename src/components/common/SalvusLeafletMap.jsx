@@ -21,9 +21,18 @@ export const SalvusLeafletMap = ({
   userLocation = null,
   shelters = [],
   responders = [],
+  hazards = [],
+  clusters = [],
   activeRoute = null, // { coordinates: [[lat, lon], ...], distanceKm, etaFormatted, status, isFallback, label }
   previewRoute = null, // { coordinates: [[lat, lon], ...], label, color }
-  showLayers = { incidents: true, shelters: true, responders: true, routes: true },
+  showLayers = {
+    incidents: true,
+    shelters: true,
+    responders: true,
+    routes: true,
+    hazards: true,
+    clusters: true,
+  },
   interactive = true,
   className = 'h-full w-full',
   autoFocusSelected = true,
@@ -263,16 +272,103 @@ export const SalvusLeafletMap = ({
 
     group.clearLayers()
 
+    // 0. Hazards Layer (Perimeter Circles & Risk Zones)
+    if (showLayers.hazards !== false && hazards.length > 0) {
+      hazards.forEach((hz) => {
+        if (typeof hz.latitude !== 'number' || typeof hz.longitude !== 'number') return
+
+        const isCritical = hz.severity === 'CRITICAL'
+        const isWarning = hz.severity === 'WARNING'
+        const strokeColor = isCritical ? '#F43F5E' : isWarning ? '#F59E0B' : '#38BDF8'
+        const fillColor = isCritical ? '#BE123C' : isWarning ? '#B45309' : '#0284C7'
+
+        const circle = L.circle([hz.latitude, hz.longitude], {
+          radius: (hz.affected_radius_km || 2.0) * 1000,
+          color: strokeColor,
+          weight: 1.5,
+          opacity: 0.7,
+          fillColor: fillColor,
+          fillOpacity: 0.12,
+          dashArray: isCritical ? null : '4, 6',
+        }).bindPopup(`
+          <div class="p-3 text-slate-200 text-xs font-sans min-w-[220px]">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono ${
+                isCritical
+                  ? 'bg-rose-950 text-rose-300 border border-rose-500/40'
+                  : 'bg-amber-950 text-amber-300 border border-amber-500/40'
+              }">${hz.severity} HAZARD</span>
+              <span class="text-[10px] text-slate-400 font-mono">${hz.affected_radius_km} km zone</span>
+            </div>
+            <div class="font-bold text-slate-100 text-xs mb-1">${hz.title}</div>
+            <p class="text-slate-400 text-[11px] mb-2">${hz.description}</p>
+            <div class="text-[10px] text-slate-400 border-t border-slate-800 pt-1 flex items-center justify-between font-mono">
+              <span>Source:</span>
+              <span class="text-slate-300 truncate max-w-[120px]">${hz.source}</span>
+            </div>
+          </div>
+        `)
+        group.addLayer(circle)
+      })
+    }
+
+    // 0.5 Spatial Incident Clusters
+    if (showLayers.clusters !== false && clusters.length > 0) {
+      clusters.forEach((cl) => {
+        if (typeof cl.centroid_lat !== 'number' || typeof cl.centroid_lon !== 'number') return
+
+        const isCritCluster = cl.critical_count > 0
+        const clusterIcon = L.divIcon({
+          className: 'custom-cluster-pin',
+          html: `
+            <div class="flex items-center gap-1 px-2 py-1 rounded-full ${
+              isCritCluster
+                ? 'bg-rose-950/90 border border-rose-500 text-rose-300 shadow-[0_0_10px_#F43F5E]'
+                : 'bg-slate-900/90 border border-sky-500/80 text-sky-300'
+            } text-[10px] font-mono font-bold whitespace-nowrap shadow-lg">
+              <span>📍</span>
+              <span>${cl.incident_count} reports</span>
+            </div>
+          `,
+          iconSize: [80, 24],
+          iconAnchor: [40, 12],
+        })
+
+        const clusterMarker = L.marker([cl.centroid_lat, cl.centroid_lon], {
+          icon: clusterIcon,
+          zIndexOffset: 150,
+        }).bindPopup(`
+          <div class="p-3 text-slate-200 text-xs font-sans min-w-[210px]">
+            <div class="font-bold text-slate-100 text-xs mb-1">${cl.cluster_name}</div>
+            <div class="text-[11px] text-slate-400 mb-2">
+              <span>Total reports: <strong class="text-slate-200">${cl.incident_count}</strong></span>
+              ${cl.critical_count > 0 ? `<br/><span class="text-rose-400 font-bold">⚠️ ${cl.critical_count} Critical Distress</span>` : ''}
+              <br/><span class="text-emerald-400">✓ ${cl.verified_count} Verified</span>
+            </div>
+            <div class="text-[10px] text-slate-500 font-mono">Radius: ${cl.radius_km} km</div>
+          </div>
+        `)
+        group.addLayer(clusterMarker)
+      })
+    }
+
     // A. Shelters Layer
     if (showLayers.shelters && shelters.length > 0) {
       shelters.forEach((shelter) => {
         if (!shelter.lat || !shelter.lng) return
 
+        const isUnsafe =
+          shelter.safety_status === 'HAZARD_PROXIMITY_WARNING' || shelter.is_safe === false
+
         const shelterIcon = L.divIcon({
           className: 'custom-shelter-pin',
           html: `
-            <div class="flex items-center justify-center w-6 h-6 rounded-md bg-[#0F1D1A] border border-emerald-500/60 text-emerald-300 shadow-md text-xs">
-              <span class="text-[10px]">🏠</span>
+            <div class="flex items-center justify-center w-6 h-6 rounded-md ${
+              isUnsafe
+                ? 'bg-[#2A1115] border border-rose-500 text-rose-300 shadow-md animate-pulse'
+                : 'bg-[#0F1D1A] border border-emerald-500/60 text-emerald-300 shadow-md'
+            } text-xs">
+              <span class="text-[10px]">${isUnsafe ? '⚠️' : '🏠'}</span>
             </div>
           `,
           iconSize: [24, 24],
@@ -283,13 +379,18 @@ export const SalvusLeafletMap = ({
           .bindPopup(`
             <div class="p-3 text-slate-200 text-xs font-sans min-w-[200px]">
               <div class="font-bold text-slate-100 flex items-center gap-1.5 mb-1">
-                <span class="text-emerald-400">🏠</span>
+                <span>${isUnsafe ? '⚠️' : '🏠'}</span>
                 <span>${shelter.name || 'Evacuation Shelter'}</span>
               </div>
               <p class="text-slate-400 text-[11px]">${shelter.address || 'Designated relief facility'}</p>
+              ${
+                isUnsafe
+                  ? '<div class="mt-1.5 text-[10px] text-rose-400 bg-rose-950/60 p-1.5 rounded border border-rose-500/40 font-mono">⚠️ HAZARD PROXIMITY WARNING</div>'
+                  : ''
+              }
               <div class="mt-2 flex items-center justify-between text-[11px] bg-slate-900/90 p-1.5 rounded border border-slate-800 font-mono">
                 <span class="text-slate-400">Available:</span>
-                <span class="font-semibold text-emerald-400">${shelter.capacity || 'Open'}</span>
+                <span class="font-semibold ${isUnsafe ? 'text-amber-400' : 'text-emerald-400'}">${shelter.capacity || 'Open'}</span>
               </div>
             </div>
           `)
@@ -451,6 +552,8 @@ export const SalvusLeafletMap = ({
     selectedIncidentId,
     shelters,
     responders,
+    hazards,
+    clusters,
     showLayers,
     onSelectIncident,
     activeRoute,

@@ -545,6 +545,76 @@ export const resetSimulationFleet = async () => {
 }
 
 // ---------------------------------------------------------------------------
+// Disaster Intelligence & Situation API Calls
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch multi-source normalized hazards with optional location filtering.
+ */
+export const fetchHazards = async (lat = null, lon = null, maxDistanceKm = null) => {
+  try {
+    const params = {}
+    if (lat !== null) params.lat = lat
+    if (lon !== null) params.lon = lon
+    if (maxDistanceKm !== null) params.max_distance_km = maxDistanceKm
+
+    const response = await apiClient.get('/api/hazards', { params })
+    return {
+      success: true,
+      data: response.data.data || [],
+      count: response.data.count || 0,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: { message: error.message },
+      data: [],
+      count: 0,
+    }
+  }
+}
+
+/**
+ * Fetch spatial incident clusters.
+ */
+export const fetchIncidentClusters = async () => {
+  try {
+    const response = await apiClient.get('/api/hazards/clusters')
+    return {
+      success: true,
+      data: response.data.data || [],
+      count: response.data.count || 0,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: { message: error.message },
+      data: [],
+      count: 0,
+    }
+  }
+}
+
+/**
+ * Fetch grounded situation statistics and AI briefing.
+ */
+export const fetchSituationSummary = async () => {
+  try {
+    const response = await apiClient.get('/api/situation/summary')
+    return {
+      success: true,
+      data: response.data,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: { message: error.message },
+      data: null,
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Developer & Demo Helpers
 // ---------------------------------------------------------------------------
 

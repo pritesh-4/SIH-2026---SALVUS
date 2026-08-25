@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { Sparkles } from 'lucide-react'
 import { authorityData } from '../data/authority/authorityMock'
 import { useAuthorityIncidents } from '../features/authority/useAuthorityIncidents'
 import { SalvusLeafletMap } from '../components/common/SalvusLeafletMap'
@@ -15,6 +16,9 @@ import {
   analyzeIncidentTriage,
   verifyIncidentTriage,
   adjustIncidentTriage,
+  fetchHazards,
+  fetchIncidentClusters,
+  fetchSituationSummary,
 } from '../services/api'
 import { fetchRoute } from '../services/routingService'
 import { subscribeToEvent } from '../lib/realtime/socket'
@@ -57,12 +61,20 @@ export const AuthorityCommandCenter = () => {
     responders: true,
     shelters: true,
     routes: true,
+    hazards: true,
+    clusters: true,
   })
   const [actionSuccessMessage, setActionSuccessMessage] = useState(null)
   const [isAssigningUnit, setIsAssigningUnit] = useState(false)
   const [showScoreBreakdown, setShowScoreBreakdown] = useState(false)
   const [isAnalyzingTriage, setIsAnalyzingTriage] = useState(false)
   const [isVerifyingTriage, setIsVerifyingTriage] = useState(false)
+
+  // Disaster Intelligence & Situation Intelligence states
+  const [situationSummary, setSituationSummary] = useState(null)
+  const [liveHazards, setLiveHazards] = useState([])
+  const [incidentClusters, setIncidentClusters] = useState([])
+  const [isRefreshingSituation, setIsRefreshingSituation] = useState(false)
 
   // Simulation controls
   const [isSimulatingMovement, setIsSimulatingMovement] = useState(false)
@@ -86,6 +98,26 @@ export const AuthorityCommandCenter = () => {
   const [activeRoute, setActiveRoute] = useState(null)
   const [previewRoute, setPreviewRoute] = useState(null)
 
+  const loadSituationIntelligence = useCallback(async () => {
+    setIsRefreshingSituation(true)
+    const [sitRes, hzRes, clRes] = await Promise.all([
+      fetchSituationSummary(),
+      fetchHazards(),
+      fetchIncidentClusters(),
+    ])
+
+    if (sitRes.success && sitRes.data) {
+      setSituationSummary(sitRes.data)
+    }
+    if (hzRes.success && hzRes.data) {
+      setLiveHazards(hzRes.data)
+    }
+    if (clRes.success && clRes.data) {
+      setIncidentClusters(clRes.data)
+    }
+    setIsRefreshingSituation(false)
+  }, [])
+
   const loadFleetAndShelters = useCallback(async () => {
     const isDemo =
       typeof window !== 'undefined' &&
@@ -96,7 +128,11 @@ export const AuthorityCommandCenter = () => {
       setDataProvenance('SIMULATED')
     }
 
-    const [respResult, shlResult] = await Promise.all([fetchResponders(), fetchShelters()])
+    const [respResult, shlResult] = await Promise.all([
+      fetchResponders(),
+      fetchShelters(),
+      loadSituationIntelligence(),
+    ])
 
     if (respResult.success && respResult.data.length > 0) {
       setLiveResponders(respResult.data)
@@ -113,7 +149,7 @@ export const AuthorityCommandCenter = () => {
     }
 
     setIsLoadingFleet(false)
-  }, [])
+  }, [loadSituationIntelligence])
 
   // ---------------------------------------------------------------------------
   // 1. Initial Load & Realtime Socket Listeners
@@ -750,6 +786,72 @@ export const AuthorityCommandCenter = () => {
         </div>
       </section>
 
+      {/* Situation Intelligence & Grounded AI Briefing Card */}
+      <section
+        aria-label="Situation Intelligence & Grounded AI Briefing"
+        className="bg-gradient-to-r from-[#0C121B] via-[#0E1624] to-[#0C121B] border border-blue-500/20 rounded-xl p-3.5 sm:p-4 shadow-lg space-y-2.5"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#182332]">
+          <div className="flex items-center gap-2">
+            <span className="p-1 rounded-md bg-blue-500/20 text-sky-300 border border-blue-500/30">
+              <Sparkles className="w-4 h-4" />
+            </span>
+            <div>
+              <span className="text-xs font-bold text-slate-100 tracking-tight block">
+                SITUATION INTELLIGENCE & AI OPERATIONAL BRIEFING
+              </span>
+              <span className="text-[10px] font-mono text-slate-400">
+                Grounded factual synthesis across incidents, clusters, fleet, and environmental
+                feeds
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 font-mono text-[10px]">
+            <span className="px-2 py-0.5 rounded bg-[#080C12] border border-[#182332] text-slate-400">
+              {situationSummary?.provider || 'salvus-grounded-intelligence'}
+            </span>
+            <button
+              type="button"
+              disabled={isRefreshingSituation}
+              onClick={loadSituationIntelligence}
+              className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold cursor-pointer transition-colors disabled:opacity-50"
+            >
+              {isRefreshingSituation ? 'Refreshing...' : '↻ Refresh Intelligence'}
+            </button>
+          </div>
+        </div>
+
+        {/* Factual Briefing Text */}
+        <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-normal">
+          {situationSummary?.briefing ||
+            `District Command reports ${computedMetrics.active} active incidents across ${incidentClusters.length || 1} operational cluster(s). ${computedMetrics.critical} critical incident(s) require prioritized response. Fleet readiness: ${activeRespondersCount} deployed, ${liveResponders.length - activeRespondersCount} standby. Evacuation reception capacity remains stable with ${totalBedsAvailable} verified beds available.`}
+        </p>
+
+        {/* Context Statistics & Key Priorities */}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#080C12] border border-[#182332] text-[10px] font-mono text-slate-300">
+            <span className="text-amber-400">⛈️</span>
+            <span>{liveHazards.length} Active Hazard Zone(s)</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#080C12] border border-[#182332] text-[10px] font-mono text-slate-300">
+            <span className="text-sky-400">📍</span>
+            <span>{incidentClusters.length} Incident Cluster(s)</span>
+          </div>
+
+          {situationSummary?.key_priorities &&
+            situationSummary.key_priorities.map((pri, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-950/40 border border-blue-500/30 text-[10px] font-mono text-sky-200"
+              >
+                <span className="text-blue-400">⚡</span>
+                <span className="truncate max-w-[260px] sm:max-w-md">{pri}</span>
+              </div>
+            ))}
+        </div>
+      </section>
+
       {/* 3-Column Command Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
         {/* Column 1: Incidents Queue */}
@@ -865,25 +967,39 @@ export const AuthorityCommandCenter = () => {
               )}
             </span>
 
-            <div className="flex items-center gap-1.5 text-[10px] font-mono">
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+              <button
+                type="button"
+                onClick={() => setMapLayers((p) => ({ ...p, hazards: !p.hazards }))}
+                className={`px-2 py-0.5 rounded border cursor-pointer transition-colors ${mapLayers.hazards ? 'bg-amber-950/60 text-amber-300 border-amber-500/40' : 'bg-[#080C12] text-slate-500 border-[#182332]'}`}
+              >
+                ⛈️ Hazards ({liveHazards.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapLayers((p) => ({ ...p, clusters: !p.clusters }))}
+                className={`px-2 py-0.5 rounded border cursor-pointer transition-colors ${mapLayers.clusters ? 'bg-indigo-950/60 text-indigo-300 border-indigo-500/40' : 'bg-[#080C12] text-slate-500 border-[#182332]'}`}
+              >
+                📍 Clusters ({incidentClusters.length})
+              </button>
               <button
                 type="button"
                 onClick={() => setMapLayers((p) => ({ ...p, routes: !p.routes }))}
-                className={`px-2 py-0.5 rounded border ${mapLayers.routes ? 'bg-sky-950/60 text-sky-300 border-sky-500/40' : 'bg-[#080C12] text-slate-500 border-[#182332]'}`}
+                className={`px-2 py-0.5 rounded border cursor-pointer transition-colors ${mapLayers.routes ? 'bg-sky-950/60 text-sky-300 border-sky-500/40' : 'bg-[#080C12] text-slate-500 border-[#182332]'}`}
               >
                 Routes
               </button>
               <button
                 type="button"
                 onClick={() => setMapLayers((p) => ({ ...p, incidents: !p.incidents }))}
-                className={`px-2 py-0.5 rounded border ${mapLayers.incidents ? 'bg-rose-950/40 text-rose-300 border-rose-500/40' : 'bg-[#080C12] text-slate-500 border-[#182332]'}`}
+                className={`px-2 py-0.5 rounded border cursor-pointer transition-colors ${mapLayers.incidents ? 'bg-rose-950/40 text-rose-300 border-rose-500/40' : 'bg-[#080C12] text-slate-500 border-[#182332]'}`}
               >
                 Incidents ({incidents.length})
               </button>
               <button
                 type="button"
                 onClick={() => setMapLayers((p) => ({ ...p, responders: !p.responders }))}
-                className={`px-2 py-0.5 rounded border ${mapLayers.responders ? 'bg-blue-950/40 text-blue-300 border-blue-500/40' : 'bg-[#080C12] text-slate-500 border-[#182332]'}`}
+                className={`px-2 py-0.5 rounded border cursor-pointer transition-colors ${mapLayers.responders ? 'bg-blue-950/40 text-blue-300 border-blue-500/40' : 'bg-[#080C12] text-slate-500 border-[#182332]'}`}
               >
                 Fleet ({liveResponders.length})
               </button>
@@ -897,6 +1013,8 @@ export const AuthorityCommandCenter = () => {
               incidents={incidents}
               responders={responderMapPoints}
               shelters={shelterMapPoints}
+              hazards={liveHazards}
+              clusters={incidentClusters}
               selectedIncidentId={selectedIncident?.id}
               onSelectIncident={(inc) => handleSelectIncident(inc)}
               activeRoute={activeRoute}
@@ -1699,26 +1817,48 @@ export const AuthorityCommandCenter = () => {
                 const occ = shl.occupancy_rate || `${Math.round(((total - avail) / total) * 100)}%`
                 const supplies = shl.supplies_status || 'Adequate'
 
+                const isNearHazard = liveHazards.some((hz) => {
+                  if (hz.severity !== 'CRITICAL' && hz.severity !== 'WARNING') return false
+                  const d = calculateDistanceKm(
+                    shl.latitude,
+                    shl.longitude,
+                    hz.latitude,
+                    hz.longitude
+                  )
+                  return d <= Math.max(0.6, (hz.affected_radius_km || 2.0) * 0.5)
+                })
+
                 return (
                   <div
                     key={shl.id}
-                    className="bg-[#080C12] border border-[#182332] p-2.5 rounded-lg text-xs space-y-2"
+                    className={`p-2.5 rounded-lg text-xs space-y-2 border transition-colors ${
+                      isNearHazard
+                        ? 'bg-[#14080A] border-rose-500/40 hover:border-rose-500'
+                        : 'bg-[#080C12] border-[#182332] hover:border-[#27384C]'
+                    }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-slate-200 text-[11px] truncate max-w-[150px]">
                         {shl.name}
                       </span>
-                      <span
-                        className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold border ${
-                          shl.status === 'OPEN'
-                            ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30'
-                            : shl.status === 'NEAR_CAPACITY'
-                              ? 'bg-amber-950/40 text-amber-300 border-amber-500/30'
-                              : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-                        }`}
-                      >
-                        {shl.status}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        {isNearHazard && (
+                          <span className="text-[8px] font-mono px-1.5 py-0.2 rounded font-bold bg-rose-950 text-rose-300 border border-rose-500/40 animate-pulse">
+                            ⚠️ HAZARD PROXIMITY
+                          </span>
+                        )}
+                        <span
+                          className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold border ${
+                            shl.status === 'OPEN'
+                              ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30'
+                              : shl.status === 'NEAR_CAPACITY'
+                                ? 'bg-amber-950/40 text-amber-300 border-amber-500/30'
+                                : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
+                          }`}
+                        >
+                          {shl.status}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between text-[10px] font-mono">
                       <span className="text-emerald-400 font-bold">{avail} beds available</span>

@@ -1,21 +1,79 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { citizenAlertsData } from '../data/citizen/alerts.mock'
+import { fetchHazards } from '../services/api'
 
 export const CitizenAlerts = () => {
   const navigate = useNavigate()
   const [selectedFilter, setSelectedFilter] = useState('all')
   const [activeAlertDetail, setActiveAlertDetail] = useState(null)
+  const [liveHazards, setLiveHazards] = useState([])
+  const [lastUpdated, setLastUpdated] = useState('Live Feed')
 
-  const { summary, filters, alerts } = citizenAlertsData
+  useEffect(() => {
+    let isMounted = true
+    const loadHazards = async () => {
+      const result = await fetchHazards(22.5726, 88.3639, 10.0)
+      if (isMounted && result.success && result.data && result.data.length > 0) {
+        setLiveHazards(result.data)
+        setLastUpdated('Updated just now')
+      }
+    }
+    loadHazards()
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
-  const filteredAlerts = alerts.filter((a) => {
+  const { alerts: mockAlerts } = citizenAlertsData
+
+  // Merge live hazards into alerts feed
+  const displayAlerts =
+    liveHazards.length > 0
+      ? liveHazards.map((hz) => ({
+          id: hz.hazard_id,
+          severity: hz.severity,
+          status: `${hz.severity} ACTIVE`,
+          title: hz.title,
+          summary: hz.description,
+          details: hz.why_it_matters,
+          distance: `${hz.affected_radius_km} km radius`,
+          timestamp: 'Live Feed',
+          source: hz.source,
+          affectedArea: 'Sector 12 & Salt Lake Drainage Basin',
+          actions: [
+            hz.recommended_action,
+            'Monitor municipal emergency VHF / SMS broadcasts.',
+            'Keep power banks charged and move essential supplies above ground level.',
+          ],
+          nearestSafeHaven: {
+            name: 'Salt Lake Stadium Evacuation Hub',
+            distance: '0.9 km',
+            routeStatus: 'Safe Elevated Corridor',
+          },
+        }))
+      : mockAlerts
+
+  const filteredAlerts = displayAlerts.filter((a) => {
     if (selectedFilter === 'all') return true
     if (selectedFilter === 'critical') return a.severity === 'CRITICAL'
     if (selectedFilter === 'warning') return a.severity === 'WARNING'
     if (selectedFilter === 'watch') return a.severity === 'WATCH' || a.severity === 'INFO'
     return true
   })
+
+  const criticalCount = displayAlerts.filter((a) => a.severity === 'CRITICAL').length
+  const warningCount = displayAlerts.filter((a) => a.severity === 'WARNING').length
+  const watchCount = displayAlerts.filter((a) =>
+    ['WATCH', 'INFO', 'ADVISORY'].includes(a.severity)
+  ).length
+
+  const filters = [
+    { id: 'all', label: 'All Alerts', count: displayAlerts.length },
+    { id: 'critical', label: 'Critical Threats', count: criticalCount },
+    { id: 'warning', label: 'Warnings', count: warningCount },
+    { id: 'watch', label: 'Advisories & Watch', count: watchCount },
+  ]
 
   const getBadgeClasses = (severity) => {
     switch (severity) {
@@ -52,7 +110,7 @@ export const CitizenAlerts = () => {
             <span className="text-xs font-semibold text-slate-400">Safety advisories</span>
             <span className="h-1 w-1 rounded-full bg-slate-600"></span>
             <span className="text-xs text-rose-400 font-medium">
-              {summary.criticalCount} Critical active
+              {criticalCount} Critical active
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100 tracking-tight mt-1">
@@ -63,7 +121,7 @@ export const CitizenAlerts = () => {
         {/* Live Source Status */}
         <div className="flex items-center gap-2 bg-[#0D141F] border border-[#1A2533] px-3.5 py-2 rounded-xl text-xs text-slate-300">
           <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-          <span>Feed updated ({summary.lastUpdated})</span>
+          <span>Feed updated ({lastUpdated})</span>
         </div>
       </div>
 

@@ -130,10 +130,17 @@ async def get_recommended_shelters(
     2. Spatial proximity & estimated walking duration
     3. Supplies readiness level
     4. Essential amenities matching (e.g. medical triage)
+    5. Hazard proximity safety verification (disqualifies shelters in active hazard zones)
     """
     shelters = await get_all_shelters(db)
     if not shelters:
         return []
+
+    # Ingest active hazards to ensure shelter safety
+    from app.services.hazard_service import get_active_hazards
+
+    active_hazards = await get_active_hazards()
+    critical_hazards = [hz for hz in active_hazards if hz.severity in ("CRITICAL", "WARNING")]
 
     recommendations: list[RecommendedShelterResponse] = []
 
@@ -145,16 +152,16 @@ async def get_recommended_shelters(
         dist_km = haversine_distance_km(latitude, longitude, shl.latitude, shl.longitude)
         walk_min = max(1, math.ceil(dist_km * 12))  # ~5 km/h walking speed
 
-        # Capacity score: higher available beds gives higher confidence
+        # 1. Capacity score: higher available beds gives higher confidence
         capacity_score = min(40, int((shl.available_beds / max(1, shl.total_beds)) * 40))
 
-        # Status score
+        # 2. Status score
         status_score = 30 if shl.status == "OPEN" else 10 if shl.status == "NEAR_CAPACITY" else 0
 
-        # Proximity score (closer = higher score, max 30)
+        # 3. Proximity score (closer = higher score, max 30)
         proximity_score = max(0, 30 - int(dist_km * 6))
 
-        # Supplies readiness bonus
+        # 4. Supplies readiness bonus
         supplies_bonus = 0
         if "HIGH" in shl.supplies_status.upper():
             supplies_bonus = 15
@@ -163,7 +170,7 @@ async def get_recommended_shelters(
         elif "ADEQUATE" in shl.supplies_status.upper():
             supplies_bonus = 5
 
-        # Amenities match bonus
+        # 5. Amenities match bonus
         amenities_bonus = 0
         if required_amenities:
             for req in required_amenities:
@@ -172,13 +179,38 @@ async def get_recommended_shelters(
         elif any("medical" in a.lower() for a in shl.amenities):
             amenities_bonus += 5
 
-        total_suitability = (
-            capacity_score + status_score + proximity_score + supplies_bonus + amenities_bonus
+        # 6. Safety & Hazard Proximity Verification
+        is_safe = True
+        safety_status = "SAFE"
+        hazard_warning = None
+        safety_penalty = 0
+
+        for hz in critical_hazards:
+            hz_dist = haversine_distance_km(shl.latitude, shl.longitude, hz.latitude, hz.longitude)
+            if hz_dist <= max(0.6, hz.affected_radius_km * 0.5):
+                is_safe = False
+                safety_status = "HAZARD_PROXIMITY_WARNING"
+                hazard_warning = (
+                    f"Warning: Shelter in proximity ({int(hz_dist * 1000)}m) of active {hz.title}"
+                )
+                safety_penalty = 50  # Heavy penalty so safe shelters rank first
+                break
+
+        total_suitability = max(
+            0,
+            capacity_score
+            + status_score
+            + proximity_score
+            + supplies_bonus
+            + amenities_bonus
+            - safety_penalty,
         )
 
         # Generate clear human rationale
         reason_parts = []
-        if shl.status == "OPEN" and shl.available_beds > 50:
+        if not is_safe:
+            reason_parts.append("⚠️ Proximity to Hazard Zone")
+        elif shl.status == "OPEN" and shl.available_beds > 50:
             reason_parts.append(f"High Bed Capacity ({shl.available_beds} free)")
         elif shl.available_beds > 0:
             reason_parts.append(f"{shl.available_beds} beds available")
@@ -210,6 +242,9 @@ async def get_recommended_shelters(
                 suitability_score=total_suitability,
                 recommendation_reason=reason,
                 amenities=shl.amenities,
+                is_safe=is_safe,
+                safety_status=safety_status,
+                hazard_proximity_warning=hazard_warning,
             )
         )
 
