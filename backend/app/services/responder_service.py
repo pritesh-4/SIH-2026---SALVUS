@@ -140,6 +140,22 @@ async def assign_responder_to_incident(
             f"with terminal status '{incident.status}'."
         )
 
+    # Check responder availability guards
+    if responder.status == "OFFLINE":
+        raise ValueError(
+            f"Responder unit '{responder.unit_name}' is currently OFFLINE and cannot be dispatched."
+        )
+
+    if (
+        responder.assigned_incident_id
+        and responder.assigned_incident_id != incident_id
+        and responder.status in ("ASSIGNED", "ON_SCENE")
+    ):
+        raise ValueError(
+            f"Responder unit '{responder.unit_name}' is already "
+            "actively assigned to another mission."
+        )
+
     now = datetime.now(UTC).isoformat()
 
     # 1. Update responder record

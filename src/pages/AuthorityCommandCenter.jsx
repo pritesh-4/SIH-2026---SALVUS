@@ -4,6 +4,8 @@ import { authorityData } from '../data/authority/authorityMock'
 import { useAuthorityIncidents } from '../features/authority/useAuthorityIncidents'
 import { SalvusLeafletMap } from '../components/common/SalvusLeafletMap'
 import { AiTriageAssessmentCard } from '../components/authority/AiTriageAssessmentCard'
+import { DispatchRecommendationPanel } from '../components/authority/DispatchRecommendationPanel'
+import { AssignmentConfirmModal } from '../components/authority/AssignmentConfirmModal'
 import {
   fetchResponders,
   fetchShelters,
@@ -66,7 +68,7 @@ export const AuthorityCommandCenter = () => {
   })
   const [actionSuccessMessage, setActionSuccessMessage] = useState(null)
   const [isAssigningUnit, setIsAssigningUnit] = useState(false)
-  const [showScoreBreakdown, setShowScoreBreakdown] = useState(false)
+  const [assignConfirmCandidate, setAssignConfirmCandidate] = useState(null)
   const [isAnalyzingTriage, setIsAnalyzingTriage] = useState(false)
   const [isVerifyingTriage, setIsVerifyingTriage] = useState(false)
 
@@ -476,7 +478,8 @@ export const AuthorityCommandCenter = () => {
   ])
 
   const alternativeCandidates = useMemo(() => {
-    return candidateResponders.slice(0, 3)
+    if (candidateResponders.length <= 1) return []
+    return candidateResponders.slice(1, 3)
   }, [candidateResponders])
 
   const candidateShelters = useMemo(() => {
@@ -637,7 +640,61 @@ export const AuthorityCommandCenter = () => {
     }
   }
 
-  const handleDispatchResponder = async (responderId) => {
+  const handleSelectCandidateRoute = async (candidate) => {
+    if (!selectedIncident || !candidate || !candidate.latitude || !candidate.longitude) return
+
+    const profile = candidate.capability === 'FLOOD_BOAT' ? 'boat' : 'driving'
+    const routeRes = await fetchRoute(
+      candidate.latitude,
+      candidate.longitude,
+      selectedIncident.latitude,
+      selectedIncident.longitude,
+      profile
+    )
+
+    if (routeRes.success && routeRes.data) {
+      setActiveRoute({
+        responderId: candidate.id,
+        coordinates: routeRes.data.coordinates || routeRes.data.geometry || [],
+        geometry: routeRes.data.geometry || routeRes.data.coordinates || [],
+        distanceKm: routeRes.data.distance_km,
+        distanceMeters: routeRes.data.distance_meters,
+        durationSeconds: routeRes.data.duration_seconds,
+        etaFormatted: routeRes.data.eta_formatted,
+        provider: routeRes.data.provider,
+        status: routeRes.data.status,
+        isFallback: routeRes.data.is_fallback,
+        label: `${candidate.unit_name || candidate.unitName || 'Unit'} Route`,
+      })
+    } else {
+      setActiveRoute({
+        responderId: candidate.id,
+        coordinates: candidate.route_geometry || [
+          [candidate.latitude, candidate.longitude],
+          [selectedIncident.latitude, selectedIncident.longitude],
+        ],
+        geometry: candidate.route_geometry || [],
+        distanceKm: candidate.distance_km ?? candidate.distanceKm ?? 1.2,
+        etaFormatted: candidate.eta_formatted ?? candidate.etaFormatted ?? '5 min',
+        provider: 'vector_corridor',
+        status: 'ESTIMATED',
+        isFallback: true,
+        label: `${candidate.unit_name || candidate.unitName || 'Unit'} Route`,
+      })
+    }
+  }
+
+  const handleRefreshCandidates = async () => {
+    if (!selectedIncident) return
+    setIsLoadingCandidates(true)
+    const candRes = await fetchResponderCandidates(selectedIncident.id)
+    if (candRes.success) {
+      setCandidateList(candRes.data || [])
+    }
+    setIsLoadingCandidates(false)
+  }
+
+  const handleConfirmAssignment = async (responderId) => {
     if (!selectedIncident) return
 
     setIsAssigningUnit(true)
@@ -645,6 +702,7 @@ export const AuthorityCommandCenter = () => {
     setIsAssigningUnit(false)
 
     if (result.success) {
+      setAssignConfirmCandidate(null)
       setActionSuccessMessage(
         `✓ Authoritatively dispatched ${result.data.unit_name} to #${selectedIncident.ticket_id}`
       )
@@ -654,8 +712,17 @@ export const AuthorityCommandCenter = () => {
       refetch(true)
       setTimeout(() => setActionSuccessMessage(null), 3500)
     } else {
-      setActionSuccessMessage(`❌ ${result.error?.message || 'Dispatch failed'}`)
-      setTimeout(() => setActionSuccessMessage(null), 3500)
+      const errMsg = result.error?.message || 'Responder is no longer available'
+      setActionSuccessMessage(`❌ Assignment failed: ${errMsg}`)
+      // Automatically refresh candidates on race condition or failure
+      setIsLoadingCandidates(true)
+      const candRes = await fetchResponderCandidates(selectedIncident.id)
+      if (candRes.success) {
+        setCandidateList(candRes.data || [])
+      }
+      setIsLoadingCandidates(false)
+      setAssignConfirmCandidate(null)
+      setTimeout(() => setActionSuccessMessage(null), 4500)
     }
   }
 
@@ -1364,248 +1431,17 @@ export const AuthorityCommandCenter = () => {
                     </div>
                   ) : (
                     /* Explainable Recommendation & Alternatives */
-                    <div className="bg-[#080C12] border border-[#182332] p-3 rounded-xl space-y-3">
-                      <div className="flex items-center justify-between border-b border-[#182332] pb-1.5">
-                        <span className="text-[10px] font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-blue-400"></span>
-                          Explainable Responder Allocation
-                        </span>
-                        <span className="text-[9px] font-mono text-slate-500">
-                          Deterministic Scoring Engine
-                        </span>
-                      </div>
-
-                      {isLoadingCandidates ? (
-                        <div className="py-6 text-center text-xs font-mono text-slate-500">
-                          Calculating optimal routing vectors & scores...
-                        </div>
-                      ) : topRecommendedCandidate ? (
-                        <div className="space-y-2.5">
-                          {/* Recommended Primary Unit Hero Card */}
-                          <div className="bg-[#0F1A2A] border border-blue-500/50 p-3 rounded-lg space-y-2 relative overflow-hidden">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-sky-400 bg-sky-950/80 px-1.5 py-0.5 rounded border border-sky-500/40">
-                                  ★ RECOMMENDED UNIT
-                                </span>
-                                <h4 className="font-bold text-slate-100 text-xs mt-1">
-                                  {topRecommendedCandidate.unit_name}
-                                </h4>
-                                <p className="text-[10px] text-slate-300 font-mono">
-                                  {topRecommendedCandidate.team_lead} ·{' '}
-                                  {topRecommendedCandidate.vehicle_type}
-                                </p>
-                              </div>
-
-                              <div className="text-right">
-                                <div className="bg-blue-950 text-blue-300 border border-blue-400/60 px-2 py-1 rounded-md text-center font-mono">
-                                  <span className="text-xs font-bold block leading-none">
-                                    {topRecommendedCandidate.match_score}
-                                  </span>
-                                  <span className="text-[8px] text-slate-400 uppercase">
-                                    Score / 100
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Deterministic Justification Bullets */}
-                            <div className="bg-[#070E18] p-2 rounded border border-slate-800/80 space-y-1">
-                              <span className="text-[9px] font-mono font-bold text-slate-400 uppercase block">
-                                Why Salvus Selected This Unit:
-                              </span>
-                              <div className="space-y-0.5 text-[10px] font-mono text-slate-200">
-                                {topRecommendedCandidate.explanation?.positive_factors?.map(
-                                  (fact, idx) => (
-                                    <div
-                                      key={idx}
-                                      className="text-emerald-300 flex items-start gap-1"
-                                    >
-                                      <span>{fact}</span>
-                                    </div>
-                                  )
-                                )}
-                                {topRecommendedCandidate.explanation?.negative_factors?.map(
-                                  (fact, idx) => (
-                                    <div
-                                      key={idx}
-                                      className="text-amber-400 flex items-start gap-1"
-                                    >
-                                      <span>{fact}</span>
-                                    </div>
-                                  )
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Breakdown Toggle */}
-                            <div className="pt-1">
-                              <button
-                                type="button"
-                                onClick={() => setShowScoreBreakdown((p) => !p)}
-                                className="text-[10px] font-mono text-sky-400 hover:text-sky-300 flex items-center justify-between w-full cursor-pointer"
-                              >
-                                <span>
-                                  {showScoreBreakdown
-                                    ? '▼ Hide Score Formula Breakdown'
-                                    : '▶ Inspect Formula Breakdown'}
-                                </span>
-                                <span className="text-slate-500 font-normal">Audit Trail</span>
-                              </button>
-
-                              {showScoreBreakdown &&
-                                topRecommendedCandidate.explanation?.breakdown && (
-                                  <div className="mt-2 p-2 bg-[#04080E] rounded border border-slate-800 text-[9px] font-mono space-y-1.5 text-slate-300">
-                                    <div className="flex justify-between">
-                                      <span>Capability Match (Max 35):</span>
-                                      <span className="text-sky-300 font-bold">
-                                        {
-                                          topRecommendedCandidate.explanation.breakdown
-                                            .capability_score
-                                        }{' '}
-                                        pts
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span>Severity Alignment (Max 20):</span>
-                                      <span className="text-sky-300 font-bold">
-                                        {
-                                          topRecommendedCandidate.explanation.breakdown
-                                            .severity_alignment
-                                        }{' '}
-                                        pts
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span>Operational Availability (Max 20):</span>
-                                      <span className="text-sky-300 font-bold">
-                                        {
-                                          topRecommendedCandidate.explanation.breakdown
-                                            .availability_score
-                                        }{' '}
-                                        pts
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span>Spatial Proximity (Max 15):</span>
-                                      <span className="text-sky-300 font-bold">
-                                        {
-                                          topRecommendedCandidate.explanation.breakdown
-                                            .proximity_score
-                                        }{' '}
-                                        pts
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span>Workload Penalty (Max -10):</span>
-                                      <span className="text-rose-400 font-bold">
-                                        -
-                                        {
-                                          topRecommendedCandidate.explanation.breakdown
-                                            .workload_penalty
-                                        }{' '}
-                                        pts
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between border-t border-slate-800 pt-1 font-bold text-slate-100">
-                                      <span>Total Auditable Score:</span>
-                                      <span className="text-emerald-400">
-                                        {topRecommendedCandidate.match_score} / 100
-                                      </span>
-                                    </div>
-                                  </div>
-                                )}
-                            </div>
-
-                            {/* Assign Button */}
-                            <button
-                              type="button"
-                              disabled={
-                                isAssigningUnit || topRecommendedCandidate.status === 'OFFLINE'
-                              }
-                              onClick={() => handleDispatchResponder(topRecommendedCandidate.id)}
-                              className="w-full py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer disabled:opacity-50 shadow-md flex items-center justify-center gap-1.5"
-                            >
-                              {isAssigningUnit ? (
-                                'Dispatching...'
-                              ) : (
-                                <>
-                                  <span>
-                                    🚀 ASSIGN & DISPATCH{' '}
-                                    {topRecommendedCandidate.unit_name.split(' ')[0]}
-                                  </span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-
-                          {/* Top 3 Alternative Candidates */}
-                          <div className="space-y-1.5 pt-1">
-                            <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">
-                              Alternative Candidates & Operator Override:
-                            </span>
-
-                            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-0.5">
-                              {alternativeCandidates.map((cand, idx) => (
-                                <div
-                                  key={cand.id}
-                                  onMouseEnter={() => {
-                                    if (cand.route_geometry && cand.route_geometry.length > 0) {
-                                      setPreviewRoute({
-                                        coordinates: cand.route_geometry,
-                                        color: '#f59e0b',
-                                        label: `${cand.unit_name} Route`,
-                                      })
-                                    }
-                                  }}
-                                  onMouseLeave={() => setPreviewRoute(null)}
-                                  className={`p-2 rounded-lg border text-[10px] transition-colors flex items-center justify-between gap-2 ${
-                                    cand.is_recommended
-                                      ? 'bg-[#0E1520] border-blue-500/30'
-                                      : 'bg-[#060A0E] border-[#182332] hover:border-slate-700'
-                                  }`}
-                                >
-                                  <div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="font-mono font-bold text-slate-400 text-[9px]">
-                                        #{idx + 1}
-                                      </span>
-                                      <span className="font-bold text-slate-200">
-                                        {cand.unit_name}
-                                      </span>
-                                    </div>
-                                    <span className="text-[9px] text-slate-400 font-mono block">
-                                      {cand.distance_km || cand.distanceKm} km ·{' '}
-                                      {cand.eta_formatted || '4 min'} · {cand.status}
-                                    </span>
-                                  </div>
-
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-mono font-bold text-xs text-sky-300">
-                                      {cand.match_score || cand.matchScore}
-                                    </span>
-                                    {!cand.is_recommended && (
-                                      <button
-                                        type="button"
-                                        disabled={isAssigningUnit}
-                                        onClick={() => handleDispatchResponder(cand.id)}
-                                        className="py-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[9px] font-bold uppercase transition-colors cursor-pointer"
-                                      >
-                                        Assign
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="py-6 text-center text-xs font-mono text-slate-500">
-                          No active candidate units available for dispatch.
-                        </div>
-                      )}
-                    </div>
+                    <DispatchRecommendationPanel
+                      incident={selectedIncident}
+                      topCandidate={topRecommendedCandidate}
+                      alternatives={alternativeCandidates}
+                      activeRoute={activeRoute}
+                      isLoading={isLoadingCandidates}
+                      onSelectRoute={handleSelectCandidateRoute}
+                      onRequestAssign={(cand) => setAssignConfirmCandidate(cand)}
+                      onRefreshCandidates={handleRefreshCandidates}
+                      isAssigning={isAssigningUnit}
+                    />
                   )}
 
                   {/* Shelters */}
@@ -1985,6 +1821,16 @@ export const AuthorityCommandCenter = () => {
           )}
         </section>
       </div>
+
+      {/* Consequential Assignment Confirmation Modal */}
+      <AssignmentConfirmModal
+        isOpen={Boolean(assignConfirmCandidate)}
+        candidate={assignConfirmCandidate}
+        incident={selectedIncident}
+        isAssigning={isAssigningUnit}
+        onClose={() => setAssignConfirmCandidate(null)}
+        onConfirm={handleConfirmAssignment}
+      />
     </div>
   )
 }
