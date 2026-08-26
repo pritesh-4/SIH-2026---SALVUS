@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from datetime import UTC, datetime
 
@@ -430,27 +429,7 @@ async def perform_ai_triage(
 
     and returns validated assessment.
     """
-    sanitized = sanitize_incident_for_ai(incident_dict)
+    from app.services.ai.service import ai_service
 
-    # 1. Try Gemini
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if gemini_key and gemini_key.strip():
-        try:
-            assessment = await _call_gemini_api(sanitized, gemini_key.strip(), image_data)
-            if assessment:
-                return assessment
-        except Exception as e:
-            logger.warning(f"Gemini triage evaluation failed: {e}")
-
-    # 2. Try Groq Fallback
-    groq_key = os.getenv("GROQ_API_KEY")
-    if groq_key and groq_key.strip():
-        try:
-            assessment = await _call_groq_api(sanitized, groq_key.strip(), image_data)
-            if assessment:
-                return assessment
-        except Exception as e:
-            logger.warning(f"Groq triage fallback failed: {e}")
-
-    # 3. Deterministic Local Heuristic Fallback
-    return _local_heuristic_triage(sanitized, image_data)
+    assessment, _ = await ai_service.triage(incident_dict, image_data)
+    return assessment

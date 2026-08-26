@@ -18,7 +18,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.db import close_database, init_database
 from app.db.seed import seed_database
 from app.middleware import (
+    CorrelationIdMiddleware,
     PayloadLimitMiddleware,
+    RequestLoggingMiddleware,
     SecurityHeadersMiddleware,
     generic_exception_handler,
     validation_exception_handler,
@@ -93,9 +95,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# --- Security Middleware ---
+# --- Middleware (Executed in reverse order of addition) ---
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(PayloadLimitMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(CorrelationIdMiddleware)
 
 # --- CORS ---
 allowed_origins = get_cors_origins()
@@ -105,7 +109,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+
 
 # --- Error handlers ---
 app.add_exception_handler(RequestValidationError, validation_exception_handler)

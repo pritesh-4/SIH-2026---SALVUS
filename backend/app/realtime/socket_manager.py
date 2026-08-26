@@ -15,7 +15,13 @@ import urllib.parse
 import socketio
 
 from app.auth.jwt_handler import AuthenticatedUser, verify_access_token
-from app.models import AssignmentResponse, IncidentResponse, ResponderResponse, ShelterResponse
+from app.models import (
+    AITriageAssessment,
+    AssignmentResponse,
+    IncidentResponse,
+    ResponderResponse,
+    ShelterResponse,
+)
 
 # ---------------------------------------------------------------------------
 # Socket.IO server instance (async mode for FastAPI)
@@ -370,4 +376,33 @@ async def emit_shelter_updated(shelter: ShelterResponse) -> None:
     await sio.emit("shelter.updated", payload, room="authorities")
     print(
         f"[Socket.IO] Emitted shelter.updated → {shelter.name} ({shelter.available_beds} beds free)"
+    )
+
+
+async def emit_incident_triage_updated(
+    incident_id: str,
+    assessment: AITriageAssessment,
+    ai_state: str = "AVAILABLE",
+    ticket_id: str | None = None,
+) -> None:
+    """Broadcast completed AI decision support triage assessment to authority and citizen rooms."""
+    payload = {
+        "incident_id": incident_id,
+        "id": incident_id,
+        "ticket_id": ticket_id,
+        "ai_state": ai_state,
+        "assessment": assessment.model_dump(),
+        "ai_triage": assessment.model_dump(),
+    }
+
+    # Broadcast to Authority Command Center
+    await sio.emit("incident.triage_updated", payload, room="authorities")
+
+    # Broadcast to Citizen Incident Room
+    incident_room = f"incident:{incident_id}"
+    await sio.emit("incident.triage_updated", payload, room=incident_room)
+
+    print(
+        f"[Socket.IO] Emitted incident.triage_updated → authorities + {incident_room} "
+        f"for {ticket_id or incident_id} ({assessment.provider})"
     )

@@ -22,6 +22,8 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
             affected_count INTEGER NOT NULL DEFAULT 1,
             is_sos INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'NEW',
+            ai_state TEXT NOT NULL DEFAULT 'NOT_STARTED',
+            triage_hash TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
@@ -140,6 +142,18 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
 
     try:
         await db.execute("ALTER TABLE incidents ADD COLUMN reporter_id TEXT")
+    except Exception:
+        pass  # Column already exists
+
+    try:
+        await db.execute(
+            "ALTER TABLE incidents ADD COLUMN ai_state TEXT NOT NULL DEFAULT 'NOT_STARTED'"
+        )
+    except Exception:
+        pass  # Column already exists
+
+    try:
+        await db.execute("ALTER TABLE incidents ADD COLUMN triage_hash TEXT")
     except Exception:
         pass  # Column already exists
 

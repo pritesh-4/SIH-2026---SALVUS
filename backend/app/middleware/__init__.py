@@ -6,12 +6,17 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.middleware.correlation import CorrelationIdMiddleware, get_current_request_id
+from app.middleware.request_logger import RequestLoggingMiddleware
 from app.middleware.security import PayloadLimitMiddleware, SecurityHeadersMiddleware
 
 __all__ = [
+    "CorrelationIdMiddleware",
     "PayloadLimitMiddleware",
+    "RequestLoggingMiddleware",
     "SecurityHeadersMiddleware",
     "generic_exception_handler",
+    "get_current_request_id",
     "validation_exception_handler",
 ]
 

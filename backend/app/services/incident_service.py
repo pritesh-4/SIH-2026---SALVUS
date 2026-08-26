@@ -23,7 +23,6 @@ from app.models import (
     ResponderCapability,
     TriageVerificationRequest,
 )
-from app.services.ai_triage_service import perform_ai_triage
 from app.services.state_machine import is_terminal, validate_transition
 
 # ---------------------------------------------------------------------------
@@ -81,6 +80,8 @@ def _row_to_incident(
     """Convert a database row to an IncidentResponse."""
     row_keys = row.keys() if hasattr(row, "keys") else []
     reporter_id = row["reporter_id"] if "reporter_id" in row_keys else None
+    ai_state = row["ai_state"] if "ai_state" in row_keys else "NOT_STARTED"
+    triage_hash = row["triage_hash"] if "triage_hash" in row_keys else None
 
     return IncidentResponse(
         id=row["id"],
@@ -96,6 +97,8 @@ def _row_to_incident(
         affected_count=row["affected_count"],
         is_sos=bool(row["is_sos"]),
         status=row["status"],
+        ai_state=ai_state,
+        triage_hash=triage_hash,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         events=[IncidentEventResponse(**e) for e in (events or [])],
@@ -191,9 +194,8 @@ async def create_incident(
         """
         INSERT INTO incidents (id, ticket_id, type, severity, description,
             reporter_name, reporter_phone, reporter_id, latitude, longitude,
-            affected_count, is_sos, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-
+            affected_count, is_sos, status, ai_state, triage_hash, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             incident_id,
@@ -209,6 +211,8 @@ async def create_incident(
             payload.affected_count,
             int(payload.is_sos),
             IncidentStatus.NEW.value,
+            "PROCESSING",
+            None,
             now,
             now,
         ),
@@ -226,24 +230,7 @@ async def create_incident(
     )
     await db.commit()
 
-    # Automatically run AI decision-support triage
-    try:
-        triage = await perform_ai_triage(
-            {
-                "type": payload.type.value,
-                "severity": payload.severity.value,
-                "description": payload.description,
-                "affected_count": payload.affected_count,
-                "is_sos": payload.is_sos,
-                "latitude": payload.latitude,
-                "longitude": payload.longitude,
-            }
-        )
-        await save_ai_triage_assessment(db, incident_id, triage)
-    except Exception:
-        pass  # Triage failures must not block incident creation
-
-    # Fetch and return the created incident
+    # Fetch and return the created incident immediately (critical-path completed)
     return await get_incident_by_id(db, incident_id)
 
 

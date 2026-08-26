@@ -89,8 +89,14 @@ async def test_ai_triage_api_flow(client, citizen_headers):
     incident = create_res.json()["data"]
     inc_id = incident["id"]
     assert incident["status"] == "NEW"
-    assert incident["ai_triage"] is not None
-    assert incident["ai_triage"]["recommended_capability"] == "FLOOD_BOAT"
+    assert incident["ai_state"] in ("PROCESSING", "AVAILABLE")
+
+    # Fetch updated incident record after background task execution
+    get_res = await client.get(f"/api/incidents/{inc_id}")
+    assert get_res.status_code == 200
+    inc_latest = get_res.json()["data"]
+    assert inc_latest["ai_triage"] is not None
+    assert inc_latest["ai_triage"]["recommended_capability"] == "FLOOD_BOAT"
 
     # 2. Trigger on-demand analyze endpoint
     analyze_res = await client.post(f"/api/triage/analyze/{inc_id}")

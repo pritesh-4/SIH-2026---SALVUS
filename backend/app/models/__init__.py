@@ -141,6 +141,16 @@ class IncidentEventResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class AIState(StrEnum):
+    """Lifecycle state of AI intelligence triage processing."""
+
+    NOT_STARTED = "NOT_STARTED"
+    PROCESSING = "PROCESSING"
+    AVAILABLE = "AVAILABLE"
+    FAILED = "FAILED"
+    STALE = "STALE"
+
+
 class AITriageAssessment(BaseModel):
     """Structured decision-support triage output produced by AI or fallback engine."""
 
@@ -174,6 +184,7 @@ class AITriageAssessment(BaseModel):
     )
     model: str = Field(default="gemini-2.0-flash", description="Underlying model name")
     evaluated_at: str
+    ai_state: str = Field(default="AVAILABLE", description="AVAILABLE | FAILED | STALE")
     needs_review: bool = Field(
         default=False, description="True if confidence < 0.75 or critical flags present"
     )
@@ -215,6 +226,8 @@ class IncidentResponse(BaseModel):
     affected_count: int
     is_sos: bool
     status: str
+    ai_state: str = "NOT_STARTED"
+    triage_hash: str | None = None
     created_at: str
     updated_at: str
     events: list[IncidentEventResponse] = []

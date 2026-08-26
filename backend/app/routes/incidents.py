@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 
 from app.auth.dependencies import (
     get_current_user,
@@ -37,6 +37,7 @@ from app.models import (
     IncidentStatusUpdate,
 )
 from app.services import candidate_generation, incident_service
+from app.services.async_triage_task import run_async_ai_triage
 
 router = APIRouter(prefix="/api/incidents", tags=["incidents"])
 
@@ -56,10 +57,13 @@ def _sanitize_incident_pii(incident: IncidentResponse) -> IncidentResponse:
 @router.post("", status_code=201, response_model=IncidentSingleResponse)
 async def create_incident(
     payload: IncidentCreate,
+    request: Request,
+    background_tasks: BackgroundTasks,
     user: AuthenticatedUser | None = Depends(get_optional_user),
 ):
     """Create a new incident report or SOS beacon and issue scoped citizen access token."""
     db = await get_database()
+    request_id = getattr(request.state, "request_id", "req-transient")
 
     # Derive authenticated citizen identity or mint new citizen ID
     reporter_id = user.user_id if user else f"cit-{uuid.uuid4().hex[:8]}"
@@ -81,13 +85,20 @@ async def create_incident(
         )
         incident.access_token = token
 
-    # Emit realtime event (best-effort, non-blocking)
+    # Emit immediate realtime incident.created event (critical-path non-blocking)
     try:
         from app.realtime.socket_manager import emit_incident_created
 
         await emit_incident_created(incident)
     except Exception:
         pass  # Socket emission is best-effort
+
+    # Dispatch asynchronous background AI decision-support triage
+    background_tasks.add_task(
+        run_async_ai_triage,
+        incident_id=incident.id,
+        request_id=request_id,
+    )
 
     return IncidentSingleResponse(data=incident)
 

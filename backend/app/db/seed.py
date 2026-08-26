@@ -216,8 +216,8 @@ async def seed_database(db) -> dict:
             """
             INSERT OR IGNORE INTO incidents (id, ticket_id, type, severity, description,
                 reporter_name, reporter_phone, latitude, longitude,
-                affected_count, is_sos, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                affected_count, is_sos, status, ai_state, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, ?)
             """,
             (
                 inc["id"],

@@ -19,7 +19,6 @@ from app.models import (
     TriageVerificationRequest,
 )
 from app.services import incident_service
-from app.services.ai_triage_service import perform_ai_triage
 
 router = APIRouter(prefix="/api/triage", tags=["ai_triage"])
 
@@ -44,9 +43,12 @@ async def analyze_incident_triage(
             },
         )
 
+    from app.realtime.socket_manager import emit_incident_triage_updated
+    from app.services.ai.service import ai_service
+
     # Perform AI Triage
-    assessment = await perform_ai_triage(
-        {
+    assessment, new_hash = await ai_service.triage(
+        incident_dict={
             "type": incident.type,
             "severity": incident.severity,
             "description": incident.description,
@@ -54,20 +56,25 @@ async def analyze_incident_triage(
             "is_sos": incident.is_sos,
             "latitude": incident.latitude,
             "longitude": incident.longitude,
-        }
+        },
+        incident_id=incident_id,
     )
 
-    # Persist in DB audit trail
+    # Persist in DB audit trail and update ai_state
     await incident_service.save_ai_triage_assessment(db, incident_id, assessment)
+    await db.execute(
+        "UPDATE incidents SET ai_state = 'AVAILABLE', triage_hash = ? WHERE id = ?",
+        (new_hash, incident_id),
+    )
+    await db.commit()
 
     # Broadcast realtime event
     try:
-        from app.realtime.socket_manager import sio
-
-        await sio.emit(
-            "incident:triage_updated",
-            {"incident_id": incident_id, "assessment": assessment.model_dump()},
-            room="authorities",
+        await emit_incident_triage_updated(
+            incident_id=incident_id,
+            assessment=assessment,
+            ai_state="AVAILABLE",
+            ticket_id=incident.ticket_id,
         )
     except Exception:
         pass
