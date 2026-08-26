@@ -1,15 +1,17 @@
-"""AI Incident Triage & Human Verification REST API routes.
+"""AI Incident Triage & Human Verification REST API routes with cryptographic RBAC.
 
 Endpoints:
-    POST  /api/triage/analyze/{incident_id}  — Trigger on-demand AI triage assessment
-    POST  /api/triage/verify/{incident_id}   — Operator verifies and accepts triage assessment
-    POST  /api/triage/adjust/{incident_id}   — Operator overrides triage attributes and verifies
+    POST  /api/triage/analyze/{id} — Trigger AI triage assessment (Authority/System)
+    POST  /api/triage/verify/{id}  — Verify and accept triage assessment (Authority)
+    POST  /api/triage/adjust/{id}  — Override triage attributes & verify (Authority)
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.auth.dependencies import require_authority
+from app.auth.jwt_handler import AuthenticatedUser
 from app.db import get_database
 from app.models import (
     AITriageSingleResponse,
@@ -23,8 +25,11 @@ router = APIRouter(prefix="/api/triage", tags=["ai_triage"])
 
 
 @router.post("/analyze/{incident_id}", response_model=AITriageSingleResponse)
-async def analyze_incident_triage(incident_id: str):
-    """Run safety-critical AI decision support triage on an incident."""
+async def analyze_incident_triage(
+    incident_id: str,
+    user: AuthenticatedUser = Depends(require_authority),
+):
+    """Trigger AI triage assessment and calculate priority/signals (Authority/System only)."""
     db = await get_database()
     incident = await incident_service.get_incident_by_id(db, incident_id)
     if not incident:
@@ -71,23 +76,21 @@ async def analyze_incident_triage(incident_id: str):
 
 
 @router.post("/verify/{incident_id}", response_model=IncidentSingleResponse)
-async def verify_incident_triage(incident_id: str, payload: TriageVerificationRequest):
-    """Operator approves AI triage assessment and transitions incident to VERIFIED."""
-    if payload.actor == "citizen":
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "success": False,
-                "error": {
-                    "code": "FORBIDDEN",
-                    "message": "Only emergency authorities can verify or adjust triage.",
-                },
-            },
-        )
+async def verify_incident_triage(
+    incident_id: str,
+    payload: TriageVerificationRequest,
+    user: AuthenticatedUser = Depends(require_authority),
+):
+    """Operator approves AI triage assessment and transitions to VERIFIED (Authority only)."""
+    # Derive verified actor from authenticated token
+    verified_payload = payload.model_copy()
+    verified_payload.actor = user.name
 
     db = await get_database()
     try:
-        updated_incident = await incident_service.verify_incident_triage(db, incident_id, payload)
+        updated_incident = await incident_service.verify_incident_triage(
+            db, incident_id, verified_payload
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=400,
@@ -125,7 +128,7 @@ async def verify_incident_triage(incident_id: str, payload: TriageVerificationRe
             {
                 "incident_id": incident_id,
                 "incident": updated_incident.model_dump(),
-                "actor": payload.actor,
+                "actor": user.name,
             },
             room="authorities",
         )
@@ -136,6 +139,10 @@ async def verify_incident_triage(incident_id: str, payload: TriageVerificationRe
 
 
 @router.post("/adjust/{incident_id}", response_model=IncidentSingleResponse)
-async def adjust_incident_triage(incident_id: str, payload: TriageVerificationRequest):
-    """Operator overrides severity, type, or capability and confirms verification."""
-    return await verify_incident_triage(incident_id, payload)
+async def adjust_incident_triage(
+    incident_id: str,
+    payload: TriageVerificationRequest,
+    user: AuthenticatedUser = Depends(require_authority),
+):
+    """Operator overrides triage attributes and confirms verification (Authority only)."""
+    return await verify_incident_triage(incident_id, payload, user=user)

@@ -2,6 +2,41 @@ import axios from 'axios'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
+let currentAuthToken =
+  typeof window !== 'undefined' ? localStorage.getItem('salvus_auth_token') || null : null
+
+export const getAuthToken = () => currentAuthToken
+
+export const setAuthToken = (token) => {
+  currentAuthToken = token
+  if (typeof window !== 'undefined') {
+    if (token) {
+      localStorage.setItem('salvus_auth_token', token)
+    } else {
+      localStorage.removeItem('salvus_auth_token')
+    }
+  }
+}
+
+export const clearAuthToken = () => setAuthToken(null)
+
+export const fetchRoleToken = async (role = 'AUTHORITY', name = null) => {
+  try {
+    const res = await axios.post(
+      `${API_BASE_URL}/api/auth/token`,
+      { role, name },
+      { headers: { 'Content-Type': 'application/json' }, timeout: 5000 }
+    )
+    if (res.data?.access_token) {
+      setAuthToken(res.data.access_token)
+      return res.data.access_token
+    }
+  } catch (err) {
+    console.warn('[Salvus Auth] Failed to fetch role token from server:', err.message)
+  }
+  return null
+}
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
@@ -9,6 +44,18 @@ export const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 })
+
+// Request interceptor: automatically attach Bearer token to all outgoing API calls
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = getAuthToken()
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  },
+  (error) => Promise.reject(error)
+)
 
 // ---------------------------------------------------------------------------
 // Incident API Calls
@@ -83,6 +130,9 @@ export const createIncident = async (payload) => {
     }
 
     const response = await apiClient.post('/api/incidents', body)
+    if (response.data?.data?.access_token) {
+      setAuthToken(response.data.data.access_token)
+    }
     return {
       success: true,
       data: response.data.data,

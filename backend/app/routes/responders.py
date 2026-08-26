@@ -1,19 +1,25 @@
-"""Responder fleet REST API routes.
+"""Responder fleet REST API routes with cryptographic RBAC and telemetry authorization.
 
 Endpoints:
     GET    /api/responders                     — List all active responders
-    GET    /api/responders/candidates/{inc_id} — Get ranked candidates with explanations & routes
+    GET    /api/responders/candidates/{inc_id} — Ranked candidates with routes (Authority)
     GET    /api/responders/{id}                — Get single responder by ID
-    PATCH  /api/responders/{id}/status         — Update responder status or assign incident
-    POST   /api/responders/{id}/assign         — Atomically assign responder to incident
-    POST   /api/responders/{id}/lifecycle      — Advance responder lifecycle journey
-    POST   /api/responders/{id}/location       — Update real-time GPS telemetry
+    PATCH  /api/responders/{id}/status         — Update status or assign incident (RBAC)
+    POST   /api/responders/{id}/assign         — Atomically assign responder (Authority)
+    POST   /api/responders/{id}/lifecycle      — Advance responder journey (RBAC)
+    POST   /api/responders/{id}/location       — Update GPS telemetry (Responder/Authority)
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.auth.dependencies import (
+    get_current_user,
+    get_optional_user,
+    require_authority,
+)
+from app.auth.jwt_handler import AuthenticatedUser
 from app.db import get_database
 from app.models import (
     CandidateEvaluationRequest,
@@ -41,7 +47,9 @@ router = APIRouter(prefix="/api/responders", tags=["responders"])
 
 
 @router.get("", response_model=ResponderListResponse)
-async def get_responders():
+async def get_responders(
+    user: AuthenticatedUser | None = Depends(get_optional_user),
+):
     """List all disaster response units."""
     db = await get_database()
     responders = await responder_service.get_all_responders(db)
@@ -54,8 +62,9 @@ async def get_candidate_pool(
     required_capability: str | None = Query(
         None, description="Optional required capability override"
     ),
+    user: AuthenticatedUser = Depends(require_authority),
 ):
-    """Retrieve filtered candidate pool separating eligible from excluded responders."""
+    """Retrieve filtered candidate pool for an incident (Authority only)."""
     db = await get_database()
     result = await candidate_generation.get_candidate_pool_for_incident(
         db, incident_id, required_capability=required_capability
@@ -75,7 +84,10 @@ async def get_candidate_pool(
 
 
 @router.post("/candidate-pool/evaluate", response_model=CandidateGenerationResponse)
-async def evaluate_candidate_pool(payload: CandidateFilterRequest):
+async def evaluate_candidate_pool(
+    payload: CandidateFilterRequest,
+    user: AuthenticatedUser = Depends(require_authority),
+):
     """Evaluate candidate eligibility for an incident payload without database coupling."""
     result = candidate_generation.generate_candidate_pool(
         incident=payload.incident,
@@ -91,15 +103,14 @@ async def get_candidate_responders(
     include_routes: bool = Query(
         True, description="Enrich top candidate units with live OSRM / corridor route geometry"
     ),
+    user: AuthenticatedUser = Depends(require_authority),
 ):
-    """Retrieve ranked candidate responders for an active incident with deterministic scoring,
-
-    mathematical factor breakdown, transparent justifications, and route vectors.
-    """
+    """Retrieve ranked candidate responders for an active incident (Authority only)."""
     db = await get_database()
     candidates = await responder_service.get_candidate_responders_for_incident(
         db, incident_id, include_routes=include_routes
     )
+
     allocation_status = "RECOMMENDED" if candidates else "NO_AVAILABLE_RESPONDER"
     message = "No suitable response unit is currently available." if not candidates else None
     return ResponderCandidateListResponse(
@@ -112,7 +123,10 @@ async def get_candidate_responders(
 
 
 @router.post("/candidates/evaluate", response_model=ResponderCandidateListResponse)
-async def evaluate_candidates(payload: CandidateEvaluationRequest):
+async def evaluate_candidates(
+    payload: CandidateEvaluationRequest,
+    user: AuthenticatedUser = Depends(require_authority),
+):
     """Evaluate candidate responders from payload against an incident without database coupling."""
     candidates = rank_and_explain_candidates(payload.incident, payload.responders)
     allocation_status = "RECOMMENDED" if candidates else "NO_AVAILABLE_RESPONDER"
@@ -127,7 +141,10 @@ async def evaluate_candidates(payload: CandidateEvaluationRequest):
 
 
 @router.get("/{responder_id}", response_model=ResponderSingleResponse)
-async def get_responder(responder_id: str):
+async def get_responder(
+    responder_id: str,
+    user: AuthenticatedUser | None = Depends(get_optional_user),
+):
     """Get single responder details."""
     db = await get_database()
     resp = await responder_service.get_responder_by_id(db, responder_id)
@@ -146,16 +163,32 @@ async def get_responder(responder_id: str):
 
 
 @router.patch("/{responder_id}/status", response_model=ResponderSingleResponse)
-async def update_responder_status(responder_id: str, payload: ResponderStatusUpdate):
-    """Update responder operational status or assign to incident."""
-    if payload.actor == "citizen":
+async def update_responder_status(
+    responder_id: str,
+    payload: ResponderStatusUpdate,
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    """Update responder operational status or assign to incident with verified RBAC."""
+    if user.is_citizen:
         raise HTTPException(
-            status_code=403,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "success": False,
                 "error": {
                     "code": "FORBIDDEN",
                     "message": "Citizens cannot mutate responder operational status.",
+                },
+            },
+        )
+
+    if user.is_responder and user.scoped_responder_id and user.scoped_responder_id != responder_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "FORBIDDEN",
+                    "message": "Responders can only mutate their own unit status.",
                 },
             },
         )
@@ -189,28 +222,21 @@ async def update_responder_status(responder_id: str, payload: ResponderStatusUpd
 
 
 @router.post("/{responder_id}/assign", response_model=ResponderSingleResponse)
-async def assign_responder(responder_id: str, payload: ResponderAssignmentRequest):
-    """Authoritatively and atomically dispatch and link a response unit to an active incident."""
-    if payload.actor == "citizen":
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "success": False,
-                "error": {
-                    "code": "FORBIDDEN",
-                    "message": "Only authorized dispatchers can assign emergency response units.",
-                },
-            },
-        )
-
+async def assign_responder(
+    responder_id: str,
+    payload: ResponderAssignmentRequest,
+    user: AuthenticatedUser = Depends(require_authority),
+):
+    """Authoritatively dispatch and link a response unit to an incident (Authority only)."""
     db = await get_database()
+
     try:
         result = await responder_service.assign_responder_to_incident(
             db,
             responder_id=responder_id,
             incident_id=payload.incident_id,
             status=payload.status.value,
-            actor=payload.actor,
+            actor=user.name,
         )
     except ValueError as e:
         raise HTTPException(
@@ -255,16 +281,32 @@ async def assign_responder(responder_id: str, payload: ResponderAssignmentReques
 
 
 @router.post("/{responder_id}/lifecycle", response_model=ResponderSingleResponse)
-async def advance_lifecycle(responder_id: str, payload: ResponderLifecycleAdvanceRequest):
+async def advance_lifecycle(
+    responder_id: str,
+    payload: ResponderLifecycleAdvanceRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+):
     """Advance responder through unified emergency journey (ASSIGNED -> EN_ROUTE -> RESOLVED)."""
-    if payload.actor == "citizen":
+    if user.is_citizen:
         raise HTTPException(
-            status_code=403,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "success": False,
                 "error": {
                     "code": "FORBIDDEN",
                     "message": "Citizens cannot advance responder operational lifecycle.",
+                },
+            },
+        )
+
+    if user.is_responder and user.scoped_responder_id and user.scoped_responder_id != responder_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "FORBIDDEN",
+                    "message": "Responders can only advance their own mission lifecycle.",
                 },
             },
         )
@@ -275,7 +317,7 @@ async def advance_lifecycle(responder_id: str, payload: ResponderLifecycleAdvanc
             db,
             responder_id=responder_id,
             target_status=payload.target_status.value,
-            actor=payload.actor,
+            actor=user.name,
             notes=payload.notes,
         )
     except ValueError as e:
@@ -331,16 +373,34 @@ async def advance_lifecycle(responder_id: str, payload: ResponderLifecycleAdvanc
 
 
 @router.post("/{responder_id}/location", response_model=ResponderSingleResponse)
-async def update_responder_location(responder_id: str, payload: ResponderLocationUpdate):
-    """Update GPS coordinates for an active responder craft."""
-    if payload.actor == "citizen":
+async def update_responder_location(
+    responder_id: str,
+    payload: ResponderLocationUpdate,
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    """Update GPS coordinates for an active responder craft (Responder/Authority/System)."""
+    if user.is_citizen:
         raise HTTPException(
-            status_code=403,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "success": False,
                 "error": {
                     "code": "FORBIDDEN",
-                    "message": "Unauthorized GPS telemetry source.",
+                    "message": (
+                        "Unauthorized GPS telemetry source. Citizens cannot send fleet telemetry."
+                    ),
+                },
+            },
+        )
+
+    if user.is_responder and user.scoped_responder_id and user.scoped_responder_id != responder_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "FORBIDDEN",
+                    "message": "Responders can only publish telemetry for their own unit.",
                 },
             },
         )

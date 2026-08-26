@@ -1,9 +1,7 @@
 """Unit and integration tests for Task 04: Responder Candidate Generation."""
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
-from app.main import app
 from app.models import IncidentResponse, ResponderResponse
 from app.services.candidate_generation import (
     evaluate_responder_eligibility,
@@ -229,82 +227,81 @@ def test_no_candidates_scenario():
 
 
 @pytest.mark.asyncio
-async def test_candidate_pool_api_endpoints():
+async def test_candidate_pool_api_endpoints(client):
     """Verify candidate pool REST API endpoints."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        # Create an incident
-        inc_res = await client.post(
-            "/api/incidents",
-            json={
-                "type": "flood",
-                "severity": "HIGH",
-                "description": "Rising floodwaters in Sector 5",
-                "latitude": 22.5726,
-                "longitude": 88.3639,
-            },
-        )
-        assert inc_res.status_code == 201
-        inc_id = inc_res.json()["data"]["id"]
+    # Create an incident
+    inc_res = await client.post(
+        "/api/incidents",
+        json={
+            "type": "flood",
+            "severity": "HIGH",
+            "description": "Rising floodwaters in Sector 5",
+            "latitude": 22.5726,
+            "longitude": 88.3639,
+        },
+    )
+    assert inc_res.status_code == 201
+    inc_id = inc_res.json()["data"]["id"]
 
-        # 1. Test GET /api/responders/candidate-pool/{incident_id}
-        pool_res = await client.get(f"/api/responders/candidate-pool/{inc_id}")
-        assert pool_res.status_code == 200
-        pool_data = pool_res.json()["data"]
-        assert pool_data["incident_id"] == inc_id
-        assert "eligible_responders" in pool_data
-        assert "excluded_responders" in pool_data
-        assert pool_data["total_evaluated"] >= 1
+    # 1. Test GET /api/responders/candidate-pool/{incident_id}
+    pool_res = await client.get(f"/api/responders/candidate-pool/{inc_id}")
+    assert pool_res.status_code == 200
+    pool_data = pool_res.json()["data"]
+    assert pool_data["incident_id"] == inc_id
+    assert "eligible_responders" in pool_data
+    assert "excluded_responders" in pool_data
+    assert pool_data["total_evaluated"] >= 1
 
-        # 2. Test GET /api/incidents/{incident_id}/candidate-pool
-        inc_pool_res = await client.get(f"/api/incidents/{inc_id}/candidate-pool")
-        assert inc_pool_res.status_code == 200
-        assert inc_pool_res.json()["data"]["incident_id"] == inc_id
+    # 2. Test GET /api/incidents/{incident_id}/candidate-pool
+    inc_pool_res = await client.get(f"/api/incidents/{inc_id}/candidate-pool")
+    assert inc_pool_res.status_code == 200
+    assert inc_pool_res.json()["data"]["incident_id"] == inc_id
 
-        # 3. Test POST /api/responders/candidate-pool/evaluate (offline evaluate payload)
-        eval_res = await client.post(
-            "/api/responders/candidate-pool/evaluate",
-            json={
-                "incident": inc_res.json()["data"],
-                "responders": [
-                    {
-                        "id": "mock-r1",
-                        "unit_name": "Mock Boat 1",
-                        "team_lead": "Lead",
-                        "vehicle_type": "Boat",
-                        "capability": "FLOOD_BOAT",
-                        "status": "AVAILABLE",
-                        "latitude": 22.574,
-                        "longitude": 88.372,
-                        "radio_channel": "VHF-1",
-                        "max_capacity": 8,
-                        "current_load": 0,
-                        "last_seen": "2026-08-25T12:00:00Z",
-                        "created_at": "2026-08-25T12:00:00Z",
-                        "updated_at": "2026-08-25T12:00:00Z",
-                    },
-                    {
-                        "id": "mock-r2",
-                        "unit_name": "Mock Hazmat 2",
-                        "team_lead": "Lead",
-                        "vehicle_type": "Truck",
-                        "capability": "HAZMAT",
-                        "status": "AVAILABLE",
-                        "latitude": 22.574,
-                        "longitude": 88.372,
-                        "radio_channel": "VHF-2",
-                        "max_capacity": 4,
-                        "current_load": 0,
-                        "last_seen": "2026-08-25T12:00:00Z",
-                        "created_at": "2026-08-25T12:00:00Z",
-                        "updated_at": "2026-08-25T12:00:00Z",
-                    },
-                ],
-            },
-        )
-        assert eval_res.status_code == 200
-        eval_data = eval_res.json()["data"]
-        assert eval_data["total_evaluated"] == 2
-        assert eval_data["total_eligible"] == 1
-        assert eval_data["total_excluded"] == 1
-        assert eval_data["eligible_responders"][0]["responder_id"] == "mock-r1"
-        assert eval_data["excluded_responders"][0]["responder_id"] == "mock-r2"
+    # 3. Test POST /api/responders/candidate-pool/evaluate (offline evaluate payload)
+    eval_res = await client.post(
+        "/api/responders/candidate-pool/evaluate",
+        json={
+            "incident": inc_res.json()["data"],
+            "responders": [
+                {
+                    "id": "mock-r1",
+                    "unit_name": "Mock Boat 1",
+                    "team_lead": "Lead",
+                    "vehicle_type": "Boat",
+                    "capability": "FLOOD_BOAT",
+                    "status": "AVAILABLE",
+                    "latitude": 22.574,
+                    "longitude": 88.372,
+                    "radio_channel": "VHF-1",
+                    "max_capacity": 8,
+                    "current_load": 0,
+                    "last_seen": "2026-08-25T12:00:00Z",
+                    "created_at": "2026-08-25T12:00:00Z",
+                    "updated_at": "2026-08-25T12:00:00Z",
+                },
+                {
+                    "id": "mock-r2",
+                    "unit_name": "Mock Hazmat 2",
+                    "team_lead": "Lead",
+                    "vehicle_type": "Truck",
+                    "capability": "HAZMAT",
+                    "status": "AVAILABLE",
+                    "latitude": 22.574,
+                    "longitude": 88.372,
+                    "radio_channel": "VHF-2",
+                    "max_capacity": 4,
+                    "current_load": 0,
+                    "last_seen": "2026-08-25T12:00:00Z",
+                    "created_at": "2026-08-25T12:00:00Z",
+                    "updated_at": "2026-08-25T12:00:00Z",
+                },
+            ],
+        },
+    )
+    assert eval_res.status_code == 200
+    eval_data = eval_res.json()["data"]
+    assert eval_data["total_evaluated"] == 2
+    assert eval_data["total_eligible"] == 1
+    assert eval_data["total_excluded"] == 1
+    assert eval_data["eligible_responders"][0]["responder_id"] == "mock-r1"
+    assert eval_data["excluded_responders"][0]["responder_id"] == "mock-r2"

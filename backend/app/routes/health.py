@@ -28,8 +28,8 @@ async def health_check():
         row = await cursor.fetchone()
         if row and row[0] == 1:
             db_status = "connected"
-    except Exception as exc:
-        db_status = f"unhealthy: {exc}"
+    except Exception:
+        db_status = "unhealthy"
 
     is_healthy = db_status == "connected"
     status_code = 200 if is_healthy else 503

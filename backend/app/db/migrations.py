@@ -16,6 +16,7 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
             description TEXT NOT NULL DEFAULT '',
             reporter_name TEXT NOT NULL DEFAULT 'Anonymous',
             reporter_phone TEXT,
+            reporter_id TEXT,
             latitude REAL NOT NULL,
             longitude REAL NOT NULL,
             affected_count INTEGER NOT NULL DEFAULT 1,
@@ -134,6 +135,11 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
 
     try:
         await db.execute("ALTER TABLE assignments ADD COLUMN nearby_at TEXT")
+    except Exception:
+        pass  # Column already exists
+
+    try:
+        await db.execute("ALTER TABLE incidents ADD COLUMN reporter_id TEXT")
     except Exception:
         pass  # Column already exists
 

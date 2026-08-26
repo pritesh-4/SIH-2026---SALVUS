@@ -10,8 +10,11 @@ Rooms:
 
 from __future__ import annotations
 
+import urllib.parse
+
 import socketio
 
+from app.auth.jwt_handler import AuthenticatedUser, verify_access_token
 from app.models import AssignmentResponse, IncidentResponse, ResponderResponse, ShelterResponse
 
 # ---------------------------------------------------------------------------
@@ -27,14 +30,46 @@ sio = socketio.AsyncServer(
 
 
 # ---------------------------------------------------------------------------
-# Connection lifecycle handlers
+# Connection lifecycle handlers with cryptographic authentication
 # ---------------------------------------------------------------------------
+
+
+def _extract_token_from_environ(environ: dict, auth: dict | None) -> str | None:
+    """Extract auth token from auth payload or query string."""
+    if auth and isinstance(auth, dict) and auth.get("token"):
+        return str(auth["token"]).strip()
+
+    # Fallback to query string
+    qs = environ.get("QUERY_STRING", "")
+    if qs:
+        params = urllib.parse.parse_qs(qs)
+        if "token" in params and params["token"]:
+            return params["token"][0].strip()
+
+    return None
 
 
 @sio.event
 async def connect(sid: str, environ: dict, auth: dict | None = None):
-    """Handle new client connection."""
-    print(f"[Socket.IO] Client connected: {sid}")
+    """Handle and cryptographically authenticate new client connection."""
+    token = _extract_token_from_environ(environ, auth)
+    if token:
+        try:
+            user = verify_access_token(token)
+            await sio.save_session(sid, {"user": user.model_dump(), "authenticated": True})
+            print(
+                f"[Socket.IO] Authenticated client connected: {sid} "
+                f"as {user.name} ({user.role.value})"
+            )
+            return
+        except Exception as err:
+            print(f"[Socket.IO] Token verification failed for {sid}: {err}")
+            await sio.save_session(sid, {"user": None, "authenticated": False, "error": str(err)})
+            return
+
+    # Anonymous connection (limited permissions)
+    await sio.save_session(sid, {"user": None, "authenticated": False, "role": "ANONYMOUS"})
+    print(f"[Socket.IO] Anonymous client connected: {sid}")
 
 
 @sio.event
@@ -45,24 +80,99 @@ async def disconnect(sid: str):
 
 @sio.event
 async def join_room(sid: str, data: dict):
-    """Let a client join a named room.
+    """Join a named room with strict RBAC room authorization.
 
-    Expected payload: {"room": "authorities"} or {"room": "incident:<id>"}
+    Protected rooms:
+        - "authorities"   : Requires AUTHORITY or SYSTEM role
+        - "incident:<id>" : Requires AUTHORITY/SYSTEM, or CITIZEN scoped to this incident,
+                            or RESPONDER assigned to this incident.
     """
+    if not isinstance(data, dict):
+        return
+
     room = data.get("room")
-    if room:
-        await sio.enter_room(sid, room)
-        print(f"[Socket.IO] {sid} joined room: {room}")
-        await sio.emit("room_joined", {"room": room}, to=sid)
+    if not room or not isinstance(room, str):
+        return
+
+    session = await sio.get_session(sid) or {}
+    user_data = session.get("user")
+    user = AuthenticatedUser(**user_data) if user_data else None
+
+    # 1. Protect 'authorities' room
+    if room == "authorities":
+        if not user or not user.is_authority:
+            print(
+                f"[Socket.IO Security Alert] Blocked unauthorized join to 'authorities' "
+                f"from sid={sid}"
+            )
+            await sio.emit(
+                "error",
+                {
+                    "code": "FORBIDDEN",
+                    "message": (
+                        "Access denied. Only verified emergency authority operators "
+                        "may subscribe to the authorities room."
+                    ),
+                    "room": room,
+                },
+                to=sid,
+            )
+            return
+
+    # 2. Protect 'incident:{id}' rooms (Citizen data isolation)
+    elif room.startswith("incident:"):
+        incident_id = room.split(":", 1)[1].strip()
+        if not user:
+            print(
+                f"[Socket.IO Security Alert] Blocked unauthenticated join to '{room}' "
+                f"from sid={sid}"
+            )
+            await sio.emit(
+                "error",
+                {
+                    "code": "UNAUTHORIZED",
+                    "message": (
+                        "Authentication required to subscribe to incident distress channels."
+                    ),
+                    "room": room,
+                },
+                to=sid,
+            )
+
+            return
+
+        if user.is_citizen:
+            # Verify citizen ownership of this specific incident
+            if user.scoped_incident_id and user.scoped_incident_id != incident_id:
+                print(
+                    f"[Socket.IO Security Alert] Citizen '{user.user_id}' "
+                    f"attempted cross-incident subscription to '{room}'"
+                )
+                await sio.emit(
+                    "error",
+                    {
+                        "code": "FORBIDDEN",
+                        "message": "Citizens may only subscribe to their own active incident room.",
+                        "room": room,
+                    },
+                    to=sid,
+                )
+                return
+
+    # Authorized: Enter room and confirm
+    await sio.enter_room(sid, room)
+    print(f"[Socket.IO] {sid} authorized and joined room: {room}")
+    await sio.emit("room_joined", {"room": room}, to=sid)
 
 
 @sio.event
 async def leave_room(sid: str, data: dict):
     """Let a client leave a named room."""
-    room = data.get("room")
-    if room:
-        await sio.leave_room(sid, room)
-        print(f"[Socket.IO] {sid} left room: {room}")
+    if isinstance(data, dict):
+        room = data.get("room")
+        if room:
+            await sio.leave_room(sid, room)
+            print(f"[Socket.IO] {sid} left room: {room}")
 
 
 # ---------------------------------------------------------------------------

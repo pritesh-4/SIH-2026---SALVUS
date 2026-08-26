@@ -1,16 +1,18 @@
-"""Shelter logistics REST API routes.
+"""Shelter logistics REST API routes with cryptographic RBAC.
 
 Endpoints:
-    GET    /api/shelters                 — List all shelters
-    GET    /api/shelters/recommendations — Get candidate recommended shelters for a location
+    GET    /api/shelters                 — List all shelters (Public/Citizen)
+    GET    /api/shelters/recommendations — Recommended shelters for a location (Public)
     GET    /api/shelters/{id}            — Get single shelter by ID
-    PATCH  /api/shelters/{id}            — Update shelter occupancy or status
+    PATCH  /api/shelters/{id}            — Update occupancy or status (Authority only)
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.auth.dependencies import require_authority
+from app.auth.jwt_handler import AuthenticatedUser
 from app.db import get_database
 from app.models import (
     ShelterListResponse,
@@ -66,20 +68,12 @@ async def get_shelter(shelter_id: str):
 
 
 @router.patch("/{shelter_id}", response_model=ShelterSingleResponse)
-async def update_shelter(shelter_id: str, payload: ShelterUpdate):
-    """Update shelter bed availability or supplies status."""
-    if payload.actor == "citizen":
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "success": False,
-                "error": {
-                    "code": "FORBIDDEN",
-                    "message": "Citizens cannot mutate shelter capacity logistics.",
-                },
-            },
-        )
-
+async def update_shelter(
+    shelter_id: str,
+    payload: ShelterUpdate,
+    user: AuthenticatedUser = Depends(require_authority),
+):
+    """Update shelter bed availability or supplies status (Authority only)."""
     db = await get_database()
     shelter = await shelter_service.update_shelter_occupancy(
         db,

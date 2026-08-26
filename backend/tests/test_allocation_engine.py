@@ -313,12 +313,13 @@ async def test_api_candidates_and_evaluate_endpoints(client):
     dummy_resp = _make_dummy_responder()
 
     eval_payload = {
-        "incident": dummy_inc.model_dump(),
-        "responders": [dummy_resp.model_dump()],
+        "incident": dummy_inc.model_dump(mode="json"),
+        "responders": [dummy_resp.model_dump(mode="json")],
     }
 
     resp2 = await client.post("/api/responders/candidates/evaluate", json=eval_payload)
     assert resp2.status_code == 200
+
     data2 = resp2.json()
     assert data2["success"] is True
     assert data2["allocation_status"] == "RECOMMENDED"

@@ -25,6 +25,7 @@ from app.middleware import (
 )
 from app.realtime.socket_manager import sio
 from app.routes.assignments import router as assignments_router
+from app.routes.auth import router as auth_router
 from app.routes.hazards import router as hazards_router
 from app.routes.health import router as health_router
 from app.routes.incidents import router as incidents_router
@@ -111,6 +112,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
 # --- Routes ---
+app.include_router(auth_router)
 app.include_router(assignments_router)
 app.include_router(hazards_router)
 app.include_router(health_router)

@@ -79,6 +79,9 @@ def _row_to_incident(
     ai_triage: AITriageAssessment | None = None,
 ) -> IncidentResponse:
     """Convert a database row to an IncidentResponse."""
+    row_keys = row.keys() if hasattr(row, "keys") else []
+    reporter_id = row["reporter_id"] if "reporter_id" in row_keys else None
+
     return IncidentResponse(
         id=row["id"],
         ticket_id=row["ticket_id"],
@@ -87,6 +90,7 @@ def _row_to_incident(
         description=row["description"],
         reporter_name=row["reporter_name"],
         reporter_phone=row["reporter_phone"],
+        reporter_id=reporter_id,
         latitude=row["latitude"],
         longitude=row["longitude"],
         affected_count=row["affected_count"],
@@ -149,7 +153,11 @@ async def save_ai_triage_assessment(
     await db.commit()
 
 
-async def create_incident(db: aiosqlite.Connection, payload: IncidentCreate) -> IncidentResponse:
+async def create_incident(
+    db: aiosqlite.Connection,
+    payload: IncidentCreate,
+    reporter_id: str | None = None,
+) -> IncidentResponse:
     """Create a new incident, initial CREATED event, and automatically run AI triage."""
     now_dt = datetime.now(UTC)
     now = now_dt.isoformat()
@@ -182,9 +190,10 @@ async def create_incident(db: aiosqlite.Connection, payload: IncidentCreate) -> 
     await db.execute(
         """
         INSERT INTO incidents (id, ticket_id, type, severity, description,
-            reporter_name, reporter_phone, latitude, longitude,
+            reporter_name, reporter_phone, reporter_id, latitude, longitude,
             affected_count, is_sos, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
         """,
         (
             incident_id,
@@ -194,6 +203,7 @@ async def create_incident(db: aiosqlite.Connection, payload: IncidentCreate) -> 
             payload.description,
             payload.reporter_name,
             payload.reporter_phone,
+            reporter_id,
             payload.latitude,
             payload.longitude,
             payload.affected_count,

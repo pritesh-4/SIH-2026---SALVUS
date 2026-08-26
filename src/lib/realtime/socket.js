@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client'
+import { getAuthToken } from '../../services/api'
 
 const SOCKET_URL = import.meta.env.VITE_WS_URL || window.location.origin
 
@@ -20,13 +21,17 @@ const notifyStatus = (status) => {
 }
 
 /**
- * Get or initialize the singleton Socket.IO instance.
+ * Get or initialize the singleton Socket.IO instance with authenticated handshake.
  */
 export const getSocket = () => {
   if (!socketInstance) {
     socketInstance = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       autoConnect: true,
+      auth: (cb) => {
+        const token = getAuthToken() || ''
+        cb({ token })
+      },
       reconnection: true,
       reconnectionAttempts: 100,
       reconnectionDelay: 1000,

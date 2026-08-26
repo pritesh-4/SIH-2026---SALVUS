@@ -6,10 +6,8 @@ and Situation Summaries.
 from __future__ import annotations
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
 from app.db import get_database
-from app.main import app
 from app.models import IncidentResponse, NormalizedHazard
 from app.services.clustering_service import cluster_incidents
 from app.services.hazard_service import get_active_hazards
@@ -131,28 +129,28 @@ async def test_shelter_hazard_proximity_safety():
 
 
 @pytest.mark.asyncio
-async def test_disaster_intelligence_api_endpoints():
+async def test_disaster_intelligence_api_endpoints(client):
     """Verify REST API endpoints for hazards, clusters, and situation summary."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        # 1. Hazards feed
-        hz_res = await client.get("/api/hazards?lat=22.5726&lon=88.3639")
-        assert hz_res.status_code == 200
-        hz_data = hz_res.json()
-        assert hz_data["success"] is True
-        assert len(hz_data["data"]) > 0
+    # 1. Hazards feed
+    hz_res = await client.get("/api/hazards?lat=22.5726&lon=88.3639")
 
-        # 2. Clusters feed
-        cl_res = await client.get("/api/hazards/clusters")
-        assert cl_res.status_code == 200
-        cl_data = cl_res.json()
-        assert cl_data["success"] is True
+    assert hz_res.status_code == 200
+    hz_data = hz_res.json()
+    assert hz_data["success"] is True
+    assert len(hz_data["data"]) > 0
 
-        # 3. Situation summary
-        sit_res = await client.get("/api/situation/summary")
-        assert sit_res.status_code == 200
-        sit_data = sit_res.json()
-        assert sit_data["success"] is True
-        assert "statistics" in sit_data
-        assert "briefing" in sit_data
-        assert sit_data["statistics"]["total_active_incidents"] >= 0
-        assert len(sit_data["briefing"]) > 20
+    # 2. Clusters feed
+    cl_res = await client.get("/api/hazards/clusters")
+    assert cl_res.status_code == 200
+    cl_data = cl_res.json()
+    assert cl_data["success"] is True
+
+    # 3. Situation summary
+    sit_res = await client.get("/api/situation/summary")
+    assert sit_res.status_code == 200
+    sit_data = sit_res.json()
+    assert sit_data["success"] is True
+    assert "statistics" in sit_data
+    assert "briefing" in sit_data
+    assert sit_data["statistics"]["total_active_incidents"] >= 0
+    assert len(sit_data["briefing"]) > 20

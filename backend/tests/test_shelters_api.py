@@ -75,10 +75,11 @@ async def test_get_shelter_recommendations(client):
 
 
 @pytest.mark.asyncio
-async def test_shelter_mutation_forbidden_for_citizen(client):
+async def test_shelter_mutation_forbidden_for_citizen(client, citizen_headers):
     """Test that citizens cannot mutate shelter bed logistics."""
     patch_resp = await client.patch(
         "/api/shelters/shl-01",
         json={"available_beds": 0, "actor": "citizen"},
+        headers=citizen_headers,
     )
     assert patch_resp.status_code == 403

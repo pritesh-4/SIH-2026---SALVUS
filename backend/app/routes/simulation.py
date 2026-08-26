@@ -1,4 +1,4 @@
-"""Simulation REST API routes for Hackathon demo & real-time telemetry testing.
+"""Simulation REST API routes for Hackathon demo & real-time telemetry testing with RBAC.
 
 Provides deterministic responder movement simulation that operates strictly through
 the identical domain model, database mutations, and Socket.IO events as production GPS trackers.
@@ -6,8 +6,10 @@ the identical domain model, database mutations, and Socket.IO events as producti
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.auth.dependencies import require_authority
+from app.auth.jwt_handler import AuthenticatedUser
 from app.db import get_database
 from app.models import (
     ResponderSingleResponse,
@@ -25,8 +27,11 @@ router = APIRouter(prefix="/api/simulation", tags=["simulation"])
 
 
 @router.post("/step", response_model=ResponderSingleResponse)
-async def process_simulation_step(payload: SimulationStepRequest):
-    """Process a single real-time simulated telemetry step along an active route vector."""
+async def process_simulation_step(
+    payload: SimulationStepRequest,
+    user: AuthenticatedUser = Depends(require_authority),
+):
+    """Process a single real-time simulated telemetry step (Authority/System only)."""
     db = await get_database()
 
     responder = await responder_service.get_responder_by_id(db, payload.responder_id)
@@ -100,9 +105,12 @@ async def process_simulation_step(payload: SimulationStepRequest):
 
 
 @router.post("/reset-fleet")
-async def reset_simulation_fleet():
-    """Reset all responder positions and availability states to seed defaults."""
+async def reset_simulation_fleet(
+    user: AuthenticatedUser = Depends(require_authority),
+):
+    """Reset all responder positions and states to seed defaults (Authority/System only)."""
     db = await get_database()
+
     await db.execute("DELETE FROM responders")
     await db.commit()
 

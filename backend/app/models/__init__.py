@@ -209,6 +209,7 @@ class IncidentResponse(BaseModel):
     description: str
     reporter_name: str
     reporter_phone: str | None = None
+    reporter_id: str | None = None
     latitude: float
     longitude: float
     affected_count: int
@@ -218,6 +219,7 @@ class IncidentResponse(BaseModel):
     updated_at: str
     events: list[IncidentEventResponse] = []
     ai_triage: AITriageAssessment | None = None
+    access_token: str | None = None
 
 
 class IncidentListResponse(BaseModel):

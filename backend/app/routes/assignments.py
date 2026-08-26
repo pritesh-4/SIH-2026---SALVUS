@@ -1,17 +1,23 @@
-"""Assignment REST API routes.
+"""Assignment REST API routes with cryptographic authentication, RBAC, and ownership validation.
 
 Endpoints:
-    POST   /api/assignments                      — Create a new responder assignment
-    GET    /api/assignments                      — List all assignments with optional filters
-    GET    /api/assignments/{id}                 — Get single assignment details
-    PATCH  /api/assignments/{id}/status          — Transition assignment status along lifecycle
+    POST   /api/assignments                         — Create responder assignment (Authority)
+    GET    /api/assignments                         — List all assignments with optional filters
+    GET    /api/assignments/{id}                    — Get single assignment details
+    PATCH  /api/assignments/{id}/status             — Transition status along lifecycle (RBAC)
     GET    /api/incidents/{incident_id}/assignments — Get all assignments for an incident
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.auth.dependencies import (
+    get_current_user,
+    get_optional_user,
+    require_authority,
+)
+from app.auth.jwt_handler import AuthenticatedUser
 from app.db import get_database
 from app.models import (
     AssignmentCreate,
@@ -31,24 +37,19 @@ router = APIRouter(tags=["assignments"])
 
 
 @router.post("/api/assignments", status_code=201, response_model=AssignmentSingleResponse)
-async def create_assignment(payload: AssignmentCreate):
-    """Authoritatively create and link an emergency responder to an active incident."""
-    if payload.assigned_by == "citizen":
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "success": False,
-                "error": {
-                    "code": "FORBIDDEN",
-                    "message": "Citizens cannot create emergency responder assignments.",
-                },
-            },
-        )
+async def create_assignment(
+    payload: AssignmentCreate,
+    user: AuthenticatedUser = Depends(require_authority),
+):
+    """Authoritatively dispatch and link a responder to an active incident (Authority only)."""
+    # Derive verified assigner from authenticated token
+    verified_payload = payload.model_copy()
+    verified_payload.assigned_by = user.name
 
     db = await get_database()
 
     try:
-        assignment = await assignment_service.create_assignment(db, payload)
+        assignment = await assignment_service.create_assignment(db, verified_payload)
     except ValueError as e:
         err_msg = str(e)
         code = "INVALID_ASSIGNMENT"
@@ -96,18 +97,24 @@ async def create_assignment(payload: AssignmentCreate):
 async def list_assignments(
     incident_id: str | None = Query(None, description="Filter by incident ID"),
     responder_id: str | None = Query(None, description="Filter by responder ID"),
-    status: str | None = Query(None, description="Filter by assignment status"),
+    status_filter: str | None = Query(
+        None, alias="status", description="Filter by assignment status"
+    ),
+    user: AuthenticatedUser | None = Depends(get_optional_user),
 ):
     """List responder assignments with optional filtering."""
     db = await get_database()
     assignments = await assignment_service.list_assignments(
-        db, incident_id=incident_id, responder_id=responder_id, status=status
+        db, incident_id=incident_id, responder_id=responder_id, status=status_filter
     )
     return AssignmentListResponse(data=assignments, count=len(assignments))
 
 
 @router.get("/api/assignments/{assignment_id}", response_model=AssignmentSingleResponse)
-async def get_assignment(assignment_id: str):
+async def get_assignment(
+    assignment_id: str,
+    user: AuthenticatedUser | None = Depends(get_optional_user),
+):
     """Get single assignment by its ID."""
     db = await get_database()
     assignment = await assignment_service.get_assignment_by_id(db, assignment_id)
@@ -129,7 +136,10 @@ async def get_assignment(assignment_id: str):
     "/api/incidents/{incident_id}/assignments",
     response_model=AssignmentListResponse,
 )
-async def get_incident_assignments(incident_id: str):
+async def get_incident_assignments(
+    incident_id: str,
+    user: AuthenticatedUser | None = Depends(get_optional_user),
+):
     """Get all assignments associated with an incident."""
     db = await get_database()
     # Verify incident exists
@@ -151,11 +161,15 @@ async def get_incident_assignments(incident_id: str):
 
 
 @router.patch("/api/assignments/{assignment_id}/status", response_model=AssignmentSingleResponse)
-async def update_assignment_status(assignment_id: str, payload: AssignmentStatusUpdate):
-    """Advance an assignment through its controlled lifecycle."""
-    if payload.actor == "citizen":
+async def update_assignment_status(
+    assignment_id: str,
+    payload: AssignmentStatusUpdate,
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    """Advance an assignment through its controlled lifecycle with verified RBAC."""
+    if user.is_citizen:
         raise HTTPException(
-            status_code=403,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "success": False,
                 "error": {
@@ -164,6 +178,24 @@ async def update_assignment_status(assignment_id: str, payload: AssignmentStatus
                 },
             },
         )
+
+    # If user is RESPONDER, verify they are assigned to this responder unit
+    if user.is_responder and user.scoped_responder_id:
+        db = await get_database()
+        current = await assignment_service.get_assignment_by_id(db, assignment_id)
+        if current and current.responder_id != user.scoped_responder_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "success": False,
+                    "error": {
+                        "code": "FORBIDDEN",
+                        "message": (
+                            "Responders can only update assignments assigned to their own unit."
+                        ),
+                    },
+                },
+            )
 
     db = await get_database()
 
@@ -186,7 +218,7 @@ async def update_assignment_status(assignment_id: str, payload: AssignmentStatus
             db,
             assignment_id=assignment_id,
             target_status=payload.status.value,
-            actor=payload.actor,
+            actor=user.name,
             notes=payload.notes,
         )
     except ValueError as e:

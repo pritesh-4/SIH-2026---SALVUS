@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
-from app.main import app
 from app.models import IncidentSeverity, IncidentType, ResponderCapability
 from app.services.ai_triage_service import _local_heuristic_triage, sanitize_incident_for_ai
 
@@ -71,68 +69,68 @@ def test_heuristic_fallback_triage_medical():
 
 
 @pytest.mark.asyncio
-async def test_ai_triage_api_flow():
+async def test_ai_triage_api_flow(client, citizen_headers):
     """Verify end-to-end AI triage analysis, verification, adjustment, and candidate alignment."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        # 1. Create a new emergency incident
-        create_res = await client.post(
-            "/api/incidents",
-            json={
-                "type": "flood",
-                "severity": "MEDIUM",
-                "description": "Rising flood water trapping 5 citizens in ground floor apartment.",
-                "reporter_name": "Demo Citizen",
-                "latitude": 22.5726,
-                "longitude": 88.3639,
-                "affected_count": 5,
-                "is_sos": True,
-            },
-        )
-        assert create_res.status_code == 201
-        incident = create_res.json()["data"]
-        inc_id = incident["id"]
-        assert incident["status"] == "NEW"
-        assert incident["ai_triage"] is not None
-        assert incident["ai_triage"]["recommended_capability"] == "FLOOD_BOAT"
+    # 1. Create a new emergency incident
+    create_res = await client.post(
+        "/api/incidents",
+        json={
+            "type": "flood",
+            "severity": "MEDIUM",
+            "description": "Rising flood water trapping 5 citizens in ground floor apartment.",
+            "reporter_name": "Demo Citizen",
+            "latitude": 22.5726,
+            "longitude": 88.3639,
+            "affected_count": 5,
+            "is_sos": True,
+        },
+    )
+    assert create_res.status_code == 201
+    incident = create_res.json()["data"]
+    inc_id = incident["id"]
+    assert incident["status"] == "NEW"
+    assert incident["ai_triage"] is not None
+    assert incident["ai_triage"]["recommended_capability"] == "FLOOD_BOAT"
 
-        # 2. Trigger on-demand analyze endpoint
-        analyze_res = await client.post(f"/api/triage/analyze/{inc_id}")
-        assert analyze_res.status_code == 200
-        triage_data = analyze_res.json()["data"]
-        assert triage_data["incident_type"] == "flood"
-        assert triage_data["severity"] in ("HIGH", "CRITICAL")
-        assert triage_data["confidence"] > 0.5
+    # 2. Trigger on-demand analyze endpoint
+    analyze_res = await client.post(f"/api/triage/analyze/{inc_id}")
+    assert analyze_res.status_code == 200
+    triage_data = analyze_res.json()["data"]
+    assert triage_data["incident_type"] == "flood"
+    assert triage_data["severity"] in ("HIGH", "CRITICAL")
+    assert triage_data["confidence"] > 0.5
 
-        # 3. Test citizen unauthorized to verify triage
-        unauth_res = await client.post(
-            f"/api/triage/verify/{inc_id}",
-            json={"actor": "citizen", "reviewer_notes": "Attempting verification"},
-        )
-        assert unauth_res.status_code == 403
+    # 3. Test citizen unauthorized to verify triage
+    unauth_res = await client.post(
+        f"/api/triage/verify/{inc_id}",
+        json={"actor": "citizen", "reviewer_notes": "Attempting verification"},
+        headers=citizen_headers,
+    )
+    assert unauth_res.status_code == 403
 
-        # 4. Operator overrides & verifies triage assessment
-        verify_res = await client.post(
-            f"/api/triage/verify/{inc_id}",
-            json={
-                "actor": "Authority Dispatcher 12",
-                "reviewer_notes": "Confirmed high flood level. Verified for watercraft dispatch.",
-                "adjusted_severity": "CRITICAL",
-                "adjusted_type": "flood",
-                "adjusted_capability": "FLOOD_BOAT",
-            },
-        )
-        assert verify_res.status_code == 200
-        verified_incident = verify_res.json()["data"]
-        assert verified_incident["status"] == "VERIFIED"
-        assert verified_incident["severity"] == "CRITICAL"
-        assert verified_incident["ai_triage"]["review_status"] == "ADJUSTED"
+    # 4. Operator overrides & verifies triage assessment
+    verify_res = await client.post(
+        f"/api/triage/verify/{inc_id}",
+        json={
+            "actor": "Authority Dispatcher 12",
+            "reviewer_notes": "Confirmed high flood level. Verified for watercraft dispatch.",
+            "adjusted_severity": "CRITICAL",
+            "adjusted_type": "flood",
+            "adjusted_capability": "FLOOD_BOAT",
+        },
+    )
+    assert verify_res.status_code == 200
+    verified_incident = verify_res.json()["data"]
+    assert verified_incident["status"] == "VERIFIED"
+    assert verified_incident["severity"] == "CRITICAL"
+    assert verified_incident["ai_triage"]["review_status"] == "ADJUSTED"
 
-        # 5. Check candidates alignment with verified capability
-        cand_res = await client.get(f"/api/responders/candidates/{inc_id}")
-        assert cand_res.status_code == 200
-        candidates = cand_res.json()["data"]
-        assert len(candidates) > 0
-        # Top candidate should be a flood boat
-        top_cand = candidates[0]
-        assert top_cand["capability"] == "FLOOD_BOAT"
-        assert top_cand["is_recommended"] is True
+    # 5. Check candidates alignment with verified capability
+    cand_res = await client.get(f"/api/responders/candidates/{inc_id}")
+    assert cand_res.status_code == 200
+    candidates = cand_res.json()["data"]
+    assert len(candidates) > 0
+    # Top candidate should be a flood boat
+    top_cand = candidates[0]
+    assert top_cand["capability"] == "FLOOD_BOAT"
+    assert top_cand["is_recommended"] is True

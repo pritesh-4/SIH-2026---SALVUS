@@ -109,16 +109,18 @@ async def test_assign_responder_to_incident(client):
 
 
 @pytest.mark.asyncio
-async def test_responder_mutation_forbidden_for_citizen(client):
+async def test_responder_mutation_forbidden_for_citizen(client, citizen_headers):
     """Test that citizens cannot mutate responder status or assign units."""
     status_resp = await client.patch(
         "/api/responders/resp-101/status",
         json={"status": "AVAILABLE", "actor": "citizen"},
+        headers=citizen_headers,
     )
     assert status_resp.status_code == 403
 
     assign_resp = await client.post(
         "/api/responders/resp-101/assign",
         json={"incident_id": "inc-2048", "actor": "citizen"},
+        headers=citizen_headers,
     )
     assert assign_resp.status_code == 403
