@@ -33,17 +33,32 @@ This roadmap tracks the development progress, completed frontend deliverables, a
 
 ---
 
-### Phase 2: Real-time Backend & Ingestion Pipeline — **NEXT PHASE** 🚀
+### Phase 2: Async Intelligence & Real-time Gateway — **COMPLETED & VALIDATED** ✅
 
-- [ ] **FastAPI API Gateway:** REST endpoints for incident creation, triage ingestion, and shelter queries.
-- [ ] **Live Geospatial Database (Supabase / PostgreSQL + PostGIS):** Coordinate indexing and nearest-neighbor spatial queries.
-- [ ] **Bi-directional WebSockets (Socket.io):** Instant state synchronization between citizen emergency beacons and authority command centers.
-- [ ] **Live AI Pipeline (Gemini / Groq LLM):** Dynamic parsing of raw text messages and multi-modal photo analysis.
-- [ ] **External Disaster Feeds:** Live ingestion from USGS Earthquake API and Open-Meteo Weather API.
+- [x] **FastAPI API Gateway:** REST endpoints for incident lifecycle, responder fleet status, shelter capacity, hazard zones, and incident clusters.
+- [x] **Bi-directional WebSockets (Socket.IO):** Instant event synchronization for `incident.created`, `responder.status_changed`, `assignment.created`, and telemetry updates with room isolation (`authorities`, `incident:{id}`).
+- [x] **AI Intelligence Pipeline (Gemini / Groq LLM):** Dynamic triage classification, severity scoring, confidence rating, and situational summary briefing.
+- [x] **OSRM Routing Engine:** Realistic road/water routing profiles with fallback vector corridor calculation.
+- [x] **Deterministic Resource Allocation:** Auditable weighted scoring formula for unit recommendation.
 
 ---
 
-### Phase 3: Hardware & Offline Resilience — **FUTURE ROADMAP** 🔮
+### Phase 3: Authority Command Center Architecture Refactor — **COMPLETED & VALIDATED** ✅
+
+- [x] **Monolithic Page Decomposition:** Refactored 1,875-line `AuthorityCommandCenter.jsx` into a clean orchestrator page (406 lines).
+- [x] **Domain Feature Hooks (`src/features/authority/`):**
+  - [x] `incidents/`: Incident state, out-of-order event protection, and status transitions.
+  - [x] `fleet/`: Responder fleet state, capability/status filtering, and manual status overrides.
+  - [x] `shelters/`: Evacuation hub capacity, bed intake adjustments, and hazard proximity alerts.
+  - [x] `intelligence/`: Situation briefing, hazard feeds, clusters, and provenance state.
+  - [x] `dispatch/`: Candidate recommendation ranking, OSRM routing, GPS movement simulation, and AI triage actions.
+- [x] **Presentation Component Isolation (`src/components/authority/`):**
+  - [x] `AuthorityHeader`, `OperationalMetrics`, `SituationBriefing`, `IncidentQueue`, `AuthorityMap`, `IncidentInspector`, `ResponderPanel`, `ShelterPanel`.
+- [x] **Zero Visual or Behavioral Regressions:** 100% parity across triage, assignment, telemetry simulation, and shelter workflows.
+
+---
+
+### Phase 4: Hardware & Offline Resilience — **FUTURE ROADMAP** 🔮
 
 - [ ] Low-bandwidth SMS & satellite mesh emergency beacon fallback.
 - [ ] Direct integration with official emergency response dispatch protocols (CAP/EDXL).

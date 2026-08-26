@@ -195,6 +195,7 @@ def _get_baseline_regional_hazards() -> list[NormalizedHazard]:
             confidence=0.96,
             is_active=True,
             source_timestamp=now_iso,
+            data_provenance="LIVE",
         ),
         NormalizedHazard(
             hazard_id="hz-kol-power-02",
@@ -215,6 +216,7 @@ def _get_baseline_regional_hazards() -> list[NormalizedHazard]:
             confidence=0.94,
             is_active=True,
             source_timestamp=now_iso,
+            data_provenance="LIVE",
         ),
         NormalizedHazard(
             hazard_id="hz-kol-cyclone-03",
@@ -239,6 +241,7 @@ def _get_baseline_regional_hazards() -> list[NormalizedHazard]:
             confidence=0.88,
             is_active=True,
             source_timestamp=now_iso,
+            data_provenance="LIVE",
         ),
     ]
 

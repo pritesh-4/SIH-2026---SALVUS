@@ -58,13 +58,14 @@ class AIService:
         """Execute multi-tier intelligence evaluation with fallback isolation."""
         sanitized = sanitize_incident_for_ai(incident_dict)
         t_hash = compute_triage_hash(sanitized)
+        effective_img = image_data or incident_dict.get("image_data")
 
         for idx, provider in enumerate(self.providers):
             start_time = time.perf_counter()
 
             is_fallback = idx > 0
             try:
-                assessment = await provider.evaluate(sanitized, image_data)
+                assessment = await provider.evaluate(sanitized, effective_img)
                 latency_ms = (time.perf_counter() - start_time) * 1000.0
 
                 if assessment is not None:

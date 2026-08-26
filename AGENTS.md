@@ -20,7 +20,7 @@ $$\text{Detect} \longrightarrow \text{Understand} \longrightarrow \text{Prioriti
 Conceptually, Salvus consists of:
 
 1. **Citizen Application**: High-performance, low-bandwidth portal for geo-tagged SOS reporting and shelter discovery (React 19 + Leaflet + Vite + Tailwind CSS).
-2. **Authority/Responder Dashboard**: Map-centric command center monitoring incidents, resources, and dispatches (React 19 + Leaflet + Vite + Tailwind CSS).
+2. **Authority/Responder Dashboard**: Map-centric command center monitoring incidents, resources, and dispatches (React 19 + Leaflet + Vite + Tailwind CSS), architected as a thin orchestrator page with domain feature modules (`incidents`, `fleet`, `shelters`, `intelligence`, `dispatch`).
 3. **Backend API**: **Python FastAPI 3.12+** server with async SQLite (aiosqlite + WAL Mode) for development, PostgreSQL/PostGIS migration path for production.
 4. **Realtime Communication**: **Socket.IO** WebSocket server with room-based architecture (authorities room, incident:{id} rooms) pushing incident and GPS telemetry updates instantaneously.
 5. **Database/Geospatial Layer**: **SQLite (dev) → PostgreSQL/PostGIS (prod)** running spatial queries (e.g. proximity, containment).
@@ -37,7 +37,10 @@ As an agent, you **MUST**:
 1. **Inspect Before You Code**: View the file list and read relevant code/definitions before modifying or creating components.
 2. **Reuse Existing Components**: Do not duplicate styling, className wrappers, helper tools, or layout systems.
 3. **Avoid Unnecessary Rewrites**: Do not overwrite complete files for simple tweaks.
-4. **Decouple UI and Business Logic**: Keep React components visual; isolate logic into custom hooks, context, or utilities.
+4. **Decouple UI, Feature Logic, and State**:
+   - Keep page views thin orchestration layers (e.g., `AuthorityCommandCenter.jsx`).
+   - Isolate server state, caching, and realtime socket events into domain feature hooks (`src/features/authority/*`, `src/features/citizen/*`).
+   - Keep presentation components visual, receiving structured data and callbacks without direct Axios or socket calls (`src/components/authority/*`, `src/components/citizen/*`).
 5. **Enforce Explicit API Contracts**: Always handle backend errors, latency, and parse statuses before rendering.
 6. **Validate User Inputs**: Implement robust formatting checks on user coordinates and inputs.
 7. **Never Hardcode Secrets**: Access keys using `import.meta.env` (frontend) / `os.getenv()` (backend) and document placeholders in `.env.example`.

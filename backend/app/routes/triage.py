@@ -56,6 +56,7 @@ async def analyze_incident_triage(
             "is_sos": incident.is_sos,
             "latitude": incident.latitude,
             "longitude": incident.longitude,
+            "image_data": getattr(incident, "image_data", None),
         },
         incident_id=incident_id,
     )

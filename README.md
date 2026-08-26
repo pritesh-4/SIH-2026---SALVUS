@@ -149,14 +149,17 @@ salvus/
 │   └── TESTING.md                 # Verification processes and quality benchmarks
 ├── src/
 │   ├── components/
-│   │   ├── citizen/               # Citizen UI components & emergency suite
+│   │   ├── authority/             # Authority UI: Header, Metrics, Briefing, Queue, Inspector, Map, Panels
+│   │   ├── citizen/               # Citizen UI: Hazard modal, emergency tracker & preview cards
 │   │   └── common/                # Shared Leaflet map, provenance badges & dev controls
 │   ├── data/                      # Structured mock datasets & incident fixtures
-│   ├── features/                  # Authority & citizen domain hooks
+│   ├── features/                  # Domain feature hooks & business logic
+│   │   ├── authority/             # Incidents, fleet, shelters, intelligence, dispatch & simulation
+│   │   └── citizen/               # Citizen emergency state machine & tracking hooks
 │   ├── layouts/                   # AuthorityLayout and CitizenLayout shells
 │   ├── lib/                       # Realtime socket, geolocation & notifications
-│   ├── pages/                     # SPA route views (Citizen & Authority)
-│   └── services/                  # Frontend REST API client
+│   ├── pages/                     # SPA route views (Citizen & Authority Orchestrators)
+│   └── services/                  # Frontend REST API client & OSRM routing service
 ├── package.json
 └── vite.config.js
 ```

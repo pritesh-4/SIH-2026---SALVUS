@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 import httpx
 
@@ -48,9 +49,27 @@ class GeminiProvider(BaseAIProvider):
             f"{self.model}:generateContent?key={key.strip()}"
         )
         prompt_text = build_triage_prompt(sanitized, image_data)
+        parts = [{"text": prompt_text}]
+
+        if image_data and image_data.strip():
+            raw_b64 = image_data.strip()
+            mime_type = "image/jpeg"
+            if raw_b64.startswith("data:"):
+                match = re.match(r"data:([^;]+);base64,(.+)", raw_b64)
+                if match:
+                    mime_type = match.group(1)
+                    raw_b64 = match.group(2)
+            parts.append(
+                {
+                    "inlineData": {
+                        "mimeType": mime_type,
+                        "data": raw_b64,
+                    }
+                }
+            )
 
         payload = {
-            "contents": [{"parts": [{"text": prompt_text}]}],
+            "contents": [{"parts": parts}],
             "generationConfig": {
                 "temperature": 0.1,
                 "responseMimeType": "application/json",

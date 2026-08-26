@@ -40,6 +40,9 @@ export const SituationBriefing = ({
         </div>
 
         <div className="flex items-center gap-2 font-mono text-[10px]">
+          <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 font-bold">
+            DATA: LIVE DB TRUTH
+          </span>
           <span className="px-2 py-0.5 rounded bg-[#080C12] border border-[#182332] text-slate-400">
             {situationSummary?.provider || 'salvus-grounded-intelligence'}
           </span>

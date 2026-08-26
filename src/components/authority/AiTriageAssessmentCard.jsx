@@ -10,6 +10,8 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  Clock,
+  AlertCircle,
 } from 'lucide-react'
 
 export const AiTriageAssessmentCard = ({
@@ -30,11 +32,16 @@ export const AiTriageAssessmentCard = ({
 
   if (!incident) return null
 
-  const triage = incident.ai_triage || {}
-  const confidence = typeof triage.confidence === 'number' ? triage.confidence : 0.88
+  const aiState = isAnalyzing
+    ? 'ANALYZING'
+    : incident.ai_state || (incident.ai_triage ? 'AVAILABLE' : 'WAITING')
+  const triage = incident.ai_triage
+  const hasAssessment = Boolean(triage)
+
+  const confidence = typeof triage?.confidence === 'number' ? triage.confidence : 0.88
   const confidencePct = Math.round(confidence * 100)
   const isLowConfidence =
-    confidence < 0.75 || (triage.uncertainty_flags && triage.uncertainty_flags.length > 0)
+    confidence < 0.75 || (triage?.uncertainty_flags && triage.uncertainty_flags.length > 0)
   const isVerified = [
     'VERIFIED',
     'ASSIGNED',
@@ -43,6 +50,7 @@ export const AiTriageAssessmentCard = ({
     'ON_SCENE',
     'RESOLVED',
   ].includes(incident.status)
+  const isAdjusted = triage?.review_status === 'ADJUSTED'
 
   const handleAdjustSubmit = (e) => {
     e.preventDefault()
@@ -70,6 +78,149 @@ export const AiTriageAssessmentCard = ({
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // STATE 1: ANALYZING (Processing in background without blocking UI)
+  // ---------------------------------------------------------------------------
+  if (aiState === 'ANALYZING' || (aiState === 'PROCESSING' && !hasAssessment)) {
+    return (
+      <div
+        className="bg-slate-900/95 border border-cyan-500/30 rounded-xl p-4 shadow-xl backdrop-blur-md relative overflow-hidden transition-all duration-300"
+        id="ai-triage-assessment-card"
+      >
+        <div className="absolute top-0 right-0 w-48 h-24 bg-cyan-500/10 blur-3xl pointer-events-none" />
+        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-3 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 animate-pulse">
+              <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-cyan-300">
+                  AI Incident Triage
+                </span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-700/50 font-mono">
+                  ANALYZING
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Evaluating unstructured distress signals in background...
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-mono text-cyan-400/80 animate-pulse">
+            Gemini &rarr; Groq &rarr; Rules
+          </span>
+        </div>
+
+        <div className="bg-slate-950/70 p-3 rounded-lg border border-cyan-900/40 flex items-center gap-3">
+          <div className="relative flex h-3 w-3 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
+          </div>
+          <div className="space-y-0.5 text-xs text-slate-300">
+            <p className="font-semibold text-cyan-200">
+              Extracting emergency hazard signals &amp; matching capability...
+            </p>
+            <p className="text-[10px] text-slate-400 font-mono">
+              Non-blocking asynchronous task active · Tactical map &amp; dispatch remain operational
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ---------------------------------------------------------------------------
+  // STATE 2: WAITING / NOT_STARTED (Incident created, triage queued)
+  // ---------------------------------------------------------------------------
+  if (!hasAssessment && (aiState === 'WAITING' || aiState === 'NOT_STARTED')) {
+    return (
+      <div
+        className="bg-slate-900/95 border border-slate-800 rounded-xl p-4 shadow-xl backdrop-blur-md relative overflow-hidden transition-all duration-300"
+        id="ai-triage-assessment-card"
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-3 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700">
+              <Clock className="w-4 h-4 text-slate-400" />
+            </div>
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
+                AI Incident Triage Queued
+              </span>
+              <p className="text-[11px] text-slate-400">
+                Awaiting asynchronous decision-support triage
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onReevaluate}
+            disabled={isAnalyzing}
+            className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-bold font-mono uppercase shadow transition-colors cursor-pointer disabled:opacity-50"
+          >
+            {isAnalyzing ? 'Analyzing...' : '▶ Analyze Now'}
+          </button>
+        </div>
+
+        <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 text-xs text-slate-400">
+          Distress report persisted immediately. Trigger on-demand AI triage or perform manual
+          authority assessment.
+        </div>
+      </div>
+    )
+  }
+
+  // ---------------------------------------------------------------------------
+  // STATE 3: FAILED (All providers failed gracefully, manual triage active)
+  // ---------------------------------------------------------------------------
+  if (aiState === 'FAILED' && !hasAssessment) {
+    return (
+      <div
+        className="bg-slate-900/95 border border-rose-500/30 rounded-xl p-4 shadow-xl backdrop-blur-md relative overflow-hidden transition-all duration-300"
+        id="ai-triage-assessment-card"
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-3 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/30">
+              <AlertCircle className="w-4 h-4 text-rose-400" />
+            </div>
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-rose-300 block">
+                AI Assessment Unavailable
+              </span>
+              <p className="text-[11px] text-slate-400">
+                Manual triage remains active · Emergency incident unaffected
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onReevaluate}
+            disabled={isAnalyzing}
+            className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono transition-colors cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Retry AI</span>
+          </button>
+        </div>
+
+        <div className="bg-slate-950/80 p-2.5 rounded-lg border border-rose-900/40 text-xs text-slate-300 space-y-1">
+          <p className="text-rose-300/90 font-medium">
+            AI triage providers temporarily unavailable. Operator manual triage enabled.
+          </p>
+          <p className="text-[10px] text-slate-400 font-mono">
+            Incident is queued and dispatch candidates can be allocated manually.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // ---------------------------------------------------------------------------
+  // STATE 4: AVAILABLE (Structured AI Decision Support Card)
+  // ---------------------------------------------------------------------------
   return (
     <div
       className="bg-slate-900/95 border border-cyan-500/30 rounded-xl p-4 shadow-xl backdrop-blur-md relative overflow-hidden transition-all duration-300"
@@ -103,7 +254,7 @@ export const AiTriageAssessmentCard = ({
         {isVerified ? (
           <div className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span>OPERATOR VERIFIED</span>
+            <span>{isAdjusted ? 'OPERATOR ADJUSTED &amp; VERIFIED' : 'OPERATOR VERIFIED'}</span>
           </div>
         ) : (
           <div className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
@@ -170,13 +321,16 @@ export const AiTriageAssessmentCard = ({
         </div>
       </div>
 
-      {/* Low Confidence or Uncertainty Alert */}
+      {/* Low Confidence or Uncertainty Alert (NEEDS REVIEW) */}
       {isLowConfidence && (
         <div className="mb-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
           <div className="space-y-1 flex-1">
-            <div className="font-semibold text-amber-300">
-              Low Confidence Assessment (&lt;75%) — Review Ground Truth
+            <div className="font-semibold text-amber-300 flex items-center justify-between">
+              <span>NEEDS REVIEW — Low Model Confidence (&lt;75%)</span>
+              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-700">
+                UNVERIFIED CERTAINTY
+              </span>
             </div>
             {triage.uncertainty_flags && triage.uncertainty_flags.length > 0 ? (
               <ul className="list-disc list-inside text-[11px] text-amber-300/80 space-y-0.5">
@@ -186,24 +340,25 @@ export const AiTriageAssessmentCard = ({
               </ul>
             ) : (
               <p className="text-[11px] text-amber-300/80">
-                Citizen report description is brief. Operator verification strongly recommended.
+                Distress report is brief or lacks field depth. Human operator verification required
+                prior to dispatch.
               </p>
             )}
           </div>
         </div>
       )}
 
-      {/* Priority Reasoning (Grounded Operational Justification) */}
+      {/* Grounded Priority Reasoning */}
       <div className="mb-3 p-2.5 rounded-lg bg-slate-950/80 border border-slate-800">
         <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300 mb-1">
           <Cpu className="w-3.5 h-3.5 text-cyan-400" />
           <span>Grounded Priority Reasoning</span>
         </div>
         <p className="text-xs text-slate-300 leading-relaxed italic">
-          "
+          &quot;
           {triage.priority_reasoning ||
             'Evaluated based on reported affected persons and risk factor indicators.'}
-          "
+          &quot;
         </p>
       </div>
 
@@ -234,7 +389,7 @@ export const AiTriageAssessmentCard = ({
         <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
           <div className="text-[10px] uppercase font-semibold text-slate-400 mb-1.5 flex items-center gap-1">
             <ShieldCheck className="w-3 h-3 text-emerald-400" />
-            <span>Required Craft Capability</span>
+            <span>Recommended Capability</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-emerald-300 bg-emerald-950/60 px-2 py-1 rounded border border-emerald-800/50">
@@ -251,11 +406,57 @@ export const AiTriageAssessmentCard = ({
         </div>
       </div>
 
-      {/* Image Assessment Hint (if imagery present) */}
-      {triage.image_assessment_hint && (
-        <div className="mb-3 p-2 rounded bg-cyan-950/30 border border-cyan-800/40 text-[11px] text-cyan-200">
-          <span className="font-bold text-amber-300">AI ESTIMATE — UNVERIFIED: </span>
-          {triage.image_assessment_hint.replace(/^AI ESTIMATE — UNVERIFIED:\s*/i, '')}
+      {/* Multimodal Image Damage Intelligence (if imagery present) */}
+      {(triage.image_assessment_hint ||
+        triage.damage_type ||
+        triage.hazard_detected ||
+        triage.water_depth_estimate) && (
+        <div className="mb-3 p-3 rounded-lg bg-cyan-950/40 border border-cyan-700/50 text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 font-bold text-cyan-300">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Multimodal Visual Damage Assessment</span>
+            </div>
+            <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-600/60 font-bold">
+              AI ESTIMATE — UNVERIFIED
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
+            {triage.damage_type && (
+              <div className="bg-slate-950/80 p-2 rounded border border-slate-800">
+                <span className="text-[10px] text-slate-400 block uppercase font-semibold">
+                  Damage Type
+                </span>
+                <span className="text-slate-200 font-medium">{triage.damage_type}</span>
+              </div>
+            )}
+            {triage.hazard_detected && (
+              <div className="bg-slate-950/80 p-2 rounded border border-slate-800">
+                <span className="text-[10px] text-slate-400 block uppercase font-semibold">
+                  Hazard Detected
+                </span>
+                <span className="text-amber-300 font-medium">{triage.hazard_detected}</span>
+              </div>
+            )}
+            {triage.water_depth_estimate && (
+              <div className="bg-slate-950/80 p-2 rounded border border-slate-800">
+                <span className="text-[10px] text-slate-400 block uppercase font-semibold">
+                  Water Depth Est.
+                </span>
+                <span className="text-cyan-300 font-medium font-mono">
+                  {triage.water_depth_estimate}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {triage.image_assessment_hint && (
+            <p className="text-[11px] text-slate-300 italic pt-1">
+              &quot;{triage.image_assessment_hint.replace(/^AI ESTIMATE — UNVERIFIED:\s*/i, '')}
+              &quot;
+            </p>
+          )}
         </div>
       )}
 
@@ -405,3 +606,5 @@ export const AiTriageAssessmentCard = ({
     </div>
   )
 }
+
+export default AiTriageAssessmentCard

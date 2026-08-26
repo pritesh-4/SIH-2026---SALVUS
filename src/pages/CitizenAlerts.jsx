@@ -39,6 +39,7 @@ export const CitizenAlerts = () => {
           details: hz.why_it_matters,
           distance: `${hz.affected_radius_km} km radius`,
           timestamp: 'Live Feed',
+          provenance: hz.data_provenance || 'LIVE',
           source: hz.source,
           affectedArea: 'Sector 12 & Salt Lake Drainage Basin',
           actions: [

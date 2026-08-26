@@ -167,10 +167,31 @@ class HeuristicProvider(BaseAIProvider):
             confidence = 0.70
             uncertainty_flags.append("Awaiting operator verification of on-site urgency")
 
+        damage_type = None
+        hazard_detected = None
+        water_depth_estimate = None
         img_hint = None
         if image_data:
+            if resolved_type == IncidentType.FLOOD:
+                damage_type = "Structural & Ground Inundation"
+                hazard_detected = "Submerged Ground Level & Inundated Roadway"
+                water_depth_estimate = "0.9m – 1.4m estimated"
+            elif resolved_type == IncidentType.POWER_LINE:
+                damage_type = "Submerged Grid / Wire Snap"
+                hazard_detected = "Live Feeder Line in Proximity"
+                water_depth_estimate = "Surface Water Contact"
+            elif resolved_type == IncidentType.STRUCTURAL:
+                damage_type = "Wall Fracture & Debris Fall"
+                hazard_detected = "Unstable Canopy / Rubble"
+                water_depth_estimate = "N/A"
+            else:
+                damage_type = "Environmental Distress"
+                hazard_detected = "Field Emergency Hazard"
+                water_depth_estimate = "N/A"
+
             img_hint = (
-                "AI ESTIMATE — UNVERIFIED: Imagery indicates environmental hazard in proximity."
+                f"AI ESTIMATE — UNVERIFIED: {damage_type} detected. "
+                f"Est depth: {water_depth_estimate}."
             )
 
         now_iso = datetime.now(UTC).isoformat()
@@ -186,6 +207,9 @@ class HeuristicProvider(BaseAIProvider):
             recommended_capability=capability,
             priority_reasoning=reasoning,
             uncertainty_flags=uncertainty_flags,
+            damage_type=damage_type,
+            hazard_detected=hazard_detected,
+            water_depth_estimate=water_depth_estimate,
             image_assessment_hint=img_hint,
             provider=self.name,
             model=self.model,

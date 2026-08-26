@@ -61,6 +61,7 @@ async def run_async_ai_triage(
             "is_sos": incident.is_sos,
             "latitude": incident.latitude,
             "longitude": incident.longitude,
+            "image_data": getattr(incident, "image_data", None),
         }
 
         # Check idempotency hash

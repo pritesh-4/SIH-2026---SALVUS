@@ -109,6 +109,9 @@ class IncidentCreate(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     affected_count: int = Field(default=1, ge=1, le=10000)
     is_sos: bool = False
+    image_data: str | None = Field(
+        default=None, description="Optional base64 encoded scene imagery"
+    )
 
     @field_validator("description")
     @classmethod
@@ -176,8 +179,17 @@ class AITriageAssessment(BaseModel):
     uncertainty_flags: list[str] = Field(
         default_factory=list, description="Ambiguities or unverified conditions"
     )
+    damage_type: str | None = Field(
+        default=None, description="Visual damage classification, e.g. Structural Inundation"
+    )
+    hazard_detected: str | None = Field(
+        default=None, description="Specific hazard detected in imagery"
+    )
+    water_depth_estimate: str | None = Field(
+        default=None, description="Estimated visual water depth, e.g. 0.8m - 1.2m"
+    )
     image_assessment_hint: str | None = Field(
-        default=None, description="Tagged with 'AI ESTIMATE — UNVERIFIED'"
+        default=None, description="Tagged strictly with 'AI ESTIMATE — UNVERIFIED'"
     )
     provider: str = Field(
         default="gemini-2.0-flash", description="AI Provider or fallback identifier"
@@ -232,6 +244,7 @@ class IncidentResponse(BaseModel):
     updated_at: str
     events: list[IncidentEventResponse] = []
     ai_triage: AITriageAssessment | None = None
+    image_data: str | None = None
     access_token: str | None = None
 
 
@@ -700,6 +713,7 @@ class NormalizedHazard(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     is_active: bool = True
     source_timestamp: str
+    data_provenance: str = Field(default="LIVE", description="LIVE | CACHED | FALLBACK")
 
 
 class HazardListResponse(BaseModel):

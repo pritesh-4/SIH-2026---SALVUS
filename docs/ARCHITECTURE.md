@@ -108,13 +108,25 @@ src/
 │   ├── CitizenAlerts.jsx          # Categorized advisory stream & safety recommendations
 │   ├── CitizenProfile.jsx         # Identity, medical passport, contacts, siren test
 │   ├── CitizenEmergency.jsx       # State-focused progressive emergency experience
-│   └── AuthorityCommandCenter.jsx # Realtime metrics, live incident queue, Leaflet map, fleet & shelter matrix
+│   └── AuthorityCommandCenter.jsx # Thin orchestrator page wiring domain hooks and layout
 ├── components/
 │   ├── common/
 │   │   ├── SalvusLeafletMap.jsx        # Reusable dark-styled Leaflet map
 │   │   ├── SimulatedBadge.jsx          # Visual data provenance badges
 │   │   ├── DevDemoControls.jsx         # Developer demo & resilience control dock
 │   │   └── GlobalNotificationBanner.jsx# Calm application-level notification banner
+│   ├── authority/
+│   │   ├── AuthorityHeader.jsx         # Top district status bar, dispatcher & VHF channel
+│   │   ├── OperationalMetrics.jsx      # 5-card operational metric strip
+│   │   ├── SituationBriefing.jsx       # Grounded AI situation intelligence & key priorities
+│   │   ├── IncidentQueue.jsx           # Filter chips, priority queue cards & status badges
+│   │   ├── AuthorityMap.jsx            # Tactical map container, layer switches & legend
+│   │   ├── IncidentInspector.jsx       # Incident inspector, pathway corridor, actions & lifecycle
+│   │   ├── ResponderPanel.jsx          # Fleet capability/status filters, cards & manual overrides
+│   │   ├── ShelterPanel.jsx            # Evacuation hubs, hazard proximity alerts & quick intake
+│   │   ├── AiTriageAssessmentCard.jsx  # Human-in-the-loop triage card (verify/adjust/reevaluate)
+│   │   ├── DispatchRecommendationPanel.jsx # Deterministic recommendation breakdown & alternatives
+│   │   └── AssignmentConfirmModal.jsx  # Consequential dispatch confirmation safeguard modal
 │   └── citizen/
 │       ├── IncidentReportModal.jsx     # Location confirmation, draft auto-save, deduplication
 │       └── emergency/
@@ -123,7 +135,20 @@ src/
 │           └── ResponderPreviewCard.jsx# Responder details with simulated badge
 ├── features/
 │   ├── authority/
-│   │   └── useAuthorityIncidents.js    # Out-of-order guards & silent reconnect sync
+│   │   ├── index.js                    # Barrel export for authority feature hooks
+│   │   ├── incidents/
+│   │   │   ├── useAuthorityIncidents.js# Out-of-order guards, incident server state & socket sync
+│   │   │   └── incidentUtils.js        # Badge styles, distance & filter utilities
+│   │   ├── fleet/
+│   │   │   └── useAuthorityFleet.js    # Responders state, filtering, socket sync & status actions
+│   │   ├── shelters/
+│   │   │   └── useAuthorityShelters.js # Shelters state, occupancy adjustment & hazard proximity
+│   │   ├── intelligence/
+│   │   │   └── useSituationIntelligence.js # Situation summary, hazards, clusters & provenance
+│   │   └── dispatch/
+│   │       ├── useDispatchRecommendation.js # Candidates ranking, fallback scoring & route vectors
+│   │       ├── useMovementSimulation.js # GPS telemetry engine & milestone progression
+│   │       └── useIncidentTriage.js    # AI triage verify, adjust & re-evaluate actions
 │   └── citizen/emergency/
 │       └── useEmergencyState.js        # Live emergency lifecycle hook with room sync
 ├── lib/
@@ -132,8 +157,18 @@ src/
 │   └── realtime/
 │       └── socket.js                   # Socket.IO client with room rejoining on reconnect
 └── services/
-    └── api.js                          # Centralized REST client with dev tools, responders & shelters API
+    ├── api.js                          # Centralized REST client with dev tools, responders & shelters API
+    └── routingService.js               # OSRM routing engine with fallback vector corridor calculation
 ```
+
+### 5.1 Authority Command Center Domain Architecture (Phase 3 ✅)
+
+The Authority Command Center adheres to strict state ownership boundaries:
+
+- **Orchestrator Page (`AuthorityCommandCenter.jsx`)**: Manages high-level view layout, tab switching (`inspector` / `fleet` / `shelters`), layer toggles, and modal visibility.
+- **Server State Hooks**: Dedicated hooks isolate API calls, caching, and WebSocket subscriptions (`useAuthorityIncidents`, `useAuthorityFleet`, `useAuthorityShelters`, `useSituationIntelligence`).
+- **Dispatch & Route Computation**: Encapsulated in `useDispatchRecommendation` (candidate ranking, fallback deterministic scoring, OSRM routing) and `useMovementSimulation` (GPS movement simulation engine).
+- **Presentation Layer**: Components in `src/components/authority/` are pure visual presentations consuming props and invoking typed callbacks without scattering direct Axios or socket calls.
 
 ---
 

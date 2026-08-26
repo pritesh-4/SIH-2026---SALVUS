@@ -72,6 +72,10 @@ async def _get_latest_triage(
         return None
 
 
+# In-memory store for attached scene imagery
+_incident_images: dict[str, str] = {}
+
+
 def _row_to_incident(
     row: aiosqlite.Row,
     events: list[dict] | None = None,
@@ -82,9 +86,11 @@ def _row_to_incident(
     reporter_id = row["reporter_id"] if "reporter_id" in row_keys else None
     ai_state = row["ai_state"] if "ai_state" in row_keys else "NOT_STARTED"
     triage_hash = row["triage_hash"] if "triage_hash" in row_keys else None
+    inc_id = row["id"]
+    image_data = _incident_images.get(inc_id)
 
     return IncidentResponse(
-        id=row["id"],
+        id=inc_id,
         ticket_id=row["ticket_id"],
         type=row["type"],
         severity=row["severity"],
@@ -103,6 +109,7 @@ def _row_to_incident(
         updated_at=row["updated_at"],
         events=[IncidentEventResponse(**e) for e in (events or [])],
         ai_triage=ai_triage,
+        image_data=image_data,
     )
 
 
@@ -189,6 +196,9 @@ async def create_incident(
 
     incident_id = str(uuid.uuid4())
     ticket_id = await _next_ticket_id(db)
+
+    if payload.image_data:
+        _incident_images[incident_id] = payload.image_data
 
     await db.execute(
         """

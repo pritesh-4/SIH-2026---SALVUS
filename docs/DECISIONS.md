@@ -102,3 +102,19 @@ This document records foundational architectural decisions, rationale, and engin
 - **Trade-offs / Scope Boundaries:**
   - Enforces 1 active assignment per responder for Phase 1.
   - Establishes structured factor score storage schema (`capability`, `distance`, `eta`, `workload`, `severity_fit`); dynamic scoring algorithms and live OSRM routing are deferred to **NEXT PHASE**.
+
+---
+
+## ADR-012: Decomposed Domain Architecture for Authority Command Center (Phase 3)
+
+- **Context:** As features expanded (AI triage, OSRM routing, GPS telemetry simulation, real-time socket events, hazard zones, incident clusters, shelter logistics), `AuthorityCommandCenter.jsx` grew to ~1,875 lines (~85 KB). This monolithic structure created maintenance bottlenecks and heightened regression risks for subsequent phases.
+- **Decision:** Decompose the Authority Command Center into an **Orchestrator Page** (`AuthorityCommandCenter.jsx`, ~400 lines) + **Domain Feature Modules** (`src/features/authority/`) + **Cohesive Presentation Components** (`src/components/authority/`).
+- **Domain Partitioning:**
+  - **Incidents Domain:** `useAuthorityIncidents.js` manages server truth, out-of-order event protection, and status transitions.
+  - **Fleet Domain:** `useAuthorityFleet.js` manages unit telemetry, availability, filtering, and manual lifecycle overrides.
+  - **Shelters Domain:** `useAuthorityShelters.js` manages evacuation capacity, intake adjustments, and hazard proximity calculations.
+  - **Intelligence Domain:** `useSituationIntelligence.js` manages AI synthesis, active hazards, and clusters.
+  - **Dispatch & Route Domain:** `useDispatchRecommendation.js` handles candidate rankings, fallback scoring, and OSRM route computation; `useMovementSimulation.js` controls GPS telemetry streaming.
+  - **Triage Domain:** `useIncidentTriage.js` encapsulates human-in-the-loop verify, adjust, and re-evaluate actions.
+- **Reason:** Keeps page components declarative, isolates socket listeners into domain owners to avoid redundant subscriptions, keeps presentation components testable, and prevents future features from ballooning the page file.
+- **Trade-offs:** Introduces multiple smaller files and requires a clean feature barrel (`src/features/authority/index.js`), greatly offset by massive readability and extensibility gains.
