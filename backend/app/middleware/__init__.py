@@ -1,10 +1,19 @@
-"""Global error handler middleware."""
+"""Global error handler and security middleware."""
 
 from __future__ import annotations
 
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+from app.middleware.security import PayloadLimitMiddleware, SecurityHeadersMiddleware
+
+__all__ = [
+    "PayloadLimitMiddleware",
+    "SecurityHeadersMiddleware",
+    "generic_exception_handler",
+    "validation_exception_handler",
+]
 
 
 async def validation_exception_handler(

@@ -4,9 +4,26 @@ import os
 
 import aiosqlite
 
-DATABASE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
-DATABASE_PATH = os.path.join(DATABASE_DIR, "salvus.db")
+DEFAULT_DATABASE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data"
+)
+DEFAULT_DATABASE_PATH = os.path.join(DEFAULT_DATABASE_DIR, "salvus.db")
 
+
+def resolve_database_path() -> str:
+    """Resolve database filepath from environment variables or standard defaults."""
+    env_path = os.getenv("DATABASE_PATH") or os.getenv("DATABASE_URL")
+    if env_path:
+        # Strip sqlite:/// or sqlite:// prefix if present
+        if env_path.startswith("sqlite:///"):
+            env_path = env_path.replace("sqlite:///", "", 1)
+        elif env_path.startswith("sqlite://"):
+            env_path = env_path.replace("sqlite://", "", 1)
+        return env_path
+    return DEFAULT_DATABASE_PATH
+
+
+DATABASE_PATH = resolve_database_path()
 _db_connection: aiosqlite.Connection | None = None
 
 
@@ -21,10 +38,10 @@ async def init_database(db_path: str | None = None) -> aiosqlite.Connection:
     """Initialize the SQLite database connection and run migrations."""
     global _db_connection
 
-    path = db_path or DATABASE_PATH
+    path = db_path or resolve_database_path()
 
-    # Ensure the data directory exists
-    data_dir = os.path.dirname(path)
+    # Ensure the parent data directory exists
+    data_dir = os.path.dirname(os.path.abspath(path))
     if data_dir:
         os.makedirs(data_dir, exist_ok=True)
 
