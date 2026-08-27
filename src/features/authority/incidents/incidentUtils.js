@@ -1,58 +1,40 @@
 export const getStatusBadge = (status) => {
   switch (status) {
     case 'NEW':
-      return { label: 'NEW', classes: 'bg-amber-950/40 text-amber-300 border-amber-500/40' }
+      return { label: 'New', variant: 'warning', dot: true }
     case 'TRIAGE_PENDING':
-      return {
-        label: 'TRIAGE PENDING',
-        classes: 'bg-amber-950/30 text-amber-400 border-amber-500/30',
-      }
+      return { label: 'Triage Pending', variant: 'warning', dot: true }
     case 'VERIFIED':
-      return { label: 'VERIFIED', classes: 'bg-blue-950/40 text-blue-300 border-blue-500/40' }
+      return { label: 'Verified', variant: 'info', dot: false }
     case 'ASSIGNED':
-      return {
-        label: 'ASSIGNED',
-        classes: 'bg-sky-950/50 text-sky-300 border-sky-500/40',
-      }
+      return { label: 'Assigned', variant: 'info', dot: true }
     case 'EN_ROUTE':
-      return {
-        label: 'EN ROUTE',
-        classes: 'bg-indigo-950/50 text-indigo-300 border-indigo-500/40 animate-pulse',
-      }
+      return { label: 'En Route', variant: 'info', dot: true }
     case 'NEARBY':
-      return {
-        label: 'NEARBY (<100M)',
-        classes: 'bg-amber-950/60 text-amber-300 border-amber-500/50 animate-ping',
-      }
+      return { label: 'Nearby (<100m)', variant: 'warning', dot: true }
     case 'ON_SCENE':
-      return {
-        label: 'ON SCENE',
-        classes: 'bg-emerald-950/50 text-emerald-300 border-emerald-500/40',
-      }
+      return { label: 'On Scene', variant: 'safe', dot: true }
     case 'RESOLVED':
-      return {
-        label: 'RESOLVED',
-        classes: 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30',
-      }
+      return { label: 'Resolved', variant: 'safe', dot: false }
     case 'CANCELLED':
-      return { label: 'CANCELLED', classes: 'bg-slate-900 text-slate-400 border-slate-700' }
+      return { label: 'Cancelled', variant: 'neutral', dot: false }
     default:
-      return { label: status, classes: 'bg-slate-900 text-slate-400 border-slate-700' }
+      return { label: status, variant: 'neutral', dot: false }
   }
 }
 
 export const getSeverityBadge = (severity) => {
   switch (severity) {
     case 'CRITICAL':
-      return { label: 'CRITICAL', classes: 'bg-rose-950/50 text-rose-300 border-rose-500/50' }
+      return { label: 'Critical', variant: 'critical', dot: true }
     case 'HIGH':
-      return { label: 'HIGH', classes: 'bg-amber-950/40 text-amber-300 border-amber-500/40' }
+      return { label: 'High', variant: 'warning', dot: false }
     case 'MEDIUM':
-      return { label: 'MEDIUM', classes: 'bg-slate-900 text-slate-300 border-slate-700' }
+      return { label: 'Medium', variant: 'neutral', dot: false }
     case 'LOW':
-      return { label: 'LOW', classes: 'bg-slate-900/60 text-slate-400 border-slate-800' }
+      return { label: 'Low', variant: 'neutral', dot: false }
     default:
-      return { label: severity, classes: 'bg-slate-900 text-slate-400 border-slate-800' }
+      return { label: severity, variant: 'neutral', dot: false }
   }
 }
 
@@ -60,7 +42,11 @@ export const filterIncidents = (incidents, filterType) => {
   if (!incidents || !Array.isArray(incidents)) return []
   return incidents.filter((inc) => {
     if (filterType === 'immediate') {
-      return inc.severity === 'CRITICAL' || inc.is_sos || inc.status === 'NEW'
+      return (
+        inc.severity === 'CRITICAL' ||
+        inc.is_sos ||
+        (inc.status === 'NEW' && inc.severity !== 'LOW')
+      )
     }
     if (filterType === 'review') {
       return ['NEW', 'TRIAGE_PENDING'].includes(inc.status)

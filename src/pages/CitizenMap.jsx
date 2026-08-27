@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { citizenMapData } from '../data/citizen/map.mock'
 import { SalvusLeafletMap } from '../components/common/SalvusLeafletMap'
@@ -83,6 +83,27 @@ export const CitizenMap = () => {
   const [activeRouteGuide, setActiveRouteGuide] = useState(null)
 
   const { userLocation } = citizenMapData
+  const routeModalRef = useRef(null)
+
+  // Escape key + body scroll lock for route modal
+  useEffect(() => {
+    if (!activeRouteGuide) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    if (routeModalRef.current) routeModalRef.current.focus()
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setActiveRouteGuide(null)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = originalOverflow
+    }
+  }, [activeRouteGuide])
 
   const displayedIncidents = useMemo(() => {
     if (activeFilter === 'shelters' || activeFilter === 'medical') return []
@@ -128,6 +149,7 @@ export const CitizenMap = () => {
             key={f.id}
             type="button"
             onClick={() => setActiveFilter(f.id)}
+            aria-pressed={activeFilter === f.id}
             className={`px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
               activeFilter === f.id
                 ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
@@ -407,7 +429,11 @@ export const CitizenMap = () => {
             }
           }}
         >
-          <div className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl relative text-salvus-text-primary">
+          <div
+            ref={routeModalRef}
+            tabIndex={-1}
+            className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl relative text-salvus-text-primary outline-none"
+          >
             <div className="flex items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-2">
                 <Badge variant="safe" dot={true}>

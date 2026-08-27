@@ -1,5 +1,11 @@
 import { SalvusLeafletMap } from '../common/SalvusLeafletMap'
+import { Card } from '../ui/Card'
+import { Badge } from '../ui/Badge'
 
+/**
+ * Geospatial Tactical Map Surface
+ * Part 7: Geographic source of truth with clean toggleable layers.
+ */
 export const AuthorityMap = ({
   incidents = [],
   responderMapPoints = [],
@@ -22,72 +28,81 @@ export const AuthorityMap = ({
   onClearRoute,
 }) => {
   return (
-    <section
+    <Card
       aria-label="Tactical Operations Map"
-      className="lg:col-span-8 xl:col-span-5 bg-[#0C121B] border border-[#182332] rounded-xl p-3.5 flex flex-col justify-between relative min-h-[600px]"
+      padding="sm"
+      className="lg:col-span-8 xl:col-span-5 flex flex-col justify-between relative min-h-[580px]"
     >
-      <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#182332] z-10">
-        <span className="text-xs font-bold text-slate-200 font-mono uppercase tracking-wider flex items-center gap-2">
-          <span>Geospatial Tactical Map</span>
+      {/* Map Control Bar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2 mb-2 border-b border-salvus-border z-10">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xs font-bold text-salvus-text-primary uppercase tracking-wider">
+            Tactical Map
+          </h2>
           {activeRoute && (
-            <span className="text-[10px] font-mono text-sky-400 bg-sky-950/60 border border-sky-500/40 px-2 py-0.5 rounded-full">
-              Route Active ({activeRoute.distanceKm} km · {activeRoute.etaFormatted})
-            </span>
+            <Badge variant="info" isMono={true} size="sm">
+              Route Active: {activeRoute.distanceKm} km · {activeRoute.etaFormatted}
+            </Badge>
           )}
-        </span>
+        </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+        {/* Layer Toggles */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <button
             type="button"
-            onClick={() => onToggleLayer && onToggleLayer('hazards')}
-            className={`px-2 py-0.5 rounded border cursor-pointer transition-colors ${
+            onClick={() => onToggleLayer?.('hazards')}
+            className={`px-2 py-0.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
               mapLayers.hazards
-                ? 'bg-amber-950/60 text-amber-300 border-amber-500/40'
-                : 'bg-[#080C12] text-slate-500 border-[#182332]'
+                ? 'bg-salvus-warning-bg text-salvus-warning-text border-salvus-warning-border'
+                : 'bg-salvus-muted/40 text-salvus-text-muted border-salvus-border'
             }`}
           >
             ⛈️ Hazards ({liveHazards.length})
           </button>
+
           <button
             type="button"
-            onClick={() => onToggleLayer && onToggleLayer('clusters')}
-            className={`px-2 py-0.5 rounded border cursor-pointer transition-colors ${
+            onClick={() => onToggleLayer?.('clusters')}
+            className={`px-2 py-0.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
               mapLayers.clusters
-                ? 'bg-indigo-950/60 text-indigo-300 border-indigo-500/40'
-                : 'bg-[#080C12] text-slate-500 border-[#182332]'
+                ? 'bg-salvus-info-bg text-salvus-info-text border-salvus-info-border'
+                : 'bg-salvus-muted/40 text-salvus-text-muted border-salvus-border'
             }`}
           >
             📍 Clusters ({incidentClusters.length})
           </button>
+
           <button
             type="button"
-            onClick={() => onToggleLayer && onToggleLayer('routes')}
-            className={`px-2 py-0.5 rounded border cursor-pointer transition-colors ${
+            onClick={() => onToggleLayer?.('routes')}
+            className={`px-2 py-0.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
               mapLayers.routes
-                ? 'bg-sky-950/60 text-sky-300 border-sky-500/40'
-                : 'bg-[#080C12] text-slate-500 border-[#182332]'
+                ? 'bg-salvus-info-bg text-salvus-info-text border-salvus-info-border'
+                : 'bg-salvus-muted/40 text-salvus-text-muted border-salvus-border'
             }`}
           >
             Routes
           </button>
+
           <button
             type="button"
-            onClick={() => onToggleLayer && onToggleLayer('incidents')}
-            className={`px-2 py-0.5 rounded border cursor-pointer transition-colors ${
+            onClick={() => onToggleLayer?.('incidents')}
+            className={`px-2 py-0.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
               mapLayers.incidents
-                ? 'bg-rose-950/40 text-rose-300 border-rose-500/40'
-                : 'bg-[#080C12] text-slate-500 border-[#182332]'
+                ? 'bg-salvus-critical-bg text-salvus-critical border-salvus-critical-border'
+                : 'bg-salvus-muted/40 text-salvus-text-muted border-salvus-border'
             }`}
           >
             Incidents ({incidents.length})
           </button>
+
           <button
             type="button"
-            onClick={() => onToggleLayer && onToggleLayer('responders')}
-            className={`px-2 py-0.5 rounded border cursor-pointer transition-colors ${
+            onClick={() => onToggleLayer?.('responders')}
+            className={`px-2 py-0.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
               mapLayers.responders
-                ? 'bg-blue-950/40 text-blue-300 border-blue-500/40'
-                : 'bg-[#080C12] text-slate-500 border-[#182332]'
+                ? 'bg-salvus-info-bg text-salvus-info border-salvus-info-border'
+                : 'bg-salvus-muted/40 text-salvus-text-muted border-salvus-border'
             }`}
           >
             Fleet ({responderMapPoints.length})
@@ -95,7 +110,8 @@ export const AuthorityMap = ({
         </div>
       </div>
 
-      <div className="relative w-full h-[500px] rounded-lg border border-[#162230] overflow-hidden">
+      {/* Map Surface */}
+      <div className="relative w-full h-[470px] rounded-xl border border-salvus-border overflow-hidden">
         <SalvusLeafletMap
           center={[22.5726, 88.3639]}
           zoom={13}
@@ -114,24 +130,25 @@ export const AuthorityMap = ({
         />
       </div>
 
-      <div className="mt-2.5 bg-[#080C12] px-3 py-1.5 rounded-lg border border-[#182332] flex items-center justify-between text-[10px] text-slate-400 font-mono">
+      {/* Footer Legend */}
+      <div className="mt-2.5 bg-salvus-muted/40 px-3 py-1.5 rounded-xl border border-salvus-border flex items-center justify-between text-xs text-salvus-text-secondary flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-rose-500"></span>Critical Hazard
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-salvus-critical"></span>
+            <span>Critical Incident</span>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-sky-400"></span>Rescue Route
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-salvus-info"></span>
+            <span>Rescue Craft</span>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-blue-400"></span>Rescue Craft
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-emerald-400"></span>Shelter
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-salvus-safe"></span>
+            <span>Shelter</span>
           </div>
         </div>
-        <span>Tactical OSRM Routing Engine</span>
+        <span className="text-salvus-text-muted">OSRM Routing Active</span>
       </div>
-    </section>
+    </Card>
   )
 }
 

@@ -1,9 +1,31 @@
+import { useEffect, useRef } from 'react'
 import { Button } from '../../ui/Button'
 
 /**
  * Emergency Cancellation Safeguard Modal
  */
 export const EmergencyCancelModal = ({ isOpen, onConfirm, onCancel }) => {
+  const cancelModalRef = useRef(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    if (cancelModalRef.current) cancelModalRef.current.focus()
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onCancel?.()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = originalOverflow
+    }
+  }, [isOpen, onCancel])
+
   if (!isOpen) return null
 
   return (
@@ -18,7 +40,11 @@ export const EmergencyCancelModal = ({ isOpen, onConfirm, onCancel }) => {
         }
       }}
     >
-      <div className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl text-salvus-text-primary text-center">
+      <div
+        ref={cancelModalRef}
+        tabIndex={-1}
+        className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl text-salvus-text-primary text-center outline-none"
+      >
         {/* Warning Icon */}
         <div className="h-12 w-12 rounded-full bg-salvus-warning-bg border border-salvus-warning-border mx-auto flex items-center justify-center text-xl mb-4">
           ⚠️

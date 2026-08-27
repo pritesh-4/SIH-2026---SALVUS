@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { citizenAlertsData } from '../data/citizen/alerts.mock'
 import { fetchHazards } from '../services/api'
@@ -13,6 +13,27 @@ export const CitizenAlerts = () => {
   const [activeAlertDetail, setActiveAlertDetail] = useState(null)
   const [liveHazards, setLiveHazards] = useState([])
   const [lastUpdated, setLastUpdated] = useState('Live Feed')
+  const alertModalRef = useRef(null)
+
+  // Escape key + body scroll lock for alert detail modal
+  useEffect(() => {
+    if (!activeAlertDetail) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    if (alertModalRef.current) alertModalRef.current.focus()
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setActiveAlertDetail(null)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = originalOverflow
+    }
+  }, [activeAlertDetail])
 
   useEffect(() => {
     let isMounted = true
@@ -137,6 +158,7 @@ export const CitizenAlerts = () => {
             key={f.id}
             type="button"
             onClick={() => setSelectedFilter(f.id)}
+            aria-pressed={selectedFilter === f.id}
             className={`px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
               selectedFilter === f.id
                 ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
@@ -219,7 +241,11 @@ export const CitizenAlerts = () => {
             }
           }}
         >
-          <div className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-xl w-full p-6 sm:p-7 shadow-2xl relative text-salvus-text-primary max-h-[85vh] overflow-y-auto">
+          <div
+            ref={alertModalRef}
+            tabIndex={-1}
+            className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-xl w-full p-6 sm:p-7 shadow-2xl relative text-salvus-text-primary max-h-[85vh] overflow-y-auto outline-none"
+          >
             {/* Header */}
             <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-salvus-border">
               <div className="flex items-center gap-2">

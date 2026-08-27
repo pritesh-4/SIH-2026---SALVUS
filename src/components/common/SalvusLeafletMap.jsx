@@ -506,11 +506,11 @@ export const SalvusLeafletMap = ({
             shouldRecede ? 'opacity-40 grayscale-30 hover:opacity-100 hover:grayscale-0' : ''
           } ${
             isSelected
-              ? 'scale-115 z-50 ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-900 rounded-full shadow-[0_0_15px_rgba(56,189,248,0.5)]'
+              ? 'scale-110 z-50 ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-900 rounded-full shadow-md'
               : 'hover:scale-105'
           }" style="width:${size}px; height:${size}px;">
-            ${isCritical ? `<span class="absolute inset-0 rounded-full ${bgStyle} opacity-30 animate-ping"></span>` : ''}
-            <div class="relative flex items-center justify-center w-full h-full rounded-full ${bgStyle} border-2 ${borderStyle} shadow-md text-slate-950 font-bold font-mono">
+            ${isCritical ? `<span class="absolute inset-0 rounded-full ${bgStyle} opacity-20"></span>` : ''}
+            <div class="relative flex items-center justify-center w-full h-full rounded-full ${bgStyle} border-2 ${borderStyle} shadow-sm text-slate-950 font-bold font-mono">
               <span style="font-size: ${size > 28 ? '11px' : '9px'}">${inc.is_sos ? 'SOS' : isResolved ? '✓' : '!'}</span>
             </div>
           </div>
@@ -596,7 +596,7 @@ export const SalvusLeafletMap = ({
   }, [selectedIncidentId, autoFocusSelected, incidents, activeRoute])
 
   return (
-    <div className={`relative overflow-hidden rounded-xl border border-slate-800 ${className}`}>
+    <div className={`relative overflow-hidden rounded-xl border border-salvus-border ${className}`}>
       {/* Map Surface */}
       <div ref={mapContainerRef} className="h-full w-full" />
 

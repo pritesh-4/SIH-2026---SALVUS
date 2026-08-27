@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { citizenProfileData } from '../data/citizen/profile.mock'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -13,6 +13,16 @@ export const CitizenProfile = () => {
   const [showAddressDetails, setShowAddressDetails] = useState(false)
   const [testToneActive, setTestToneActive] = useState(false)
   const [downloadSuccess, setDownloadSuccess] = useState(false)
+  const testToneTimeoutRef = useRef(null)
+  const downloadTimeoutRef = useRef(null)
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (testToneTimeoutRef.current) clearTimeout(testToneTimeoutRef.current)
+      if (downloadTimeoutRef.current) clearTimeout(downloadTimeoutRef.current)
+    }
+  }, [])
 
   const toggleSetting = (id) => {
     setSettings((prev) =>
@@ -22,12 +32,14 @@ export const CitizenProfile = () => {
 
   const handleTestTone = () => {
     setTestToneActive(true)
-    setTimeout(() => setTestToneActive(false), 2000)
+    if (testToneTimeoutRef.current) clearTimeout(testToneTimeoutRef.current)
+    testToneTimeoutRef.current = setTimeout(() => setTestToneActive(false), 2000)
   }
 
   const handleDownloadCard = () => {
     setDownloadSuccess(true)
-    setTimeout(() => setDownloadSuccess(false), 2500)
+    if (downloadTimeoutRef.current) clearTimeout(downloadTimeoutRef.current)
+    downloadTimeoutRef.current = setTimeout(() => setDownloadSuccess(false), 2500)
   }
 
   const totalMedicalCount =
@@ -129,17 +141,17 @@ export const CitizenProfile = () => {
                 {showMedicalDetails && (
                   <div className="mt-3 pt-3 border-t border-salvus-border space-y-2.5 animate-fadeIn">
                     <div className="flex flex-wrap gap-2">
-                      {identity.medicalInfo.conditions.map((c, i) => (
+                      {identity.medicalInfo.conditions.map((c) => (
                         <span
-                          key={i}
+                          key={`cond-${c}`}
                           className="text-xs bg-salvus-critical-bg border border-salvus-critical-border text-salvus-critical px-2.5 py-1 rounded-lg font-medium"
                         >
                           Medical: {c}
                         </span>
                       ))}
-                      {identity.medicalInfo.allergies.map((a, i) => (
+                      {identity.medicalInfo.allergies.map((a) => (
                         <span
-                          key={i}
+                          key={`allergy-${a}`}
                           className="text-xs bg-salvus-warning-bg border border-salvus-warning-border text-salvus-warning-text px-2.5 py-1 rounded-lg font-medium"
                         >
                           Allergy: {a}

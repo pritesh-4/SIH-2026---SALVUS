@@ -10,7 +10,14 @@ import {
   AlertCircle,
   RefreshCw,
 } from 'lucide-react'
+import { Card } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
 
+/**
+ * Recommended Response Dispatch Panel
+ * Part 9: Plain English response recommendation with prominent [ ASSIGN UNIT ] action.
+ */
 export const DispatchRecommendationPanel = ({
   incident,
   topCandidate,
@@ -28,55 +35,55 @@ export const DispatchRecommendationPanel = ({
 
   if (isLoading) {
     return (
-      <div className="bg-[#080E17] border border-[#162230] p-4 rounded-xl space-y-3 font-mono">
-        <div className="flex items-center justify-between border-b border-[#141C28] pb-2">
-          <span className="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping"></span>
-            System Recommendation
+      <Card padding="md" className="space-y-3">
+        <div className="flex items-center justify-between border-b border-salvus-border pb-2">
+          <span className="text-xs font-bold uppercase text-salvus-text-secondary">
+            Recommended Response
           </span>
-          <span className="text-[9px] text-slate-500">Deterministic Engine</span>
+          <Badge variant="neutral" size="sm">
+            Evaluating
+          </Badge>
         </div>
-        <div className="py-8 text-center space-y-2">
-          <RefreshCw className="h-5 w-5 text-sky-400 animate-spin mx-auto" />
-          <p className="text-xs text-slate-400">
-            Evaluating fleet capabilities, distance & routing vectors...
+        <div className="py-6 text-center space-y-2">
+          <RefreshCw className="h-4 w-4 text-salvus-info animate-spin mx-auto" />
+          <p className="text-xs text-salvus-text-secondary">
+            Evaluating candidate units, distance & transit routes...
           </p>
         </div>
-      </div>
+      </Card>
     )
   }
 
   if (!topCandidate) {
     return (
-      <div className="bg-[#080E17] border border-amber-500/30 p-4 rounded-xl space-y-3 font-mono">
-        <div className="flex items-center justify-between border-b border-[#141C28] pb-2">
-          <span className="text-[10px] uppercase font-bold text-amber-400 flex items-center gap-1.5">
+      <Card variant="warning" padding="md" className="space-y-3">
+        <div className="flex items-center justify-between border-b border-salvus-warning-border pb-2">
+          <div className="flex items-center gap-1.5 text-salvus-warning font-bold text-xs">
             <AlertCircle className="h-3.5 w-3.5" />
-            No Available Responder
-          </span>
-          <span className="text-[9px] text-slate-500">Operational Standby</span>
+            <span>No Available Unit in Range</span>
+          </div>
+          <Badge variant="warning" size="sm">
+            Standby
+          </Badge>
         </div>
 
-        <div className="py-4 text-center space-y-3">
-          <p className="text-xs text-slate-300">
-            No suitable response unit is currently available in the active sector.
-          </p>
-          <p className="text-[10px] text-slate-500 max-w-xs mx-auto">
-            All units may be actively committed to ongoing missions, out of operational range, or
-            offline.
+        <div className="py-2 text-center space-y-2 text-xs">
+          <p className="text-salvus-text-secondary">
+            All fleet rescue units are currently committed or outside the immediate sector.
           </p>
           {onRefreshCandidates && (
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={onRefreshCandidates}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 mx-auto"
+              leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
+              className="mx-auto"
             >
-              <RefreshCw className="h-3.5 w-3.5" />
-              <span>Refresh Fleet Status</span>
-            </button>
+              Refresh Fleet Status
+            </Button>
           )}
         </div>
-      </div>
+      </Card>
     )
   }
 
@@ -86,116 +93,102 @@ export const DispatchRecommendationPanel = ({
     activeRoute?.label?.includes(topCandidate.unit_name || topCandidate.unitName || '')
 
   return (
-    <div className="bg-[#080E17] border border-[#162230] p-3.5 rounded-xl space-y-3 font-mono text-slate-200">
+    <Card padding="sm" className="space-y-3">
       {/* Section Header */}
-      <div className="flex items-center justify-between border-b border-[#141C28] pb-2">
+      <div className="flex items-center justify-between border-b border-salvus-border pb-2">
         <div className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-sky-400"></span>
-          <span className="text-[10px] uppercase tracking-wider font-bold text-slate-200">
-            RESPONSE RECOMMENDATION
-          </span>
+          <Badge variant="info" dot={true}>
+            RECOMMENDED RESPONSE
+          </Badge>
         </div>
-        <span className="text-[9px] text-sky-400/90 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-500/30">
-          Deterministic Scoring
+        <span className="text-xs text-salvus-text-muted">
+          Match Score:{' '}
+          <strong className="text-salvus-text-primary">
+            {topCandidate.match_score ?? topCandidate.matchScore}/100
+          </strong>
         </span>
       </div>
 
-      {/* Primary Recommended Unit Decision Panel */}
-      <div className="bg-[#0B1524] border border-sky-500/40 p-3 rounded-xl space-y-2.5 relative overflow-hidden shadow-lg shadow-black/40">
+      {/* Primary Recommended Unit */}
+      <div className="bg-salvus-surface-elevated border border-salvus-border-strong p-3.5 rounded-xl space-y-3">
         {/* Unit Headline */}
         <div className="flex items-start justify-between gap-2">
           <div>
-            <span className="text-[9px] font-bold uppercase tracking-widest text-sky-400 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-500/30">
-              ★ Primary Recommendation
-            </span>
-            <h4 className="text-xs font-bold text-slate-100 mt-1">
+            <h4 className="text-sm font-bold text-salvus-text-primary">
               {topCandidate.unit_name || topCandidate.unitName}
             </h4>
-            <p className="text-[10px] text-slate-300">
+            <p className="text-xs text-salvus-text-secondary mt-0.5">
               {topCandidate.team_lead && `Lead: ${topCandidate.team_lead} · `}
               {topCandidate.vehicle_type || 'Rescue Craft'} (
               {topCandidate.capability?.replace('_', ' ') || 'General'})
             </p>
           </div>
 
-          <div className="text-right">
-            <div className="bg-sky-950 border border-sky-400/60 px-2.5 py-1 rounded-lg text-center shadow-inner">
-              <span className="text-xs font-bold text-sky-300 block leading-none">
-                {topCandidate.match_score ?? topCandidate.matchScore}
-              </span>
-              <span className="text-[8px] text-slate-400 uppercase">Score / 100</span>
-            </div>
-          </div>
+          <Badge variant="safe" size="sm">
+            {topCandidate.status || 'AVAILABLE'}
+          </Badge>
         </div>
 
-        {/* Tactical 4-Factor Metric Grid */}
-        <div className="grid grid-cols-4 gap-1.5 p-2 bg-[#060D17] rounded-lg border border-[#142236] text-[10px]">
-          <div className="space-y-0.5">
-            <span className="text-[8px] text-slate-400 uppercase block">Distance</span>
-            <div className="flex items-center gap-1 font-bold text-slate-200">
-              <MapPin className="h-3 w-3 text-sky-400 shrink-0" />
+        {/* 4-Metric Grid */}
+        <div className="grid grid-cols-4 gap-1.5 p-2 bg-salvus-muted/40 rounded-lg border border-salvus-border text-xs">
+          <div>
+            <span className="text-[10px] text-salvus-text-muted uppercase block">Distance</span>
+            <div className="flex items-center gap-1 font-bold text-salvus-text-primary">
+              <MapPin className="h-3 w-3 text-salvus-info shrink-0" />
               <span>{topCandidate.distance_km ?? topCandidate.distanceKm ?? 1.2} km</span>
             </div>
           </div>
 
-          <div className="space-y-0.5">
-            <span className="text-[8px] text-slate-400 uppercase block">Est. Arrival</span>
-            <div className="flex items-center gap-1 font-bold text-sky-300">
-              <Clock className="h-3 w-3 text-sky-400 shrink-0" />
+          <div>
+            <span className="text-[10px] text-salvus-text-muted uppercase block">Est. ETA</span>
+            <div className="flex items-center gap-1 font-bold text-salvus-info">
+              <Clock className="h-3 w-3 text-salvus-info shrink-0" />
               <span>{topCandidate.eta_formatted || topCandidate.etaFormatted || '5 min'}</span>
             </div>
           </div>
 
-          <div className="space-y-0.5">
-            <span className="text-[8px] text-slate-400 uppercase block">Status</span>
-            <span className="text-[9px] font-bold text-emerald-400 truncate block">
-              {topCandidate.status || 'AVAILABLE'}
+          <div>
+            <span className="text-[10px] text-salvus-text-muted uppercase block">Capacity</span>
+            <span className="font-semibold text-salvus-text-primary truncate block">
+              {topCandidate.max_capacity ?? 6} Persons
             </span>
           </div>
 
-          <div className="space-y-0.5">
-            <span className="text-[8px] text-slate-400 uppercase block">Crew Load</span>
-            <div className="flex items-center gap-1 text-slate-300">
-              <Users className="h-3 w-3 text-slate-400 shrink-0" />
-              <span>
-                {topCandidate.current_load ?? 0}/{topCandidate.max_capacity ?? 8}
-              </span>
+          <div>
+            <span className="text-[10px] text-salvus-text-muted uppercase block">Crew Load</span>
+            <div className="flex items-center gap-1 text-salvus-text-secondary">
+              <Users className="h-3 w-3 text-salvus-text-muted shrink-0" />
+              <span>{topCandidate.current_load ?? 0}</span>
             </div>
           </div>
         </div>
 
-        {/* Explainable Why-Factors Box */}
-        <div className="p-2.5 bg-[#060B12] rounded-lg border border-[#142030] space-y-1">
-          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
-            Why:
+        {/* Why Reason */}
+        <div className="p-2.5 bg-salvus-muted/30 rounded-lg border border-salvus-border space-y-1 text-xs">
+          <span className="text-[11px] font-bold text-salvus-text-primary block">
+            Why this unit:
           </span>
-          <div className="space-y-1 text-[10px]">
-            {topCandidate.explanation?.positive_factors?.map((bullet, idx) => (
-              <div key={idx} className="text-emerald-300 flex items-start gap-1.5">
-                <span className="shrink-0">{bullet.startsWith('✓') ? '' : '✓ '}</span>
-                <span>{bullet}</span>
-              </div>
-            ))}
-            {topCandidate.explanation?.negative_factors?.map((bullet, idx) => (
-              <div key={idx} className="text-amber-400 flex items-start gap-1.5">
-                <span className="shrink-0">{bullet.startsWith('⚠') ? '' : '⚠ '}</span>
-                <span>{bullet}</span>
+          <div className="space-y-1">
+            {topCandidate.explanation?.positive_factors?.slice(0, 2).map((bullet, idx) => (
+              <div key={idx} className="text-salvus-safe-text flex items-start gap-1.5">
+                <span className="shrink-0 font-bold">✓</span>
+                <span>{bullet.replace(/^[✓\s]+/, '')}</span>
               </div>
             ))}
             {!topCandidate.explanation?.positive_factors?.length && (
-              <div className="text-slate-300">
+              <div className="text-salvus-text-secondary">
                 ✓ Compatible equipment capability & optimal transit corridor
               </div>
             )}
           </div>
         </div>
 
-        {/* Audit Formula Breakdown Accordion */}
-        <div className="pt-0.5">
+        {/* Audit Formula Accordion */}
+        <div>
           <button
             type="button"
             onClick={() => setShowFormulaBreakdown((prev) => !prev)}
-            className="w-full flex items-center justify-between text-[10px] text-sky-400 hover:text-sky-300 transition-colors py-1 cursor-pointer"
+            className="w-full flex items-center justify-between text-xs text-salvus-info hover:underline py-1 cursor-pointer"
           >
             <span className="flex items-center gap-1">
               {showFormulaBreakdown ? (
@@ -203,91 +196,78 @@ export const DispatchRecommendationPanel = ({
               ) : (
                 <ChevronDown className="h-3.5 w-3.5" />
               )}
-              <span>
-                {showFormulaBreakdown ? 'Hide Scoring Formula' : 'Inspect Scoring Breakdown'}
-              </span>
+              <span>{showFormulaBreakdown ? 'Hide Match Breakdown' : 'View Match Breakdown'}</span>
             </span>
-            <span className="text-[9px] text-slate-500 font-normal">Audit Trail</span>
           </button>
 
           {showFormulaBreakdown && (
-            <div className="mt-1.5 p-2 bg-[#04080F] rounded-lg border border-[#142030] text-[9px] space-y-1 text-slate-300">
+            <div className="mt-1.5 p-2 bg-salvus-muted/40 rounded-lg border border-salvus-border text-xs space-y-1 text-salvus-text-secondary">
               <div className="flex justify-between">
                 <span>Capability Match (Max 30):</span>
-                <span className="text-sky-300 font-bold">
+                <span className="font-bold text-salvus-text-primary">
                   {breakdown.capability_score ?? 30} pts
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Operational Readiness (Max 20):</span>
-                <span className="text-sky-300 font-bold">
+                <span className="font-bold text-salvus-text-primary">
                   {breakdown.availability_score ?? 20} pts
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Spatial Proximity (Max 15):</span>
-                <span className="text-sky-300 font-bold">{breakdown.distance_score ?? 15} pts</span>
+                <span className="font-bold text-salvus-text-primary">
+                  {breakdown.distance_score ?? 15} pts
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Transit ETA (Max 15):</span>
-                <span className="text-sky-300 font-bold">{breakdown.eta_score ?? 12} pts</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Crew Load Availability (Max 10):</span>
-                <span className="text-sky-300 font-bold">{breakdown.workload_score ?? 10} pts</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Severity Alignment (Max 10):</span>
-                <span className="text-sky-300 font-bold">
-                  {breakdown.severity_fit_score ?? 10} pts
+                <span className="font-bold text-salvus-text-primary">
+                  {breakdown.eta_score ?? 12} pts
                 </span>
               </div>
-              <div className="flex justify-between border-t border-[#142030] pt-1 font-bold text-slate-100">
-                <span>Total Normalized Score:</span>
-                <span className="text-emerald-400">
-                  {breakdown.final_score ?? topCandidate.match_score ?? 87} / 100
-                </span>
+              <div className="flex justify-between border-t border-salvus-border pt-1 font-bold text-salvus-text-primary">
+                <span>Total Match:</span>
+                <span className="text-salvus-safe">{topCandidate.match_score ?? 87} / 100</span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Primary Action Buttons */}
+        {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-2 pt-1">
-          <button
-            type="button"
-            onClick={() => onSelectRoute && onSelectRoute(topCandidate)}
-            className={`py-2 px-2.5 rounded-lg border text-[10px] font-bold uppercase transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
-              isSelectedForRoute
-                ? 'bg-sky-950/80 border-sky-400 text-sky-200'
-                : 'bg-slate-800/80 hover:bg-slate-700 border-slate-700 text-slate-200'
-            }`}
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={() => onSelectRoute?.(topCandidate)}
+            leftIcon={<Navigation className="h-3.5 w-3.5 text-salvus-info" />}
+            className="text-xs font-semibold"
           >
-            <Navigation className="h-3.5 w-3.5 text-sky-400" />
-            <span>{isSelectedForRoute ? 'Route Active' : 'View Route'}</span>
-          </button>
+            {isSelectedForRoute ? 'Route Active' : 'View Route'}
+          </Button>
 
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="md"
             disabled={isAssigning || topCandidate.status === 'OFFLINE'}
-            onClick={() => onRequestAssign && onRequestAssign(topCandidate)}
-            className="py-2 px-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold uppercase text-[10px] transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md shadow-sky-600/30 cursor-pointer"
+            onClick={() => onRequestAssign?.(topCandidate)}
+            leftIcon={<Send className="h-3.5 w-3.5" />}
+            className="text-xs font-bold"
           >
-            <Send className="h-3.5 w-3.5" />
-            <span>Assign Unit</span>
-          </button>
+            {isAssigning ? 'Assigning...' : 'Assign Unit'}
+          </Button>
         </div>
       </div>
 
-      {/* Secondary Top Alternatives Section */}
+      {/* Alternatives */}
       {alternatives.length > 0 && (
-        <div className="space-y-2 pt-1 border-t border-[#141C28]">
-          <span className="text-[9px] uppercase font-bold tracking-wider text-slate-400 block">
-            OTHER OPTIONS
+        <div className="space-y-2 pt-2 border-t border-salvus-border">
+          <span className="text-xs font-semibold text-salvus-text-secondary block">
+            Alternative Available Units ({alternatives.length})
           </span>
 
           <div className="space-y-1.5">
-            {alternatives.map((alt, idx) => {
+            {alternatives.slice(0, 3).map((alt, idx) => {
               const isAltRouteActive =
                 activeRoute?.responderId === alt.id ||
                 activeRoute?.label?.includes(alt.unit_name || alt.unitName || '')
@@ -295,53 +275,46 @@ export const DispatchRecommendationPanel = ({
               return (
                 <div
                   key={alt.id}
-                  className="p-2.5 bg-[#060D17] border border-[#142030] hover:border-[#1E3048] rounded-lg transition-colors flex items-center justify-between gap-2"
+                  className="p-2 bg-salvus-muted/30 border border-salvus-border rounded-lg flex items-center justify-between gap-2 text-xs"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[8px] font-bold text-slate-400 bg-slate-800 px-1 py-0.2 rounded">
+                      <span className="text-[10px] font-bold text-salvus-text-muted">
                         #{idx + 2}
                       </span>
-                      <span className="text-[11px] font-bold text-slate-200 truncate">
+                      <strong className="text-salvus-text-primary truncate">
                         {alt.unit_name || alt.unitName}
-                      </span>
+                      </strong>
                     </div>
-                    <p className="text-[9px] text-slate-400 truncate">
+                    <p className="text-[11px] text-salvus-text-secondary truncate">
                       {alt.vehicle_type || 'Craft'} · {alt.distance_km ?? alt.distanceKm ?? 2.1} km
-                      · {alt.eta_formatted || alt.etaFormatted || '8 min'} ·{' '}
-                      {alt.status || 'AVAILABLE'}
+                      · ETA {alt.eta_formatted || alt.etaFormatted || '8 min'}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="text-right">
-                      <span className="text-[11px] font-bold text-sky-300 block leading-none">
-                        {alt.match_score ?? alt.matchScore}
-                      </span>
-                      <span className="text-[7px] text-slate-500 uppercase">Score</span>
-                    </div>
-
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
-                      onClick={() => onSelectRoute && onSelectRoute(alt)}
+                      onClick={() => onSelectRoute?.(alt)}
                       title="View route corridor on map"
-                      className={`p-1.5 rounded border text-[9px] font-bold transition-colors cursor-pointer ${
+                      className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
                         isAltRouteActive
-                          ? 'bg-sky-950 border-sky-400 text-sky-300'
-                          : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
+                          ? 'bg-salvus-info-bg border-salvus-info-border text-salvus-info'
+                          : 'bg-salvus-surface border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
                       }`}
                     >
                       <Navigation className="h-3 w-3" />
                     </button>
 
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       disabled={isAssigning || alt.status === 'OFFLINE'}
-                      onClick={() => onRequestAssign && onRequestAssign(alt)}
-                      className="py-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[9px] font-bold uppercase transition-colors cursor-pointer"
+                      onClick={() => onRequestAssign?.(alt)}
+                      className="text-xs"
                     >
                       Assign
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )
@@ -349,6 +322,8 @@ export const DispatchRecommendationPanel = ({
           </div>
         </div>
       )}
-    </div>
+    </Card>
   )
 }
+
+export default DispatchRecommendationPanel

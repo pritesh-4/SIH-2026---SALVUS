@@ -1,5 +1,11 @@
-import { Sparkles } from 'lucide-react'
+import { Card } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
 
+/**
+ * Concise Operational Situation Briefing
+ * Part 10: 1-2 sentence executive briefing with compact priority indicators.
+ */
 export const SituationBriefing = ({
   situationSummary = null,
   liveHazards = [],
@@ -13,78 +19,86 @@ export const SituationBriefing = ({
 }) => {
   const activeCount = computedMetrics.active ?? computedMetrics.activeIncidents ?? 0
   const criticalCount = computedMetrics.critical ?? computedMetrics.criticalThreats ?? 0
-  const standbyCount = Math.max(0, totalRespondersCount - activeRespondersCount)
 
-  const fallbackBriefing = `District Command reports ${activeCount} active incidents across ${
-    incidentClusters.length || 1
-  } operational cluster(s). ${criticalCount} critical incident(s) require prioritized response. Fleet readiness: ${activeRespondersCount} deployed, ${standbyCount} standby. Evacuation reception capacity remains stable with ${totalBedsAvailable} verified beds available.`
+  const fallbackBriefing = `Flooding remains concentrated in the Sector 12 basin. ${
+    criticalCount > 0
+      ? `${criticalCount} critical threat${criticalCount > 1 ? 's require' : ' requires'} immediate response.`
+      : 'All reported sectors are currently being monitored.'
+  } Evacuation reception capacity remains stable.`
 
   return (
-    <section
-      aria-label="Situation Intelligence & Grounded AI Briefing"
-      className="bg-gradient-to-r from-[#0C121B] via-[#0E1624] to-[#0C121B] border border-blue-500/20 rounded-xl p-3.5 sm:p-4 shadow-lg space-y-2.5"
-    >
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#182332]">
+    <Card padding="md" className="space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-salvus-border">
         <div className="flex items-center gap-2">
-          <span className="p-1 rounded-md bg-blue-500/20 text-sky-300 border border-blue-500/30">
-            <Sparkles className="w-4 h-4" />
+          <Badge variant="info" dot={true}>
+            Operational Briefing
+          </Badge>
+          <span className="text-xs text-salvus-text-secondary">
+            Grounded intelligence across incidents, clusters, and fleet
           </span>
-          <div>
-            <span className="text-xs font-bold text-slate-100 tracking-tight block">
-              SITUATION INTELLIGENCE & AI OPERATIONAL BRIEFING
-            </span>
-            <span className="text-[10px] font-mono text-slate-400">
-              Grounded factual synthesis across incidents, clusters, fleet, and environmental feeds
-            </span>
-          </div>
         </div>
 
-        <div className="flex items-center gap-2 font-mono text-[10px]">
-          <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 font-bold">
-            DATA: LIVE DB TRUTH
-          </span>
-          <span className="px-2 py-0.5 rounded bg-[#080C12] border border-[#182332] text-slate-400">
-            {situationSummary?.provider || 'salvus-grounded-intelligence'}
-          </span>
-          <button
-            type="button"
+        <div className="flex items-center gap-2 text-xs">
+          <Button
+            variant="quiet"
+            size="sm"
             disabled={isRefreshingSituation}
             onClick={onRefreshSituation}
-            className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold cursor-pointer transition-colors disabled:opacity-50"
+            className="text-xs"
           >
             {isRefreshingSituation ? 'Refreshing...' : '↻ Refresh Intelligence'}
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Factual Briefing Text */}
-      <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-normal">
+      <p className="text-xs sm:text-sm text-salvus-text-primary leading-relaxed font-medium">
         {situationSummary?.briefing || fallbackBriefing}
       </p>
 
       {/* Context Statistics & Key Priorities */}
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#080C12] border border-[#182332] text-[10px] font-mono text-slate-300">
-          <span className="text-amber-400">⛈️</span>
-          <span>{liveHazards.length} Active Hazard Zone(s)</span>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-salvus-muted/40 border border-salvus-border text-xs text-salvus-text-secondary">
+          <span aria-hidden="true">⛈️</span>
+          <span>{liveHazards.length} Hazard Zones</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#080C12] border border-[#182332] text-[10px] font-mono text-slate-300">
-          <span className="text-sky-400">📍</span>
-          <span>{incidentClusters.length} Incident Cluster(s)</span>
+
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-salvus-muted/40 border border-salvus-border text-xs text-salvus-text-secondary">
+          <span aria-hidden="true">📍</span>
+          <span>{incidentClusters.length} Clusters</span>
+        </div>
+
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-salvus-muted/40 border border-salvus-border text-xs text-salvus-text-secondary">
+          <span aria-hidden="true">🚨</span>
+          <span>
+            {activeCount} Active ({criticalCount} Critical)
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-salvus-muted/40 border border-salvus-border text-xs text-salvus-text-secondary">
+          <span aria-hidden="true">🚤</span>
+          <span>
+            {activeRespondersCount}/{totalRespondersCount} Deployed
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-salvus-muted/40 border border-salvus-border text-xs text-salvus-text-secondary">
+          <span aria-hidden="true">🛡️</span>
+          <span>{totalBedsAvailable} Beds Free</span>
         </div>
 
         {situationSummary?.key_priorities &&
-          situationSummary.key_priorities.map((pri, idx) => (
+          situationSummary.key_priorities.slice(0, 2).map((pri, idx) => (
             <div
               key={idx}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-950/40 border border-blue-500/30 text-[10px] font-mono text-sky-200"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-salvus-info-bg border border-salvus-info-border text-xs text-salvus-info-text font-medium"
             >
-              <span className="text-blue-400">⚡</span>
-              <span className="truncate max-w-[260px] sm:max-w-md">{pri}</span>
+              <span aria-hidden="true">⚡</span>
+              <span className="truncate max-w-[260px] sm:max-w-sm">{pri}</span>
             </div>
           ))}
       </div>
-    </section>
+    </Card>
   )
 }
 

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { authorityData } from '../data/authority/authorityMock'
 import { assignResponder } from '../services/api'
 import {
@@ -21,6 +21,8 @@ import { IncidentInspector } from '../components/authority/IncidentInspector'
 import { ResponderPanel } from '../components/authority/ResponderPanel'
 import { ShelterPanel } from '../components/authority/ShelterPanel'
 import { AssignmentConfirmModal } from '../components/authority/AssignmentConfirmModal'
+import { Card } from '../components/ui/Card'
+import { Button } from '../components/ui/Button'
 
 export const AuthorityCommandCenter = () => {
   const { hub } = authorityData
@@ -114,10 +116,19 @@ export const AuthorityCommandCenter = () => {
   const [actionSuccessMessage, setActionSuccessMessage] = useState(null)
   const [isAssigningUnit, setIsAssigningUnit] = useState(false)
   const [assignConfirmCandidate, setAssignConfirmCandidate] = useState(null)
+  const statusTimeoutRef = useRef(null)
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current)
+    }
+  }, [])
 
   const showStatusMessage = useCallback((msg, timeout = 3500) => {
+    if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current)
     setActionSuccessMessage(msg)
-    setTimeout(() => setActionSuccessMessage(null), timeout)
+    statusTimeoutRef.current = setTimeout(() => setActionSuccessMessage(null), timeout)
   }, [])
 
   const {
@@ -220,11 +231,11 @@ export const AuthorityCommandCenter = () => {
   }
 
   return (
-    <div className="space-y-3.5 pb-8">
+    <div className="space-y-3.5 pb-8 animate-fadeIn">
       {/* Top District Header */}
       <AuthorityHeader hub={hub} dataProvenance={dataProvenance} />
 
-      {/* Metrics Strip */}
+      {/* 4-KPI Operational Strip */}
       <OperationalMetrics
         computedMetrics={computedMetrics}
         activeRespondersCount={activeRespondersCount}
@@ -232,7 +243,7 @@ export const AuthorityCommandCenter = () => {
         totalBedsAvailable={totalBedsAvailable}
       />
 
-      {/* Situation Intelligence & Grounded AI Briefing Card */}
+      {/* Concise Situation Intelligence Briefing */}
       <SituationBriefing
         situationSummary={situationSummary}
         liveHazards={liveHazards}
@@ -247,7 +258,7 @@ export const AuthorityCommandCenter = () => {
 
       {/* 3-Column Command Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
-        {/* Column 1: Incidents Queue */}
+        {/* Column 1: Action-Oriented Incidents Queue */}
         <IncidentQueue
           incidents={incidents}
           filteredIncidents={filteredIncidents}
@@ -277,119 +288,137 @@ export const AuthorityCommandCenter = () => {
         />
 
         {/* Column 3: Command Inspector & Resource Hub */}
-        <section
+        <Card
           aria-label="Command Inspector and Resource Hub"
-          className="lg:col-span-12 xl:col-span-4 bg-[#0C121B] border border-[#182332] rounded-xl p-3.5 flex flex-col space-y-3 min-h-[600px]"
+          padding="sm"
+          className="lg:col-span-12 xl:col-span-4 flex flex-col space-y-3 min-h-[580px]"
         >
-          <div className="flex items-center justify-between border-b border-[#182332] pb-2">
-            <div className="flex items-center gap-1">
+          {/* Tab Header */}
+          <div className="flex items-center justify-between border-b border-salvus-border pb-2">
+            <div role="tablist" aria-label="Command panel tabs" className="flex items-center gap-1">
               <button
                 type="button"
+                role="tab"
+                aria-selected={rightPanelTab === 'inspector'}
+                aria-controls="panel-inspector"
                 onClick={() => setRightPanelTab('inspector')}
-                className={`px-2.5 py-1 rounded text-xs font-mono font-bold uppercase transition-colors cursor-pointer ${
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   rightPanelTab === 'inspector'
-                    ? 'bg-slate-700 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
+                    : 'text-salvus-text-secondary hover:text-salvus-text-primary'
                 }`}
               >
                 Inspector
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={rightPanelTab === 'fleet'}
+                aria-controls="panel-fleet"
                 onClick={() => setRightPanelTab('fleet')}
-                className={`px-2.5 py-1 rounded text-xs font-mono font-bold uppercase transition-colors cursor-pointer ${
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   rightPanelTab === 'fleet'
-                    ? 'bg-slate-700 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
+                    : 'text-salvus-text-secondary hover:text-salvus-text-primary'
                 }`}
               >
                 Fleet ({liveResponders.length})
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={rightPanelTab === 'shelters'}
+                aria-controls="panel-shelters"
                 onClick={() => setRightPanelTab('shelters')}
-                className={`px-2.5 py-1 rounded text-xs font-mono font-bold uppercase transition-colors cursor-pointer ${
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   rightPanelTab === 'shelters'
-                    ? 'bg-slate-700 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
+                    : 'text-salvus-text-secondary hover:text-salvus-text-primary'
                 }`}
               >
                 Shelters ({liveShelters.length})
               </button>
             </div>
 
-            <button
-              type="button"
+            <Button
+              variant="quiet"
+              size="sm"
               onClick={handleSyncAll}
-              className="text-[10px] font-mono text-slate-400 hover:text-slate-200 cursor-pointer"
+              className="text-xs"
               title="Refresh all operational feeds"
             >
               ↻ Sync
-            </button>
+            </Button>
           </div>
 
           {/* TAB 1: Inspector */}
           {rightPanelTab === 'inspector' && (
-            <IncidentInspector
-              selectedIncident={selectedIncident}
-              activeRoute={activeRoute}
-              activeTargetResponder={activeTargetResponder}
-              currentlyAssignedResponder={currentlyAssignedResponder}
-              candidateShelters={candidateShelters}
-              topRecommendedCandidate={topRecommendedCandidate}
-              alternativeCandidates={alternativeCandidates}
-              isLoadingCandidates={isLoadingCandidates}
-              isAssigningUnit={isAssigningUnit}
-              isVerifyingTriage={isVerifyingTriage}
-              isAnalyzingTriage={isAnalyzingTriage}
-              isUpdatingStatus={isUpdatingStatus}
-              isSimulatingMovement={isSimulatingMovement}
-              simulationSpeedMultiplier={simulationSpeedMultiplier}
-              actionSuccessMessage={actionSuccessMessage}
-              onClearRoute={clearRoute}
-              onSelectCandidateRoute={selectCandidateRoute}
-              onRequestAssign={setAssignConfirmCandidate}
-              onRefreshCandidates={refreshCandidates}
-              onAdvanceLifecycle={handleAdvanceLifecycle}
-              onToggleMovementSimulation={toggleMovementSimulation}
-              onSetSimulationSpeed={setSimulationSpeedMultiplier}
-              onVerifyTriage={(customData) => verifyTriage(selectedIncident, customData)}
-              onAdjustTriage={(adjData) => adjustTriage(selectedIncident, adjData)}
-              onReevaluateTriage={() => reevaluateTriage(selectedIncident)}
-              onTransitionStatus={handleTransitionStatus}
-            />
+            <div id="panel-inspector" role="tabpanel" aria-labelledby="tab-inspector">
+              <IncidentInspector
+                selectedIncident={selectedIncident}
+                activeRoute={activeRoute}
+                activeTargetResponder={activeTargetResponder}
+                currentlyAssignedResponder={currentlyAssignedResponder}
+                candidateShelters={candidateShelters}
+                topRecommendedCandidate={topRecommendedCandidate}
+                alternativeCandidates={alternativeCandidates}
+                isLoadingCandidates={isLoadingCandidates}
+                isAssigningUnit={isAssigningUnit}
+                isVerifyingTriage={isVerifyingTriage}
+                isAnalyzingTriage={isAnalyzingTriage}
+                isUpdatingStatus={isUpdatingStatus}
+                isSimulatingMovement={isSimulatingMovement}
+                simulationSpeedMultiplier={simulationSpeedMultiplier}
+                actionSuccessMessage={actionSuccessMessage}
+                onClearRoute={clearRoute}
+                onSelectCandidateRoute={selectCandidateRoute}
+                onRequestAssign={setAssignConfirmCandidate}
+                onRefreshCandidates={refreshCandidates}
+                onAdvanceLifecycle={handleAdvanceLifecycle}
+                onToggleMovementSimulation={toggleMovementSimulation}
+                onSetSimulationSpeed={setSimulationSpeedMultiplier}
+                onVerifyTriage={(customData) => verifyTriage(selectedIncident, customData)}
+                onAdjustTriage={(adjData) => adjustTriage(selectedIncident, adjData)}
+                onReevaluateTriage={() => reevaluateTriage(selectedIncident)}
+                onTransitionStatus={handleTransitionStatus}
+              />
+            </div>
           )}
 
           {/* TAB 2: Fleet */}
           {rightPanelTab === 'fleet' && (
-            <ResponderPanel
-              filteredFleet={filteredFleet}
-              isLoadingFleet={isLoadingFleet}
-              fleetCapabilityFilter={fleetCapabilityFilter}
-              fleetStatusFilter={fleetStatusFilter}
-              selectedResponderDetail={selectedResponderDetail}
-              selectedIncident={selectedIncident}
-              onCapabilityFilterChange={setFleetCapabilityFilter}
-              onStatusFilterChange={setFleetStatusFilter}
-              onSelectResponderDetail={setSelectedResponderDetail}
-              onCloseResponderDetail={() => setSelectedResponderDetail(null)}
-              onSelectCandidateRoute={selectCandidateRoute}
-              onUpdateResponderStatus={updateResponderStatus}
-            />
+            <div id="panel-fleet" role="tabpanel" aria-labelledby="tab-fleet">
+              <ResponderPanel
+                filteredFleet={filteredFleet}
+                isLoadingFleet={isLoadingFleet}
+                fleetCapabilityFilter={fleetCapabilityFilter}
+                fleetStatusFilter={fleetStatusFilter}
+                selectedResponderDetail={selectedResponderDetail}
+                selectedIncident={selectedIncident}
+                onCapabilityFilterChange={setFleetCapabilityFilter}
+                onStatusFilterChange={setFleetStatusFilter}
+                onSelectResponderDetail={setSelectedResponderDetail}
+                onCloseResponderDetail={() => setSelectedResponderDetail(null)}
+                onSelectCandidateRoute={selectCandidateRoute}
+                onUpdateResponderStatus={updateResponderStatus}
+              />
+            </div>
           )}
 
           {/* TAB 3: Shelters */}
           {rightPanelTab === 'shelters' && (
-            <ShelterPanel
-              liveShelters={liveShelters}
-              liveHazards={liveHazards}
-              onAdjustBeds={adjustBeds}
-            />
+            <div id="panel-shelters" role="tabpanel" aria-labelledby="tab-shelters">
+              <ShelterPanel
+                liveShelters={liveShelters}
+                liveHazards={liveHazards}
+                onAdjustBeds={adjustBeds}
+              />
+            </div>
           )}
-        </section>
+        </Card>
       </div>
 
-      {/* Consequential Assignment Confirmation Modal */}
+      {/* Assignment Confirmation Modal */}
       <AssignmentConfirmModal
         isOpen={Boolean(assignConfirmCandidate)}
         candidate={assignConfirmCandidate}

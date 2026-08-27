@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createIncident } from '../../services/api'
 import { getCurrentLocation, LANDMARKS } from '../../lib/location'
 import { Badge } from '../ui/Badge'
@@ -42,6 +42,36 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
   })
   const [isAcquiringLocation, setIsAcquiringLocation] = useState(false)
   const [selectedLandmarkName, setSelectedLandmarkName] = useState(LANDMARKS[0].name)
+  const reportModalRef = useRef(null)
+
+  const handleResetAndClose = useCallback(() => {
+    setStep(1)
+    setPhotoAttached(false)
+    setIsSubmitting(false)
+    setSubmissionError(null)
+    setCreatedIncident(null)
+    onClose?.()
+  }, [onClose])
+
+  // Escape key & body scroll lock
+  useEffect(() => {
+    if (!isOpen) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    if (reportModalRef.current) reportModalRef.current.focus()
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        handleResetAndClose()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = originalOverflow
+    }
+  }, [isOpen, handleResetAndClose])
 
   useEffect(() => {
     if (step < 3) {
@@ -168,21 +198,6 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     }
   }
 
-  const handleResetAndClose = () => {
-    setStep(1)
-    setCategory('flood')
-    setSeverity('HIGH')
-    setDescription('')
-    setReporterName('')
-    setReporterPhone('')
-    setAffectedCount(1)
-    setPhotoAttached(false)
-    setIsSubmitting(false)
-    setSubmissionError(null)
-    setCreatedIncident(null)
-    onClose()
-  }
-
   if (!isOpen) return null
 
   return (
@@ -197,7 +212,11 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
         }
       }}
     >
-      <div className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl relative max-h-[90vh] overflow-y-auto text-salvus-text-primary">
+      <div
+        ref={reportModalRef}
+        tabIndex={-1}
+        className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl relative max-h-[90vh] overflow-y-auto text-salvus-text-primary outline-none"
+      >
         {/* Close Button */}
         <button
           type="button"
@@ -325,7 +344,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
             </FormField>
 
             {/* Reporter info */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <FormField id="reporter-name" label="Your Name (Optional)">
                 <Input
                   id="reporter-name"
@@ -336,7 +355,17 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
                 />
               </FormField>
 
-              <FormField id="affected-count" label="People Affected (Est.)">
+              <FormField id="reporter-phone" label="Phone (Optional)">
+                <Input
+                  id="reporter-phone"
+                  type="tel"
+                  value={reporterPhone}
+                  onChange={(e) => setReporterPhone(e.target.value)}
+                  placeholder="+91 98301 24890"
+                />
+              </FormField>
+
+              <FormField id="affected-count" label="People (Est.)">
                 <Input
                   id="affected-count"
                   type="number"

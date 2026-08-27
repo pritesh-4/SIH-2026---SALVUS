@@ -1,48 +1,76 @@
+import { Card } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+
+/**
+ * 4-Metric Primary Operational KPI Row
+ * Part 5: Maximum ~4 primary metrics for immediate cognitive grasp.
+ */
 export const OperationalMetrics = ({
   computedMetrics = { active: 0, critical: 0, resolved: 0 },
   activeRespondersCount = 0,
   totalRespondersCount = 0,
   totalBedsAvailable = 0,
 }) => {
+  const critical = computedMetrics.critical ?? computedMetrics.criticalThreats ?? 0
+  const active = computedMetrics.active ?? computedMetrics.activeIncidents ?? 0
+  const resolved = computedMetrics.resolved ?? computedMetrics.resolvedCount ?? 0
+
   return (
-    <section
-      aria-label="District Operational Metrics"
-      className="grid grid-cols-2 sm:grid-cols-5 gap-2.5"
-    >
-      <div className="bg-[#0C121B] border border-[#182332] rounded-xl p-3">
-        <span className="text-[10px] font-mono text-slate-400 block uppercase">
-          Active Incidents
+    <section aria-label="Operational Metrics" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* 1. Critical Threats */}
+      <Card variant="critical" padding="sm" className="flex flex-col justify-between">
+        <div className="flex items-center justify-between gap-1 mb-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-salvus-critical">
+            Critical Threats
+          </span>
+          <Badge variant="critical" size="sm" dot={true}>
+            Priority
+          </Badge>
+        </div>
+        <span className="text-2xl font-extrabold text-salvus-critical font-mono">{critical}</span>
+      </Card>
+
+      {/* 2. Active Incidents */}
+      <Card padding="sm" className="flex flex-col justify-between">
+        <div className="flex items-center justify-between gap-1 mb-1">
+          <span className="text-xs font-semibold uppercase tracking-wider text-salvus-text-secondary">
+            Active Incidents
+          </span>
+          <span className="text-[11px] text-salvus-text-muted">{resolved} resolved</span>
+        </div>
+        <span className="text-2xl font-extrabold text-salvus-text-primary font-mono">{active}</span>
+      </Card>
+
+      {/* 3. Fleet Deployed */}
+      <Card variant="info" padding="sm" className="flex flex-col justify-between">
+        <div className="flex items-center justify-between gap-1 mb-1">
+          <span className="text-xs font-semibold uppercase tracking-wider text-salvus-info">
+            Fleet Deployed
+          </span>
+          <span className="text-[11px] text-salvus-info/80">{totalRespondersCount} total</span>
+        </div>
+        <span className="text-2xl font-extrabold text-salvus-info font-mono">
+          {activeRespondersCount}{' '}
+          <span className="text-xs font-normal text-salvus-text-muted">
+            / {totalRespondersCount}
+          </span>
         </span>
-        <span className="text-xl font-bold font-mono text-slate-100">
-          {computedMetrics.active ?? computedMetrics.activeIncidents ?? 0}
+      </Card>
+
+      {/* 4. Shelter Capacity */}
+      <Card variant="safe" padding="sm" className="flex flex-col justify-between">
+        <div className="flex items-center justify-between gap-1 mb-1">
+          <span className="text-xs font-semibold uppercase tracking-wider text-salvus-safe">
+            Available Beds
+          </span>
+          <Badge variant="safe" size="sm">
+            Stable
+          </Badge>
+        </div>
+        <span className="text-2xl font-extrabold text-salvus-safe font-mono">
+          {totalBedsAvailable}
         </span>
-      </div>
-      <div className="bg-[#0C121B] border border-[#182332] rounded-xl p-3">
-        <span className="text-[10px] font-mono text-rose-400 block uppercase">
-          Critical Threats
-        </span>
-        <span className="text-xl font-bold font-mono text-rose-400">
-          {computedMetrics.critical ?? computedMetrics.criticalThreats ?? 0}
-        </span>
-      </div>
-      <div className="bg-[#0C121B] border border-[#182332] rounded-xl p-3">
-        <span className="text-[10px] font-mono text-sky-400 block uppercase">Fleet Deployed</span>
-        <span className="text-xl font-bold font-mono text-sky-300">
-          {activeRespondersCount} / {totalRespondersCount}
-        </span>
-      </div>
-      <div className="bg-[#0C121B] border border-[#182332] rounded-xl p-3">
-        <span className="text-[10px] font-mono text-emerald-400 block uppercase">
-          Available Beds
-        </span>
-        <span className="text-xl font-bold font-mono text-emerald-300">{totalBedsAvailable}</span>
-      </div>
-      <div className="bg-[#0C121B] border border-[#182332] rounded-xl p-3 col-span-2 sm:col-span-1">
-        <span className="text-[10px] font-mono text-slate-400 block uppercase">Resolved Cases</span>
-        <span className="text-xl font-bold font-mono text-emerald-400">
-          {computedMetrics.resolved ?? computedMetrics.resolvedCount ?? 0}
-        </span>
-      </div>
+      </Card>
     </section>
   )
 }

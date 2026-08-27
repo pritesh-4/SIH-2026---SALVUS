@@ -39,12 +39,24 @@ export const EmergencyDemoControls = ({
           } else {
             localStorage.removeItem('salvus_demo_mode')
           }
+          window.dispatchEvent(new CustomEvent('salvus_demo_toggle', { detail: next }))
           return next
         })
       }
     }
+
+    const handleSync = (e) => {
+      if (e.detail !== undefined) {
+        setIsDemoMode(e.detail)
+      }
+    }
+
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('salvus_demo_toggle', handleSync)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('salvus_demo_toggle', handleSync)
+    }
   }, [])
 
   if (!isDemoMode) {

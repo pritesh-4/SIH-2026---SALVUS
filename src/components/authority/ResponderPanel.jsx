@@ -1,3 +1,10 @@
+import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
+
+/**
+ * Secondary Fleet Resource Management Panel
+ * Part 11: Organized secondary resource list.
+ */
 export const ResponderPanel = ({
   filteredFleet = [],
   isLoadingFleet = false,
@@ -12,14 +19,31 @@ export const ResponderPanel = ({
   onSelectCandidateRoute,
   onUpdateResponderStatus,
 }) => {
+  const getStatusVariant = (status) => {
+    switch (status) {
+      case 'AVAILABLE':
+        return 'safe'
+      case 'ASSIGNED':
+      case 'EN_ROUTE':
+        return 'info'
+      case 'NEARBY':
+      case 'ON_SCENE':
+        return 'warning'
+      case 'OFFLINE':
+      default:
+        return 'neutral'
+    }
+  }
+
   return (
-    <div className="space-y-2.5 flex-1 flex flex-col justify-between overflow-y-auto pr-1">
+    <div className="space-y-3 flex-1 flex flex-col justify-between overflow-y-auto pr-1">
       <div className="space-y-2">
-        <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono">
+        {/* Filters */}
+        <div className="grid grid-cols-2 gap-2 text-xs">
           <select
             value={fleetCapabilityFilter}
-            onChange={(e) => onCapabilityFilterChange && onCapabilityFilterChange(e.target.value)}
-            className="bg-[#080C12] border border-[#182332] text-slate-300 p-1.5 rounded"
+            onChange={(e) => onCapabilityFilterChange?.(e.target.value)}
+            className="bg-salvus-surface border border-salvus-border text-salvus-text-primary p-2 rounded-lg text-xs"
           >
             <option value="all">All Capabilities</option>
             <option value="FLOOD_BOAT">Flood Boat</option>
@@ -30,8 +54,8 @@ export const ResponderPanel = ({
 
           <select
             value={fleetStatusFilter}
-            onChange={(e) => onStatusFilterChange && onStatusFilterChange(e.target.value)}
-            className="bg-[#080C12] border border-[#182332] text-slate-300 p-1.5 rounded"
+            onChange={(e) => onStatusFilterChange?.(e.target.value)}
+            className="bg-salvus-surface border border-salvus-border text-salvus-text-primary p-2 rounded-lg text-xs"
           >
             <option value="all">All Statuses</option>
             <option value="AVAILABLE">Available</option>
@@ -43,12 +67,13 @@ export const ResponderPanel = ({
           </select>
         </div>
 
+        {/* Fleet List */}
         {isLoadingFleet ? (
-          <div className="py-12 text-center text-xs font-mono text-slate-500">
-            Syncing fleet telemetry...
+          <div className="py-16 text-center text-xs text-salvus-text-muted">
+            Updating fleet list...
           </div>
         ) : filteredFleet.length === 0 ? (
-          <div className="py-12 text-center text-xs font-mono text-slate-500">
+          <div className="py-16 text-center text-xs text-salvus-text-muted">
             No response units match filter.
           </div>
         ) : (
@@ -57,36 +82,28 @@ export const ResponderPanel = ({
             return (
               <div
                 key={resp.id}
-                onClick={() => onSelectResponderDetail && onSelectResponderDetail(resp)}
-                className={`bg-[#080C12] border p-2.5 rounded-lg text-xs space-y-1.5 cursor-pointer transition-colors ${
+                onClick={() => onSelectResponderDetail?.(resp)}
+                className={`bg-salvus-muted/30 border p-3 rounded-xl text-xs space-y-1.5 cursor-pointer transition-all ${
                   isSelected
-                    ? 'border-blue-500/60 bg-[#121B27]'
-                    : 'border-[#182332] hover:border-slate-700'
+                    ? 'border-salvus-info bg-salvus-info-bg/30 ring-1 ring-salvus-info'
+                    : 'border-salvus-border hover:border-salvus-border-strong hover:bg-salvus-surface-hover'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-200 text-[11px] truncate max-w-[150px]">
+                  <strong className="text-salvus-text-primary text-xs truncate max-w-[160px]">
                     {resp.unit_name}
-                  </span>
-                  <span
-                    className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-semibold border ${
-                      resp.status === 'AVAILABLE'
-                        ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30'
-                        : resp.status === 'ASSIGNED' || resp.status === 'EN_ROUTE'
-                          ? 'bg-blue-950/40 text-blue-300 border-blue-500/30'
-                          : resp.status === 'ON_SCENE'
-                            ? 'bg-indigo-950/40 text-indigo-300 border-indigo-500/30'
-                            : 'bg-slate-800 text-slate-400 border-slate-700'
-                    }`}
-                  >
+                  </strong>
+                  <Badge variant={getStatusVariant(resp.status)} size="sm">
                     {resp.status}
-                  </span>
+                  </Badge>
                 </div>
-                <p className="text-[10px] text-slate-400 font-mono">
+
+                <p className="text-xs text-salvus-text-secondary">
                   {resp.team_lead} · {resp.vehicle_type}
                 </p>
-                <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono pt-1 border-t border-[#182332]">
-                  <span>{resp.radio_channel}</span>
+
+                <div className="flex items-center justify-between text-xs text-salvus-text-muted pt-1 border-t border-salvus-border">
+                  <span>VHF: {resp.radio_channel}</span>
                   <span>
                     Load: {resp.current_load} / {resp.max_capacity}
                   </span>
@@ -97,93 +114,99 @@ export const ResponderPanel = ({
         )}
       </div>
 
+      {/* Selected Responder Detail Sheet */}
       {selectedResponderDetail && (
-        <div className="bg-[#080C12] border border-blue-500/30 p-3 rounded-xl text-xs space-y-2 mt-2">
-          <div className="flex items-center justify-between border-b border-[#182332] pb-1.5">
-            <span className="font-bold text-slate-100 font-mono text-xs">
+        <div className="bg-salvus-surface-elevated border border-salvus-border p-3.5 rounded-xl text-xs space-y-2.5 mt-2">
+          <div className="flex items-center justify-between border-b border-salvus-border pb-1.5">
+            <strong className="text-salvus-text-primary text-xs">
               {selectedResponderDetail.unit_name}
-            </span>
+            </strong>
             <button
               type="button"
               onClick={onCloseResponderDetail}
-              className="text-slate-400 hover:text-white font-mono text-xs p-0.5 cursor-pointer"
+              className="text-salvus-text-muted hover:text-salvus-text-primary text-xs p-0.5 cursor-pointer select-none"
             >
               ✕
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono text-slate-300">
+
+          <div className="grid grid-cols-2 gap-2 text-xs text-salvus-text-secondary">
             <div>
-              <span className="text-slate-500 block">CAPABILITY</span>
-              <span>{selectedResponderDetail.capability}</span>
+              <span className="text-salvus-text-muted block text-[10px] uppercase">Capability</span>
+              <span className="text-salvus-text-primary font-medium">
+                {selectedResponderDetail.capability}
+              </span>
             </div>
             <div>
-              <span className="text-slate-500 block">RADIO CHANNEL</span>
-              <span>{selectedResponderDetail.radio_channel}</span>
+              <span className="text-salvus-text-muted block text-[10px] uppercase">Radio</span>
+              <span className="text-salvus-text-primary font-medium">
+                {selectedResponderDetail.radio_channel}
+              </span>
             </div>
             <div>
-              <span className="text-slate-500 block">POSITION</span>
-              <span>
+              <span className="text-salvus-text-muted block text-[10px] uppercase">
+                Coordinates
+              </span>
+              <span className="font-mono text-salvus-text-primary text-[11px]">
                 {selectedResponderDetail.latitude?.toFixed(4)}°N,{' '}
                 {selectedResponderDetail.longitude?.toFixed(4)}°E
               </span>
             </div>
             <div>
-              <span className="text-slate-500 block">CURRENT LOAD</span>
-              <span>
+              <span className="text-salvus-text-muted block text-[10px] uppercase">Crew Load</span>
+              <span className="text-salvus-text-primary font-medium">
                 {selectedResponderDetail.current_load} / {selectedResponderDetail.max_capacity}
               </span>
             </div>
           </div>
+
           {selectedResponderDetail.assigned_incident_id && (
-            <div className="bg-[#121B27] p-1.5 rounded text-[10px] font-mono text-blue-300">
-              Assigned to Ticket #{selectedResponderDetail.assigned_incident_id}
+            <div className="bg-salvus-info-bg border border-salvus-info-border p-2 rounded-lg text-xs text-salvus-info-text font-medium">
+              Assigned to Incident #{selectedResponderDetail.assigned_incident_id}
             </div>
           )}
+
           {selectedIncident && (
-            <button
-              type="button"
-              onClick={() =>
-                onSelectCandidateRoute && onSelectCandidateRoute(selectedResponderDetail)
-              }
-              className="w-full py-1.5 px-2 rounded-lg bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 text-sky-300 text-[10px] font-mono font-bold uppercase transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth={true}
+              onClick={() => onSelectCandidateRoute?.(selectedResponderDetail)}
+              className="text-xs"
             >
-              <span>
-                📍 Plot Route to Incident #
-                {selectedIncident.ticket_id || selectedIncident.id?.slice(0, 6)}
-              </span>
-            </button>
+              📍 Plot Route to Selected Incident
+            </Button>
           )}
-          <div className="grid grid-cols-3 gap-1 pt-1">
-            <button
-              type="button"
+
+          <div className="grid grid-cols-3 gap-1.5 pt-1">
+            <Button
+              variant="quiet"
+              size="sm"
               onClick={() =>
-                onUpdateResponderStatus &&
-                onUpdateResponderStatus(selectedResponderDetail.id, 'AVAILABLE', null)
+                onUpdateResponderStatus?.(selectedResponderDetail.id, 'AVAILABLE', null)
               }
-              className="py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[9px] font-mono uppercase cursor-pointer"
+              className="text-[11px]"
             >
-              Set Available
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                onUpdateResponderStatus &&
-                onUpdateResponderStatus(selectedResponderDetail.id, 'ON_SCENE')
-              }
-              className="py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[9px] font-mono uppercase cursor-pointer"
+              Available
+            </Button>
+
+            <Button
+              variant="quiet"
+              size="sm"
+              onClick={() => onUpdateResponderStatus?.(selectedResponderDetail.id, 'ON_SCENE')}
+              className="text-[11px]"
             >
-              Set On Scene
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                onUpdateResponderStatus &&
-                onUpdateResponderStatus(selectedResponderDetail.id, 'OFFLINE')
-              }
-              className="py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[9px] font-mono uppercase cursor-pointer"
+              On Scene
+            </Button>
+
+            <Button
+              variant="quiet"
+              size="sm"
+              onClick={() => onUpdateResponderStatus?.(selectedResponderDetail.id, 'OFFLINE')}
+              className="text-[11px]"
             >
-              Set Offline
-            </button>
+              Offline
+            </Button>
           </div>
         </div>
       )}

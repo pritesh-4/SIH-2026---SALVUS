@@ -1,17 +1,24 @@
 import { calculateDistanceKm } from '../../features/authority/incidents/incidentUtils'
+import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
 
+/**
+ * Secondary Shelter Management Panel
+ * Part 11: Organized secondary resource list.
+ */
 export const ShelterPanel = ({ liveShelters = [], liveHazards = [], onAdjustBeds }) => {
   return (
-    <div className="space-y-2 flex-1 overflow-y-auto pr-1">
-      <div className="flex items-center justify-between pb-1 text-[10px] font-mono text-slate-400">
+    <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+      <div className="flex items-center justify-between pb-1 text-xs text-salvus-text-muted font-semibold">
         <span>EVACUATION HUBS</span>
-        <span>CAPACITY</span>
+        <span>BED CAPACITY</span>
       </div>
 
       {liveShelters.map((shl) => {
         const avail = shl.available_beds ?? 0
         const total = shl.total_beds || 1
-        const occ = shl.occupancy_rate || `${Math.round(((total - avail) / total) * 100)}%`
+        const occPct = Math.round(((total - avail) / total) * 100)
+        const occ = shl.occupancy_rate || `${occPct}%`
         const supplies = shl.supplies_status || 'Adequate'
 
         const isNearHazard = liveHazards.some((hz) => {
@@ -23,66 +30,73 @@ export const ShelterPanel = ({ liveShelters = [], liveHazards = [], onAdjustBeds
         return (
           <div
             key={shl.id}
-            className={`p-2.5 rounded-lg text-xs space-y-2 border transition-colors ${
+            className={`p-3 rounded-xl text-xs space-y-2 border transition-colors ${
               isNearHazard
-                ? 'bg-[#14080A] border-rose-500/40 hover:border-rose-500'
-                : 'bg-[#080C12] border-[#182332] hover:border-[#27384C]'
+                ? 'bg-salvus-critical-bg border-salvus-critical-border'
+                : 'bg-salvus-muted/30 border-salvus-border hover:border-salvus-border-strong'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-slate-200 text-[11px] truncate max-w-[150px]">
+              <strong className="text-salvus-text-primary text-xs truncate max-w-[160px]">
                 {shl.name}
-              </span>
-              <div className="flex items-center gap-1">
+              </strong>
+              <div className="flex items-center gap-1.5">
                 {isNearHazard && (
-                  <span className="text-[8px] font-mono px-1.5 py-0.2 rounded font-bold bg-rose-950 text-rose-300 border border-rose-500/40 animate-pulse">
-                    ⚠️ HAZARD PROXIMITY
-                  </span>
+                  <Badge variant="critical" size="sm" dot={true}>
+                    Hazard Near
+                  </Badge>
                 )}
-                <span
-                  className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold border ${
+                <Badge
+                  variant={
                     shl.status === 'OPEN'
-                      ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30'
+                      ? 'safe'
                       : shl.status === 'NEAR_CAPACITY'
-                        ? 'bg-amber-950/40 text-amber-300 border-amber-500/30'
-                        : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-                  }`}
+                        ? 'warning'
+                        : 'critical'
+                  }
+                  size="sm"
                 >
                   {shl.status}
-                </span>
+                </Badge>
               </div>
             </div>
-            <div className="flex items-center justify-between text-[10px] font-mono">
-              <span className="text-emerald-400 font-bold">{avail} beds available</span>
-              <span className="text-slate-400">Total: {total}</span>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-salvus-safe font-bold">{avail} beds free</span>
+              <span className="text-salvus-text-muted">Total: {total}</span>
             </div>
-            <div className="w-full bg-[#121B27] h-1.5 rounded-full overflow-hidden border border-[#182332]">
+
+            <div className="w-full bg-salvus-muted h-2 rounded-full overflow-hidden border border-salvus-border">
               <div
-                className={`h-full ${shl.status === 'NEAR_CAPACITY' ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                className={`h-full ${shl.status === 'NEAR_CAPACITY' ? 'bg-salvus-warning' : 'bg-salvus-safe'}`}
                 style={{ width: occ }}
-              ></div>
+              />
             </div>
-            <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono">
+
+            <div className="flex items-center justify-between text-[11px] text-salvus-text-secondary">
               <span>Occupancy: {occ}</span>
-              <span className="truncate max-w-[130px]">Rations: {supplies}</span>
+              <span className="truncate max-w-[130px]">Supplies: {supplies}</span>
             </div>
-            <div className="flex items-center justify-between pt-1 border-t border-[#182332] text-[9px] font-mono">
-              <span className="text-slate-500">Quick Intake:</span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => onAdjustBeds && onAdjustBeds(shl.id, avail, -25)}
-                  className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer"
+
+            <div className="flex items-center justify-between pt-2 border-t border-salvus-border text-xs">
+              <span className="text-salvus-text-muted">Quick Adjust:</span>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  onClick={() => onAdjustBeds?.(shl.id, avail, -25)}
+                  className="text-xs"
                 >
-                  +25 Occupants
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onAdjustBeds && onAdjustBeds(shl.id, avail, 25)}
-                  className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer"
+                  +25 Intake
+                </Button>
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  onClick={() => onAdjustBeds?.(shl.id, avail, 25)}
+                  className="text-xs"
                 >
                   -25 Released
-                </button>
+                </Button>
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
 
@@ -9,6 +9,26 @@ import { Button } from '../../ui/Button'
 export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel }) => {
   const [holdProgress, setHoldProgress] = useState(0)
   const [isHolding, setIsHolding] = useState(false)
+  const confirmModalRef = useRef(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    if (confirmModalRef.current) confirmModalRef.current.focus()
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onCancel?.()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = originalOverflow
+    }
+  }, [isOpen, onCancel])
 
   useEffect(() => {
     if (!isHolding) return
@@ -46,7 +66,11 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel }) => {
         }
       }}
     >
-      <div className="bg-salvus-surface border border-salvus-critical-border rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl relative text-salvus-text-primary">
+      <div
+        ref={confirmModalRef}
+        tabIndex={-1}
+        className="bg-salvus-surface border border-salvus-critical-border rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl relative text-salvus-text-primary outline-none"
+      >
         {/* Warning Badge */}
         <div className="flex items-center gap-2 mb-3">
           <Badge variant="critical" dot={true}>

@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useId, useCallback } from 'react'
 
 /**
  * Reusable Calm Modal Component
  *
- * Accessible dialog with focus management, backdrop listener, escape key listener, and clean layout.
+ * Accessible dialog with focus trapping, auto-focus, backdrop listener,
+ * escape key listener, body scroll lock, and clean layout.
  */
 export const Modal = ({
   isOpen,
@@ -17,15 +18,47 @@ export const Modal = ({
   className = '',
 }) => {
   const modalRef = useRef(null)
+  const previousFocusRef = useRef(null)
+  const uniqueId = useId()
+
+  // Focus trapping: keep Tab cycling within the modal
+  const handleTabTrap = useCallback((e) => {
+    if (e.key !== 'Tab' || !modalRef.current) return
+
+    const focusableSelectors =
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    const focusableElements = modalRef.current.querySelectorAll(focusableSelectors)
+    if (focusableElements.length === 0) return
+
+    const firstEl = focusableElements[0]
+    const lastEl = focusableElements[focusableElements.length - 1]
+
+    if (e.shiftKey) {
+      if (document.activeElement === firstEl) {
+        e.preventDefault()
+        lastEl.focus()
+      }
+    } else {
+      if (document.activeElement === lastEl) {
+        e.preventDefault()
+        firstEl.focus()
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!isOpen) return
+
+    // Save previously focused element for restoration on close
+    previousFocusRef.current = document.activeElement
 
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault()
         onClose?.()
+        return
       }
+      handleTabTrap(e)
     }
 
     document.addEventListener('keydown', handleKeyDown)
@@ -33,11 +66,20 @@ export const Modal = ({
     const originalOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
+    // Auto-focus the modal container
+    if (modalRef.current) {
+      modalRef.current.focus()
+    }
+
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       document.body.style.overflow = originalOverflow
+      // Restore focus to previously focused element
+      if (previousFocusRef.current && typeof previousFocusRef.current.focus === 'function') {
+        previousFocusRef.current.focus()
+      }
     }
-  }, [isOpen, onClose])
+  }, [isOpen, onClose, handleTabTrap])
 
   if (!isOpen) return null
 
@@ -49,8 +91,8 @@ export const Modal = ({
     '2xl': 'max-w-4xl',
   }
 
-  const titleId = title ? 'modal-title' : undefined
-  const descId = description ? 'modal-description' : undefined
+  const titleId = title ? `${uniqueId}-modal-title` : undefined
+  const descId = description ? `${uniqueId}-modal-desc` : undefined
 
   return (
     <div
@@ -67,7 +109,8 @@ export const Modal = ({
     >
       <div
         ref={modalRef}
-        className={`bg-salvus-surface border border-salvus-border rounded-2xl w-full p-6 sm:p-7 shadow-xl relative text-salvus-text-primary ${
+        tabIndex={-1}
+        className={`bg-salvus-surface border border-salvus-border rounded-2xl w-full p-6 sm:p-7 shadow-xl relative text-salvus-text-primary outline-none ${
           sizeClasses[size] || sizeClasses.md
         } ${className}`}
       >
