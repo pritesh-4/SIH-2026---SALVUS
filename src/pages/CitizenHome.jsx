@@ -84,9 +84,11 @@ export const CitizenHome = () => {
 
       {/* Header Greeting (Calm, Human, Sentence Case) */}
       <section className="mb-6">
-        <p className="text-xs font-medium text-slate-400">{user.greeting}</p>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100 tracking-tight mt-1">
-          {user.headline}
+        <p className="text-xs sm:text-sm font-medium text-salvus-text-secondary">
+          {user.greeting || 'Hello, Aditi'}
+        </p>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary tracking-tight mt-0.5">
+          {user.headline || 'Your Emergency & Safety Overview'}
         </h1>
       </section>
 

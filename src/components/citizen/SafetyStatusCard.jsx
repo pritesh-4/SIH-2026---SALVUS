@@ -1,20 +1,28 @@
+import { Card } from '../ui/Card'
+import { StatusIndicator } from '../ui/StatusIndicator'
+
+/**
+ * High-Clarity Citizen Safety Status Card
+ * Answers Question 1: "Am I safe?" in under 1 second.
+ */
 export const SafetyStatusCard = ({
-  badgeText = 'Current status · Safe',
-  title = 'No active threats in your immediate area',
-  subtitle = 'Monitored via local sector reports and weather models · Updated 2m ago',
+  status = 'safe',
+  badgeText = 'Safe',
+  title = "You're currently safe.",
+  subtitle = 'No severe threats detected in your immediate area · Monitored live',
 }) => {
   return (
-    <div className="bg-[#0D141F] border border-[#1A2533] rounded-xl p-5 sm:p-6 transition-all duration-200 hover:border-[#27384C]">
-      <div className="flex items-center gap-2 mb-2.5">
-        <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block"></span>
-        <span className="text-xs font-semibold tracking-wide text-emerald-400">{badgeText}</span>
+    <Card variant="safe" padding="md" className="transition-all">
+      <div className="flex items-center justify-between gap-3 mb-2.5">
+        <StatusIndicator status={status} label={badgeText} showDot={true} showIcon={true} />
+        <span className="text-[11px] text-salvus-text-muted">Updated live</span>
       </div>
-      <h2 className="text-xl sm:text-2xl font-bold text-slate-100 tracking-tight leading-snug">
+      <h2 className="text-xl sm:text-2xl font-bold text-salvus-text-primary tracking-tight leading-snug">
         {title}
       </h2>
-      <p className="text-xs sm:text-sm text-slate-400 mt-1 font-normal leading-relaxed">
+      <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 font-normal leading-relaxed">
         {subtitle}
       </p>
-    </div>
+    </Card>
   )
 }

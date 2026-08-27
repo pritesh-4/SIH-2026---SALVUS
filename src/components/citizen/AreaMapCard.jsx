@@ -1,85 +1,95 @@
+import { Card } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+
+/**
+ * Area Overview Map Card
+ * Visual orientation of You, Safe Places, and Hazard alerts.
+ */
 export const AreaMapCard = ({
-  badgeText = 'Local area overview',
+  badgeText = 'Area Map',
   location = 'Sector 12 · Salt Lake, Kolkata',
   legend = [
-    { label: 'Your location', color: '#3B82F6' },
-    { label: 'Safe shelter', color: '#10B981' },
-    { label: 'Hazard zone', color: '#EF4444' },
+    { label: 'You', colorClass: 'bg-salvus-info' },
+    { label: 'Safe Place', colorClass: 'bg-salvus-safe' },
+    { label: 'Hazard', colorClass: 'bg-salvus-critical' },
   ],
 }) => {
   return (
-    <div className="bg-[#0D141F] border border-[#1A2533] rounded-xl p-5 sm:p-6 transition-all duration-200 hover:border-[#27384C]">
-      {/* Header */}
-      <div className="mb-3">
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="h-2 w-2 rounded-full bg-sky-400"></span>
-          <span className="text-xs font-semibold text-slate-300">{badgeText}</span>
+    <Card padding="md" className="transition-all">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <Badge variant="neutral" dot={true}>
+              {badgeText}
+            </Badge>
+          </div>
+          <h3 className="text-sm font-semibold text-salvus-text-primary">{location}</h3>
         </div>
-        <h3 className="text-sm font-semibold text-slate-100">{location}</h3>
+        <span className="text-xs text-salvus-info font-semibold">Open map →</span>
       </div>
 
       {/* Map Radar Canvas */}
-      <div className="relative w-full h-44 sm:h-48 bg-[#080C12] rounded-lg border border-[#182332] overflow-hidden flex flex-col justify-between p-4 select-none">
+      <div className="relative w-full h-40 sm:h-44 bg-salvus-muted/40 rounded-xl border border-salvus-border overflow-hidden flex flex-col justify-between p-4 select-none">
         {/* Subtle Map Grid lines */}
-        <div className="absolute inset-0 flex flex-col justify-between py-6 px-4 pointer-events-none opacity-30">
-          <div className="w-full h-px bg-[#182332]"></div>
-          <div className="w-full h-px bg-[#182332]"></div>
-          <div className="w-full h-px bg-[#182332]"></div>
+        <div className="absolute inset-0 flex flex-col justify-between py-6 px-4 pointer-events-none opacity-20">
+          <div className="w-full h-px bg-salvus-border"></div>
+          <div className="w-full h-px bg-salvus-border"></div>
+          <div className="w-full h-px bg-salvus-border"></div>
         </div>
 
-        {/* Hazard Zone (Soft Red Area) */}
+        {/* Hazard Zone */}
         <div
-          className="absolute rounded-full bg-rose-500/15 border border-rose-500/30 flex items-center justify-center transition-all duration-500"
+          className="absolute rounded-full bg-salvus-critical-bg border border-salvus-critical-border flex items-center justify-center transition-all"
           style={{
-            left: '42%',
+            left: '45%',
             top: '55%',
-            width: '68px',
-            height: '68px',
+            width: '64px',
+            height: '64px',
             transform: 'translate(-50%, -50%)',
           }}
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-rose-500/60"></span>
+          <span className="h-2 w-2 rounded-full bg-salvus-critical" />
         </div>
 
-        {/* You Indicator (Blue Dot) */}
+        {/* You Indicator */}
         <div
-          className="absolute flex items-center justify-center cursor-pointer group"
+          className="absolute flex items-center justify-center"
           style={{
-            left: '36%',
-            top: '32%',
+            left: '32%',
+            top: '35%',
             transform: 'translate(-50%, -50%)',
           }}
           title="Your current location"
         >
-          <span className="relative flex h-3 w-3">
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-[#3B82F6] ring-2 ring-blue-400/50"></span>
+          <span className="relative flex h-3.5 w-3.5">
+            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-salvus-info ring-2 ring-salvus-surface shadow-xs"></span>
           </span>
         </div>
 
-        {/* Shelter Indicator (Green Dot) */}
+        {/* Shelter Indicator */}
         <div
-          className="absolute flex items-center justify-center cursor-pointer group"
+          className="absolute flex items-center justify-center"
           style={{
-            left: '70%',
-            top: '48%',
+            left: '72%',
+            top: '45%',
             transform: 'translate(-50%, -50%)',
           }}
-          title="Community Hall (Safe Shelter)"
+          title="Safe Shelter"
         >
-          <span className="h-3 w-3 rounded-full bg-[#10B981] ring-2 ring-emerald-400/50"></span>
+          <span className="h-3.5 w-3.5 rounded-full bg-salvus-safe ring-2 ring-salvus-surface shadow-xs"></span>
         </div>
 
         {/* Legend Footer */}
-        <div className="mt-auto z-10 pt-2 flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
+        <div className="mt-auto z-10 pt-2 flex items-center gap-3 text-xs text-salvus-text-secondary flex-wrap">
           {legend.map((item, idx) => (
-            <div key={item.label} className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }}></span>
+            <div key={item.label} className="flex items-center gap-1.5 font-medium">
+              <span className={`h-2 w-2 rounded-full ${item.colorClass}`}></span>
               <span>{item.label}</span>
-              {idx < legend.length - 1 && <span className="text-slate-600 ml-1.5">·</span>}
+              {idx < legend.length - 1 && <span className="text-salvus-text-muted ml-1.5">·</span>}
             </div>
           ))}
         </div>
       </div>
-    </div>
+    </Card>
   )
 }

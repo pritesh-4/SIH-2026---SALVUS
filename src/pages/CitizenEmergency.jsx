@@ -51,28 +51,30 @@ export const CitizenEmergency = () => {
   // Cancelled State Screen
   if (currentState === 'CANCELLED') {
     return (
-      <div className="min-h-screen bg-[#0B1118] text-slate-100 flex flex-col items-center justify-center p-6 selection:bg-rose-500 selection:text-white">
-        <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl max-w-md w-full p-8 text-center shadow-2xl animate-fadeIn">
-          <div className="h-16 w-16 rounded-full bg-slate-800 border border-slate-700 mx-auto flex items-center justify-center text-2xl mb-4">
+      <div className="min-h-screen bg-salvus-bg text-salvus-text-primary flex flex-col items-center justify-center p-6 selection:bg-salvus-critical selection:text-white transition-colors duration-200">
+        <div className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-md w-full p-8 text-center shadow-xl animate-fadeIn">
+          <div className="h-16 w-16 rounded-full bg-salvus-muted border border-salvus-border mx-auto flex items-center justify-center text-2xl mb-4">
             🛑
           </div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">SOS Request Cancelled</h2>
-          <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-            Your emergency beacon was deactivated and Salvus Command was notified. Allocated units
-            have been stood down.
+          <h2 className="text-2xl font-bold text-salvus-text-primary tracking-tight">
+            Emergency Request Cancelled
+          </h2>
+          <p className="text-sm text-salvus-text-secondary mt-2 leading-relaxed">
+            Your emergency beacon was deactivated and coordinators have been notified that you are
+            safe.
           </p>
           <div className="mt-6 flex flex-col gap-3">
             <button
               type="button"
               onClick={() => navigate('/citizen')}
-              className="w-full py-3.5 rounded-xl bg-[#1E293B] hover:bg-[#2A3B4E] text-white text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer"
+              className="w-full py-3.5 rounded-xl bg-salvus-surface-elevated hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-primary text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer"
             >
-              Return to Citizen Home
+              Return to Home
             </button>
             <button
               type="button"
               onClick={triggerSos}
-              className="w-full py-3.5 rounded-xl bg-[#EF4444] hover:bg-rose-600 text-white text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer shadow-lg shadow-rose-950/50"
+              className="w-full py-3.5 rounded-xl bg-salvus-critical hover:opacity-90 text-white text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer shadow-xs"
             >
               Re-activate SOS Beacon
             </button>
@@ -87,7 +89,7 @@ export const CitizenEmergency = () => {
   const isOnScene = currentState === 'ON_SCENE'
 
   return (
-    <div className="min-h-screen bg-[#0B1118] text-slate-100 flex flex-col selection:bg-rose-500 selection:text-white pb-32">
+    <div className="min-h-screen bg-salvus-bg text-salvus-text-primary flex flex-col selection:bg-salvus-critical selection:text-white pb-32 transition-colors duration-200">
       {/* Calm System Notifications */}
       <GlobalNotificationBanner />
 
@@ -118,22 +120,21 @@ export const CitizenEmergency = () => {
         {/* Resolved Dedicated Screen View */}
         {isResolved ? (
           <div className="space-y-6 animate-fadeIn">
-            <div className="bg-emerald-950/40 border border-emerald-500/50 rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xl shadow-emerald-950/30">
+            <div className="bg-salvus-safe-bg border border-salvus-safe-border rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-md text-salvus-safe-text">
               <div className="flex items-start gap-4">
-                <div className="h-14 w-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-3xl shrink-0">
+                <div className="h-14 w-14 rounded-2xl bg-salvus-safe/20 border border-salvus-safe/40 flex items-center justify-center text-3xl shrink-0">
                   ✅
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest block font-mono">
-                    INCIDENT SAFELY RESOLVED · TOTAL TIME: 8 MIN 42 SEC
+                  <span className="text-xs font-bold uppercase tracking-wider block">
+                    Incident Safely Resolved
                   </span>
-                  <h2 className="text-2xl font-extrabold text-white tracking-tight mt-1">
-                    Rescue & Evacuation Complete
+                  <h2 className="text-2xl font-extrabold tracking-tight mt-1">
+                    Rescue & Safety Check Complete
                   </h2>
-                  <p className="text-xs sm:text-sm text-emerald-100/90 mt-1 max-w-2xl leading-relaxed">
-                    NDRF Unit 4 (Capt. A. Roy) has safely evacuated you from Sector 12 flood zone to
-                    the Salt Lake Stadium Emergency Shelter. Emergency telemetry channel is now
-                    safely closed.
+                  <p className="text-xs sm:text-sm opacity-90 mt-1 max-w-2xl leading-relaxed">
+                    Emergency response team has safely attended to your request. You can return to
+                    the home screen or view guidance below.
                   </p>
                 </div>
               </div>
@@ -141,7 +142,7 @@ export const CitizenEmergency = () => {
               <button
                 type="button"
                 onClick={() => navigate('/citizen')}
-                className="py-3 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer shrink-0 shadow-lg shadow-emerald-950/50"
+                className="py-3 px-6 rounded-xl bg-salvus-safe hover:opacity-90 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer shrink-0 shadow-xs"
               >
                 Return to Citizen Home
               </button>
@@ -163,18 +164,20 @@ export const CitizenEmergency = () => {
             <div className="lg:col-span-7 flex flex-col gap-6">
               {/* Proximity Urgent Callout in NEARBY State */}
               {isNearby && (
-                <div className="bg-amber-950/40 border-2 border-amber-500/60 rounded-2xl p-5 text-amber-200 flex items-start gap-3.5 shadow-xl shadow-amber-950/40 animate-pulse">
-                  <span className="text-3xl shrink-0">🚨</span>
+                <div className="bg-salvus-warning-bg border-2 border-salvus-warning-border rounded-2xl p-5 text-salvus-warning-text flex items-start gap-3.5 shadow-md">
+                  <span className="text-3xl shrink-0" aria-hidden="true">
+                    🚨
+                  </span>
                   <div>
-                    <span className="font-extrabold block text-amber-300 uppercase tracking-wider text-xs font-mono">
-                      RESPONDER IS WITHIN 100 METERS
+                    <span className="font-extrabold block uppercase tracking-wider text-xs">
+                      Responder is within 100 meters
                     </span>
-                    <h3 className="text-lg font-bold text-white tracking-tight mt-0.5">
-                      Signal the Rescue Boat Now
+                    <h3 className="text-lg font-bold tracking-tight mt-0.5">
+                      Signal the Rescue Team Now
                     </h3>
-                    <p className="text-xs text-amber-100 mt-1 leading-relaxed">
-                      Turn on your phone torch, wave a bright garment, or whistle. Keep your line
-                      open. Responders are scanning your street with amber floodlights.
+                    <p className="text-xs opacity-90 mt-1 leading-relaxed">
+                      Turn on your phone flashlight, wave a bright cloth, or call out. Responders
+                      are on your street.
                     </p>
                   </div>
                 </div>
@@ -182,18 +185,20 @@ export const CitizenEmergency = () => {
 
               {/* On-Scene Arrival Callout in ON_SCENE State */}
               {isOnScene && (
-                <div className="bg-emerald-950/40 border-2 border-emerald-500/60 rounded-2xl p-5 text-emerald-200 flex items-start gap-3.5 shadow-xl shadow-emerald-950/40 animate-fadeIn">
-                  <span className="text-3xl shrink-0">🚤</span>
+                <div className="bg-salvus-safe-bg border-2 border-salvus-safe-border rounded-2xl p-5 text-salvus-safe-text flex items-start gap-3.5 shadow-md animate-fadeIn">
+                  <span className="text-3xl shrink-0" aria-hidden="true">
+                    🚤
+                  </span>
                   <div>
-                    <span className="font-extrabold block text-emerald-300 uppercase tracking-wider text-xs font-mono">
-                      RESCUE TEAM AT REPORTED LOCATION
+                    <span className="font-extrabold block uppercase tracking-wider text-xs">
+                      Rescue Team has Arrived
                     </span>
-                    <h3 className="text-lg font-bold text-white tracking-tight mt-0.5">
-                      NDRF Alpha Team Has Reached You
+                    <h3 className="text-lg font-bold tracking-tight mt-0.5">
+                      Help is at your reported location
                     </h3>
-                    <p className="text-xs text-emerald-100 mt-1 leading-relaxed">
-                      Stay in place until crew secures the mooring lines. Follow life jacket fitting
-                      and boarding instructions from Capt. A. Roy.
+                    <p className="text-xs opacity-90 mt-1 leading-relaxed">
+                      Stay in place until responders reach your entrance. Follow instructions from
+                      the team lead.
                     </p>
                   </div>
                 </div>

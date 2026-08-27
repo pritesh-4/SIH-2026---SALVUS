@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { citizenMapData } from '../data/citizen/map.mock'
 import { SalvusLeafletMap } from '../components/common/SalvusLeafletMap'
 import { SimulatedBadge } from '../components/common/SimulatedBadge'
+import { Card } from '../components/ui/Card'
+import { Badge } from '../components/ui/Badge'
+import { Button } from '../components/ui/Button'
+import { StatusIndicator } from '../components/ui/StatusIndicator'
 
 const CITIZEN_SHELTERS = [
   {
@@ -14,8 +18,8 @@ const CITIZEN_SHELTERS = [
     capacity: '140 / 200 beds free',
     distance: '350m (4 min walk)',
     type: 'shelter',
-    category: 'Primary Evacuation Shelter',
-    amenities: ['Emergency Power', 'Potable Water', 'Medical Triage', 'Dry Blankets'],
+    category: 'Primary Safe Shelter',
+    amenities: ['Emergency Power', 'Clean Water', 'Medical Aid', 'Warm Blankets'],
   },
   {
     id: 'm2',
@@ -26,8 +30,8 @@ const CITIZEN_SHELTERS = [
     capacity: '420 / 600 beds free',
     distance: '1.2 km (14 min walk)',
     type: 'shelter',
-    category: 'High-Capacity Regional Shelter',
-    amenities: ['Food Supplies', 'SDRF Camp', 'Stretcher Access', 'Helipad'],
+    category: 'High-Capacity Safe Shelter',
+    amenities: ['Food Supplies', 'Medical Camp', 'Wheelchair Access', 'Helipad'],
   },
   {
     id: 'm3',
@@ -38,8 +42,8 @@ const CITIZEN_SHELTERS = [
     capacity: 'Operational',
     distance: '850m (9 min walk)',
     type: 'medical',
-    category: 'First-Aid & Trauma Station',
-    amenities: ['Ambulance Transfer', 'Oxygen Supplies', 'Trauma Dressing'],
+    category: 'First-Aid & Medical Station',
+    amenities: ['Ambulance Transfer', 'Oxygen Supplies', 'First Aid'],
   },
 ]
 
@@ -60,11 +64,11 @@ const CITIZEN_HAZARDS = [
   {
     id: 'hz-2',
     ticket_id: 'SV-1910',
-    name: 'Downed High-Voltage Line',
+    name: 'Downed Power Wire Hazard',
     type: 'power_line',
     severity: 'HIGH',
     status: 'VERIFIED',
-    description: '11kV feeder wire dangling near water channel. Feeder trip initiated.',
+    description: 'Power wire down near water channel. Area isolated by emergency crew.',
     latitude: 22.565,
     longitude: 88.358,
     distance: '480m West',
@@ -78,40 +82,38 @@ export const CitizenMap = () => {
   const [selectedItem, setSelectedItem] = useState(CITIZEN_SHELTERS[0])
   const [activeRouteGuide, setActiveRouteGuide] = useState(null)
 
-  const { userLocation, summary } = citizenMapData
+  const { userLocation } = citizenMapData
 
   const displayedIncidents = useMemo(() => {
-    if (activeFilter === 'shelters') return []
+    if (activeFilter === 'shelters' || activeFilter === 'medical') return []
     return CITIZEN_HAZARDS
   }, [activeFilter])
 
   const displayedShelters = useMemo(() => {
     if (activeFilter === 'hazards') return []
+    if (activeFilter === 'medical') return CITIZEN_SHELTERS.filter((s) => s.type === 'medical')
+    if (activeFilter === 'shelters') return CITIZEN_SHELTERS.filter((s) => s.type === 'shelter')
     return CITIZEN_SHELTERS
   }, [activeFilter])
 
   return (
     <div className="max-w-[1440px] w-full mx-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 animate-fadeIn">
-      {/* Top Header & Summary */}
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-400">Local area map</span>
-            <span className="h-1 w-1 rounded-full bg-slate-600"></span>
-            <span className="text-xs text-sky-400">{userLocation.address}</span>
+            <span className="text-xs font-semibold text-salvus-text-secondary">
+              Area Navigation
+            </span>
+            <span className="h-1 w-1 rounded-full bg-salvus-border-strong"></span>
+            <span className="text-xs text-salvus-info">{userLocation.address}</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100 tracking-tight mt-1">
-            Situational Map & Safe Shelters
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary tracking-tight mt-0.5">
+            Local Safe Places & Hazards
           </h1>
         </div>
 
-        {/* Quick Safety Summary Pill */}
-        <div className="flex items-center gap-3 bg-[#0D141F] border border-[#1A2533] px-4 py-2 rounded-xl">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
-            <span className="text-xs font-semibold text-slate-200">{summary.statusText}</span>
-          </div>
-        </div>
+        <StatusIndicator status="safe" label="Area Monitored Live" showDot={true} />
       </div>
 
       {/* Layer Filter Pills */}
@@ -119,8 +121,8 @@ export const CitizenMap = () => {
         {[
           { id: 'all', label: 'All places', count: 5 },
           { id: 'shelters', label: 'Safe shelters', count: 2 },
-          { id: 'hazards', label: 'Reported hazards', count: 2 },
-          { id: 'medical', label: 'Medical stations', count: 1 },
+          { id: 'hazards', label: 'Hazards & Floods', count: 2 },
+          { id: 'medical', label: 'Medical aid', count: 1 },
         ].map((f) => (
           <button
             key={f.id}
@@ -128,16 +130,16 @@ export const CitizenMap = () => {
             onClick={() => setActiveFilter(f.id)}
             className={`px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
               activeFilter === f.id
-                ? 'bg-slate-700 text-white shadow-sm'
-                : 'bg-[#0D141F] border border-[#1A2533] text-slate-300 hover:text-white'
+                ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
+                : 'bg-salvus-surface border border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
             }`}
           >
             <span>{f.label}</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                 activeFilter === f.id
-                  ? 'bg-slate-900 text-white font-bold'
-                  : 'bg-[#182332] text-slate-400'
+                  ? 'bg-salvus-bg/20 text-salvus-bg'
+                  : 'bg-salvus-muted text-salvus-text-muted'
               }`}
             >
               {f.count}
@@ -148,21 +150,22 @@ export const CitizenMap = () => {
 
       {/* Map Layout Grid: Left Canvas (7 cols), Right Detail Sheet (5 cols) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* OpenStreetMap Surface (7 cols) */}
-        <div className="lg:col-span-7 bg-[#0D141F] border border-[#1A2533] rounded-2xl p-4 sm:p-5 flex flex-col justify-between relative overflow-hidden min-h-[440px] sm:min-h-[520px]">
-          {/* Map Top Status Bar (Calm & Human) */}
-          <div className="flex items-center justify-between z-10 bg-[#080C12]/90 backdrop-blur-md px-3.5 py-2 rounded-lg border border-[#182332] text-xs mb-3">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-blue-500"></span>
-              <span className="font-medium text-slate-200">
-                Your location: Sector 12, Salt Lake
-              </span>
+        {/* Map Surface (7 cols) */}
+        <Card
+          padding="sm"
+          className="lg:col-span-7 flex flex-col justify-between relative overflow-hidden min-h-[440px] sm:min-h-[520px]"
+        >
+          {/* Map Top Status Bar */}
+          <div className="flex items-center justify-between z-10 bg-salvus-surface/90 backdrop-blur-md px-3.5 py-2 rounded-xl border border-salvus-border text-xs mb-3">
+            <div className="flex items-center gap-2 font-medium text-salvus-text-primary">
+              <span className="h-2.5 w-2.5 rounded-full bg-salvus-info shrink-0"></span>
+              <span>Your location: Sector 12, Salt Lake</span>
             </div>
-            <span className="text-slate-400 text-xs">Accuracy: ±4m</span>
+            <span className="text-salvus-text-muted text-xs">GPS accuracy: ±4m</span>
           </div>
 
           {/* Real Leaflet Map Surface */}
-          <div className="relative w-full h-[380px] rounded-xl border border-[#162230] overflow-hidden">
+          <div className="relative w-full h-[380px] rounded-xl border border-salvus-border overflow-hidden">
             <SalvusLeafletMap
               center={[22.5726, 88.3639]}
               zoom={14}
@@ -177,7 +180,7 @@ export const CitizenMap = () => {
               incidents={displayedIncidents}
               shelters={displayedShelters}
               showLayers={{
-                incidents: activeFilter !== 'shelters',
+                incidents: activeFilter !== 'shelters' && activeFilter !== 'medical',
                 shelters: activeFilter !== 'hazards',
                 responders: false,
               }}
@@ -187,59 +190,62 @@ export const CitizenMap = () => {
           </div>
 
           {/* Map Footer Legend */}
-          <div className="mt-3 bg-[#080C12]/90 px-3 py-2 rounded-lg border border-[#182332] flex items-center justify-between text-xs text-slate-400 flex-wrap gap-2">
+          <div className="mt-3 bg-salvus-surface px-3.5 py-2 rounded-xl border border-salvus-border flex items-center justify-between text-xs text-salvus-text-secondary flex-wrap gap-2">
             <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
+              <div className="flex items-center gap-1.5 font-medium">
+                <span className="h-2.5 w-2.5 rounded-full bg-salvus-info"></span>
                 <span>You</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
-                <span>Shelters ({displayedShelters.length})</span>
+              <div className="flex items-center gap-1.5 font-medium">
+                <span className="h-2.5 w-2.5 rounded-full bg-salvus-safe"></span>
+                <span>Safe Place ({displayedShelters.length})</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-rose-500"></span>
-                <span>Hazards ({displayedIncidents.length})</span>
+              <div className="flex items-center gap-1.5 font-medium">
+                <span className="h-2.5 w-2.5 rounded-full bg-salvus-critical"></span>
+                <span>Hazard ({displayedIncidents.length})</span>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setSelectedItem(CITIZEN_SHELTERS[0])}
-              className="text-sky-400 hover:text-sky-300 font-semibold cursor-pointer text-xs"
+              className="text-salvus-info hover:underline font-semibold cursor-pointer text-xs"
             >
               Reset view
             </button>
           </div>
-        </div>
+        </Card>
 
         {/* Marker Detail Sheet / Side Card (5 cols) */}
         <div className="lg:col-span-5 flex flex-col gap-4">
           {selectedItem ? (
-            <div className="bg-[#0D141F] border border-[#1A2533] rounded-2xl p-6 flex flex-col justify-between min-h-[440px] transition-all">
+            <Card
+              padding="md"
+              className="flex flex-col justify-between min-h-[440px] transition-all"
+            >
               <div>
                 {/* Header Tag & Distance */}
                 <div className="flex items-center justify-between gap-3 mb-3">
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                  <Badge
+                    variant={
                       selectedItem.type === 'shelter'
-                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                        ? 'safe'
                         : selectedItem.type === 'medical'
-                          ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300'
-                          : 'bg-rose-500/15 border-rose-500/40 text-rose-300'
-                    }`}
+                          ? 'info'
+                          : 'critical'
+                    }
                   >
                     {selectedItem.category || selectedItem.type}
-                  </span>
-                  <span className="text-xs font-medium text-slate-200 bg-[#080C12] px-2.5 py-1 rounded-lg border border-[#182332]">
+                  </Badge>
+                  <span className="text-xs font-semibold text-salvus-text-primary bg-salvus-muted px-2.5 py-1 rounded-lg border border-salvus-border">
                     {selectedItem.distance || 'Near Sector 12'}
                   </span>
                 </div>
 
                 {/* Title & Address */}
-                <h2 className="text-xl font-bold text-slate-100 tracking-tight">
-                  {selectedItem.name || `Incident #${selectedItem.ticket_id}`}
+                <h2 className="text-xl font-bold text-salvus-text-primary tracking-tight">
+                  {selectedItem.name || `Hazard #${selectedItem.ticket_id}`}
                 </h2>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-salvus-text-secondary mt-1">
                   {selectedItem.address || selectedItem.description}
                 </p>
 
@@ -247,33 +253,33 @@ export const CitizenMap = () => {
                 {selectedItem.type === 'shelter' && (
                   <div className="mt-5 space-y-4">
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-[#080C12] border border-[#182332] p-3 rounded-xl">
-                        <span className="text-[10px] text-slate-400 block uppercase font-medium">
+                      <div className="bg-salvus-muted/40 border border-salvus-border p-3 rounded-xl">
+                        <span className="text-[11px] text-salvus-text-muted block font-medium">
                           Capacity
                         </span>
-                        <span className="text-sm font-bold text-emerald-400">
+                        <span className="text-sm font-bold text-salvus-safe">
                           {selectedItem.capacity}
                         </span>
                       </div>
-                      <div className="bg-[#080C12] border border-[#182332] p-3 rounded-xl">
-                        <span className="text-[10px] text-slate-400 block uppercase font-medium">
-                          Assembly Sector
+                      <div className="bg-salvus-muted/40 border border-salvus-border p-3 rounded-xl">
+                        <span className="text-[11px] text-salvus-text-muted block font-medium">
+                          Area Sector
                         </span>
-                        <span className="text-sm font-bold text-slate-200">
+                        <span className="text-sm font-bold text-salvus-text-primary">
                           Sector 12, Salt Lake
                         </span>
                       </div>
                     </div>
 
                     <div>
-                      <span className="text-xs font-bold text-slate-300 block mb-2">
+                      <span className="text-xs font-bold text-salvus-text-primary block mb-2">
                         Available Resources:
                       </span>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedItem.amenities?.map((a) => (
                           <span
                             key={a}
-                            className="bg-[#1E293B] text-slate-200 text-xs px-2.5 py-1 rounded-lg font-medium"
+                            className="bg-salvus-surface-elevated border border-salvus-border text-salvus-text-secondary text-xs px-2.5 py-1 rounded-lg font-medium"
                           >
                             ✓ {a}
                           </span>
@@ -288,22 +294,22 @@ export const CitizenMap = () => {
                   selectedItem.type === 'power_line' ||
                   selectedItem.type === 'hazard') && (
                   <div className="mt-5 space-y-4">
-                    <div className="bg-rose-950/30 border border-rose-500/40 p-4 rounded-xl">
-                      <div className="flex items-center gap-2 text-rose-300 font-bold text-xs mb-1">
-                        <span>⚠️ CRITICAL RISK FACTOR</span>
+                    <div className="bg-salvus-critical-bg border border-salvus-critical-border p-4 rounded-xl">
+                      <div className="flex items-center gap-2 text-salvus-critical font-bold text-xs mb-1">
+                        <span>⚠️ HAZARD WARNING</span>
                       </div>
-                      <p className="text-xs text-rose-200 font-medium">
+                      <p className="text-xs text-salvus-critical font-medium leading-relaxed">
                         {selectedItem.description}
                       </p>
                     </div>
 
-                    <div className="bg-[#0B1118] border border-[#1E293B] p-4 rounded-xl">
-                      <span className="text-[11px] font-bold text-slate-300 uppercase block mb-1">
-                        Recommended Action
+                    <div className="bg-salvus-muted/40 border border-salvus-border p-3.5 rounded-xl">
+                      <span className="text-xs font-bold text-salvus-text-primary uppercase block mb-1">
+                        What To Do
                       </span>
-                      <p className="text-xs text-slate-300 leading-relaxed">
+                      <p className="text-xs text-salvus-text-secondary leading-relaxed">
                         {selectedItem.recommendedAction ||
-                          'Keep clear of the affected perimeter. Await responder dispatch.'}
+                          'Keep clear of the affected area. Follow safe elevated bypass.'}
                       </p>
                     </div>
                   </div>
@@ -312,19 +318,19 @@ export const CitizenMap = () => {
                 {/* Medical Post Details */}
                 {selectedItem.type === 'medical' && (
                   <div className="mt-5 space-y-3">
-                    <div className="bg-[#0B1118] border border-[#1E293B] p-3 rounded-xl">
-                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">
+                    <div className="bg-salvus-muted/40 border border-salvus-border p-3 rounded-xl">
+                      <span className="text-[11px] text-salvus-text-muted font-semibold block">
                         Operating Status
                       </span>
-                      <span className="text-xs font-bold text-emerald-400">
-                        {selectedItem.capacity || 'Active'}
+                      <span className="text-xs font-bold text-salvus-safe">
+                        {selectedItem.capacity || 'Active & Open'}
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedItem.amenities?.map((a) => (
                         <span
                           key={a}
-                          className="bg-[#1E293B] text-slate-200 text-xs px-2.5 py-1 rounded-lg font-medium"
+                          className="bg-salvus-surface-elevated border border-salvus-border text-salvus-text-secondary text-xs px-2.5 py-1 rounded-lg font-medium"
                         >
                           + {a}
                         </span>
@@ -335,43 +341,55 @@ export const CitizenMap = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="mt-6 pt-4 border-t border-[#1E293B] flex flex-col sm:flex-row gap-3">
+              <div className="mt-6 pt-4 border-t border-salvus-border flex flex-col sm:flex-row gap-3">
                 {selectedItem.type === 'shelter' && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="safe"
+                    size="lg"
+                    fullWidth={true}
                     onClick={() => setActiveRouteGuide(selectedItem)}
-                    className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer text-center shadow-lg shadow-emerald-950/40"
+                    className="font-bold text-xs sm:text-sm"
                   >
-                    View Safe Bypass Route
-                  </button>
+                    View Safe Walking Route
+                  </Button>
                 )}
                 {(selectedItem.type === 'flood' || selectedItem.type === 'power_line') && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="critical"
+                    size="lg"
+                    fullWidth={true}
                     onClick={() => navigate('/citizen/sos')}
-                    className="flex-1 py-3 px-4 rounded-xl bg-[#EF4444] hover:bg-rose-600 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer text-center shadow-lg shadow-rose-950/40"
+                    className="font-bold text-xs sm:text-sm"
                   >
-                    Request Evacuation SOS
-                  </button>
+                    Request Emergency SOS
+                  </Button>
                 )}
                 {selectedItem.type === 'medical' && (
                   <a
                     href="tel:112"
-                    className="flex-1 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer text-center"
+                    className="flex-1 py-3 px-4 rounded-xl bg-salvus-info hover:opacity-90 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer text-center min-h-[48px] flex items-center justify-center"
                   >
                     Call Medical Dispatch (112)
                   </a>
                 )}
               </div>
-            </div>
+            </Card>
           ) : (
-            <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl p-8 flex flex-col items-center justify-center text-center min-h-[440px]">
-              <span className="text-3xl mb-2">📍</span>
-              <h3 className="text-base font-bold text-white">Tap any point on the map</h3>
-              <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                Select a safe shelter or active flood hazard to inspect real-time safety telemetry.
+            <Card
+              padding="lg"
+              className="flex flex-col items-center justify-center text-center min-h-[440px]"
+            >
+              <span className="text-3xl mb-2" aria-hidden="true">
+                📍
+              </span>
+              <h3 className="text-base font-bold text-salvus-text-primary">
+                Tap any point on the map
+              </h3>
+              <p className="text-xs text-salvus-text-secondary mt-1 max-w-xs leading-relaxed">
+                Select a safe shelter or active flood hazard to inspect real-time safety
+                information.
               </p>
-            </div>
+            </Card>
           )}
         </div>
       </div>
@@ -382,81 +400,96 @@ export const CitizenMap = () => {
           role="dialog"
           aria-modal="true"
           aria-labelledby="route-modal-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setActiveRouteGuide(null)
+            }
+          }}
         >
-          <div className="bg-[#111A24] border border-emerald-500/40 rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative">
+          <div className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl relative text-salvus-text-primary">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
-                <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider font-mono">
-                  Offline Flood-Bypass Route Active
-                </span>
-                <SimulatedBadge label="OFFLINE ROUTING" />
+                <Badge variant="safe" dot={true}>
+                  Safe Route Guidance
+                </Badge>
+                <SimulatedBadge label="OFFLINE ROUTE" />
               </div>
               <button
                 type="button"
                 onClick={() => setActiveRouteGuide(null)}
-                className="text-slate-400 hover:text-white text-lg font-bold p-1 cursor-pointer"
+                aria-label="Close route view"
+                className="text-salvus-text-muted hover:text-salvus-text-primary text-base font-bold p-1 cursor-pointer select-none"
               >
                 ✕
               </button>
             </div>
 
-            <h3 id="route-modal-title" className="text-xl font-extrabold text-white tracking-tight">
+            <h3
+              id="route-modal-title"
+              className="text-xl font-extrabold text-salvus-text-primary tracking-tight"
+            >
               Safe Route to {activeRouteGuide.name}
             </h3>
-            <p className="text-xs text-slate-300 mt-1">
-              Distance: <strong className="text-white">{activeRouteGuide.distance}</strong> ·
-              Estimated Walk Time: <strong className="text-emerald-400">4-6 mins</strong>
+            <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1">
+              Distance:{' '}
+              <strong className="text-salvus-text-primary">{activeRouteGuide.distance}</strong> ·
+              Estimated Walk Time: <strong className="text-salvus-safe">4-6 mins</strong>
             </p>
 
-            <div className="bg-[#0B1118] border border-[#1E293B] rounded-xl p-4 my-4 space-y-3">
-              <div className="flex items-start gap-3 text-xs text-slate-300">
-                <span className="h-5 w-5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[11px] flex items-center justify-center shrink-0">
+            <div className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-4 my-4 space-y-3">
+              <div className="flex items-start gap-3 text-xs">
+                <span className="h-5 w-5 rounded-full bg-salvus-safe-bg border border-salvus-safe-border text-salvus-safe font-bold text-[11px] flex items-center justify-center shrink-0">
                   1
                 </span>
                 <div>
-                  <strong className="text-white block">Head East on Elevated Arterial Rd</strong>
-                  <span className="text-slate-400">
+                  <strong className="text-salvus-text-primary block">
+                    Head East on Elevated Arterial Road
+                  </strong>
+                  <span className="text-salvus-text-secondary">
                     Paved high ground with zero water logging (+3.8m elevation).
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 text-xs text-slate-300">
-                <span className="h-5 w-5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[11px] flex items-center justify-center shrink-0">
+              <div className="flex items-start gap-3 text-xs">
+                <span className="h-5 w-5 rounded-full bg-salvus-safe-bg border border-salvus-safe-border text-salvus-safe font-bold text-[11px] flex items-center justify-center shrink-0">
                   2
                 </span>
                 <div>
-                  <strong className="text-white block">Bypass Sector 12 Underpass</strong>
-                  <span className="text-rose-400">
+                  <strong className="text-salvus-text-primary block">
+                    Bypass Sector 12 Underpass
+                  </strong>
+                  <span className="text-salvus-critical">
                     Hazard avoidance: underpass submerged by 1.4m floodwater.
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 text-xs text-slate-300">
-                <span className="h-5 w-5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[11px] flex items-center justify-center shrink-0">
+              <div className="flex items-start gap-3 text-xs">
+                <span className="h-5 w-5 rounded-full bg-salvus-safe-bg border border-salvus-safe-border text-salvus-safe font-bold text-[11px] flex items-center justify-center shrink-0">
                   3
                 </span>
                 <div>
-                  <strong className="text-white block">Enter Shelter Reception Gate</strong>
-                  <span className="text-slate-400">
-                    Emergency medical triage and bed intake station active.
+                  <strong className="text-salvus-text-primary block">
+                    Enter Shelter Reception Gate
+                  </strong>
+                  <span className="text-salvus-text-secondary">
+                    Emergency triage and bed intake station open.
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setActiveRouteGuide(null)}
-                className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer text-center"
-              >
-                Close Safe Route View
-              </button>
-            </div>
+            <Button
+              variant="safe"
+              size="lg"
+              fullWidth={true}
+              onClick={() => setActiveRouteGuide(null)}
+              className="font-bold text-xs sm:text-sm"
+            >
+              Close Safe Route View
+            </Button>
           </div>
         </div>
       )}

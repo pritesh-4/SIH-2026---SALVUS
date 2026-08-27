@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createIncident } from '../../services/api'
 import { getCurrentLocation, LANDMARKS } from '../../lib/location'
+import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
+import { Input, Textarea, FormField } from '../ui/Input'
 
 const DRAFT_STORAGE_KEY = 'salvus_draft_incident_report'
 
@@ -32,18 +35,14 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
   const [locationData, setLocationData] = useState({
     latitude: 22.5726,
     longitude: 88.3639,
-    accuracy: 'Detecting accuracy...',
-    accuracyBadgeClass: 'bg-cyan-950/60 text-cyan-300 border-cyan-500/40',
-    coordinates: '22.5726° N, 88.3639° E (Sector 12)',
+    accuracy: 'Detecting...',
+    coordinates: '22.5726° N, 88.3639° E',
     address: 'Sector 12 Community Hub',
     status: 'ACQUIRING',
   })
   const [isAcquiringLocation, setIsAcquiringLocation] = useState(false)
   const [selectedLandmarkName, setSelectedLandmarkName] = useState(LANDMARKS[0].name)
 
-  // ---------------------------------------------------------------------------
-  // 1. Save draft on field changes
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (step < 3) {
       try {
@@ -64,9 +63,6 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     }
   }, [category, severity, description, reporterName, reporterPhone, affectedCount, step])
 
-  // ---------------------------------------------------------------------------
-  // 2. Location Acquisition & Manual Override
-  // ---------------------------------------------------------------------------
   const fetchLocation = useCallback(async () => {
     setIsAcquiringLocation(true)
     const loc = await getCurrentLocation()
@@ -74,10 +70,8 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
       latitude: loc.latitude,
       longitude: loc.longitude,
       accuracy: loc.accuracy || 'Standard accuracy',
-      accuracyBadgeClass:
-        loc.accuracyBadgeClass || 'bg-cyan-950/60 text-cyan-300 border-cyan-500/40',
       coordinates: loc.coordinates,
-      address: loc.address || 'Detected Device Location',
+      address: loc.address || 'Detected Location',
       status: loc.status || (loc.success ? 'ACTIVE' : 'FALLBACK'),
       error: loc.error,
     })
@@ -94,10 +88,8 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
         latitude: loc.latitude,
         longitude: loc.longitude,
         accuracy: loc.accuracy || 'Standard accuracy',
-        accuracyBadgeClass:
-          loc.accuracyBadgeClass || 'bg-cyan-950/60 text-cyan-300 border-cyan-500/40',
         coordinates: loc.coordinates,
-        address: loc.address || 'Detected Device Location',
+        address: loc.address || 'Detected Location',
         status: loc.status || (loc.success ? 'ACTIVE' : 'FALLBACK'),
         error: loc.error,
       })
@@ -117,8 +109,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
       setLocationData({
         latitude: found.latitude,
         longitude: found.longitude,
-        accuracy: 'Manual Confirmation (±0m)',
-        accuracyBadgeClass: 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40',
+        accuracy: 'Manual Confirmation',
         coordinates: `${found.latitude.toFixed(4)}° N, ${found.longitude.toFixed(4)}° E`,
         address: found.address,
         status: 'MANUAL_CONFIRMED',
@@ -130,8 +121,8 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     { id: 'flood', label: 'Flash Flood / Deep Water', icon: '🌊', type: 'flood' },
     { id: 'hazard', label: 'Blocked Road / Debris', icon: '🚧', type: 'hazard' },
     { id: 'power_line', label: 'Downed Power Lines', icon: '⚡', type: 'power_line' },
-    { id: 'structural', label: 'Structural / Collapse', icon: '🏚️', type: 'structural' },
-    { id: 'medical', label: 'Medical Emergency', icon: '🚑', type: 'medical' },
+    { id: 'structural', label: 'Structural Hazard', icon: '🏚️', type: 'structural' },
+    { id: 'medical', label: 'Medical Assistance', icon: '🚑', type: 'medical' },
     { id: 'fire', label: 'Fire / Chemical Hazard', icon: '🔥', type: 'fire' },
   ]
 
@@ -151,7 +142,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
       description:
         description.trim() ||
         `${selectedCat?.label || 'Hazard'} reported at ${locationData.address || locationData.coordinates}`,
-      reporter_name: reporterName.trim() || 'Anonymous Citizen',
+      reporter_name: reporterName.trim() || 'Community Member',
       reporter_phone: reporterPhone.trim() || null,
       latitude: locationData.latitude,
       longitude: locationData.longitude,
@@ -164,7 +155,6 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     if (result.success && result.data) {
       setCreatedIncident(result.data)
       setStep(3)
-      // Clear draft on success
       try {
         sessionStorage.removeItem(DRAFT_STORAGE_KEY)
       } catch {
@@ -173,7 +163,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     } else {
       setSubmissionError(
         result.error?.message ||
-          'Failed to transmit report to backend. Please check network and retry.'
+          'Unable to submit hazard report. Please check connection and try again.'
       )
     }
   }
@@ -200,14 +190,19 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="report-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          handleResetAndClose()
+        }
+      }}
     >
-      <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+      <div className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl relative max-h-[90vh] overflow-y-auto text-salvus-text-primary">
         {/* Close Button */}
         <button
           type="button"
           onClick={handleResetAndClose}
-          className="absolute top-5 right-5 text-slate-400 hover:text-white text-lg font-bold p-1 cursor-pointer"
+          className="absolute top-5 right-5 text-salvus-text-muted hover:text-salvus-text-primary text-base font-bold p-1 cursor-pointer select-none"
           aria-label="Close modal"
         >
           ✕
@@ -215,17 +210,17 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
 
         {step === 1 && (
           <div>
-            <span className="text-xs font-bold tracking-widest text-cyan-400 uppercase">
-              CITIZEN HAZARD REPORT · STEP 1/2
-            </span>
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant="neutral">Step 1 of 2</Badge>
+            </div>
             <h2
               id="report-modal-title"
-              className="text-xl font-bold text-white tracking-tight mt-1"
+              className="text-xl font-bold text-salvus-text-primary tracking-tight mt-1"
             >
-              What type of hazard are you reporting?
+              Report a Hazard
             </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              Your report updates the live situational map for local citizens and rescue teams.
+            <p className="text-xs text-salvus-text-secondary mt-1">
+              Select the type of hazard to notify nearby residents and emergency coordinators.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-5">
@@ -234,94 +229,77 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
                   key={c.id}
                   type="button"
                   onClick={() => setCategory(c.id)}
-                  className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
+                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
                     category === c.id
-                      ? 'bg-cyan-500/15 border-cyan-500/60 text-white ring-2 ring-cyan-500/30'
-                      : 'bg-[#0B1118] border-[#1E293B] text-slate-300 hover:border-slate-600'
+                      ? 'bg-salvus-surface-elevated border-salvus-text-primary text-salvus-text-primary shadow-xs ring-1 ring-salvus-text-primary'
+                      : 'bg-salvus-muted/40 border-salvus-border text-salvus-text-secondary hover:border-salvus-border-strong hover:text-salvus-text-primary'
                   }`}
                 >
-                  <span className="text-2xl">{c.icon}</span>
+                  <span className="text-2xl" aria-hidden="true">
+                    {c.icon}
+                  </span>
                   <span className="text-xs font-bold">{c.label}</span>
                 </button>
               ))}
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-[#1E293B]">
-              <button
-                type="button"
-                onClick={handleResetAndClose}
-                className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white text-xs font-semibold cursor-pointer"
-              >
+            <div className="flex items-center justify-between pt-4 border-t border-salvus-border">
+              <Button variant="quiet" size="md" onClick={handleResetAndClose}>
                 Cancel
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
                 onClick={() => setStep(2)}
-                className="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs tracking-wider uppercase transition-colors shadow-lg shadow-cyan-500/20 cursor-pointer"
+                rightIcon={<span aria-hidden="true">→</span>}
               >
-                Continue to Details →
-              </button>
+                Continue to Details
+              </Button>
             </div>
           </div>
         )}
 
         {step === 2 && (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <span className="text-xs font-bold tracking-widest text-cyan-400 uppercase">
-              CITIZEN HAZARD REPORT · STEP 2/2
-            </span>
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant="neutral">Step 2 of 2</Badge>
+            </div>
             <h2
               id="report-modal-title"
-              className="text-xl font-bold text-white tracking-tight mt-1"
+              className="text-xl font-bold text-salvus-text-primary tracking-tight mt-1"
             >
-              Provide incident details & location
+              Hazard Details & Location
             </h2>
 
             {submissionError && (
-              <div className="bg-rose-950/40 border border-rose-500/50 rounded-xl p-3 text-xs text-rose-300 flex items-center justify-between">
+              <div className="bg-salvus-critical-bg border border-salvus-critical-border rounded-xl p-3 text-xs text-salvus-critical flex items-center justify-between">
                 <span>{submissionError}</span>
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  className="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/30 rounded font-bold uppercase text-[10px] text-rose-200 cursor-pointer"
-                >
+                <Button variant="critical" size="sm" onClick={handleSubmit}>
                   Retry
-                </button>
+                </Button>
               </div>
             )}
 
             {/* Severity Level */}
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                Hazard Severity Level
+              <label className="text-xs font-semibold text-salvus-text-primary block mb-1.5">
+                Severity Level
               </label>
               <div className="grid grid-cols-4 gap-2">
                 {[
-                  { id: 'LOW', label: 'Low', color: 'border-sky-500/40 text-sky-300' },
-                  {
-                    id: 'MEDIUM',
-                    label: 'Medium',
-                    color: 'border-amber-500/40 text-amber-300',
-                  },
-                  {
-                    id: 'HIGH',
-                    label: 'High',
-                    color: 'border-orange-500/40 text-orange-300',
-                  },
-                  {
-                    id: 'CRITICAL',
-                    label: 'Critical',
-                    color: 'border-rose-500/40 text-rose-300',
-                  },
+                  { id: 'LOW', label: 'Low', variant: 'neutral' },
+                  { id: 'MEDIUM', label: 'Medium', variant: 'info' },
+                  { id: 'HIGH', label: 'High', variant: 'warning' },
+                  { id: 'CRITICAL', label: 'Critical', variant: 'critical' },
                 ].map((s) => (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => setSeverity(s.id)}
-                    className={`py-2 px-1 rounded-lg border text-[11px] font-bold transition-all cursor-pointer text-center ${
+                    className={`py-2 px-1 rounded-lg border text-xs font-bold transition-all cursor-pointer text-center ${
                       severity === s.id
-                        ? `bg-[#0B1118] ${s.color} ring-2 ring-current`
-                        : 'bg-[#0B1118]/60 border-[#1E293B] text-slate-400'
+                        ? 'bg-salvus-surface-elevated border-salvus-text-primary text-salvus-text-primary shadow-xs ring-1 ring-salvus-text-primary'
+                        : 'bg-salvus-muted/40 border-salvus-border text-salvus-text-muted hover:text-salvus-text-primary'
                     }`}
                   >
                     {s.label}
@@ -331,96 +309,79 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
             </div>
 
             {/* Description */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="incident-desc" className="text-xs font-semibold text-slate-300">
-                  Incident Description & Landmarks
-                </label>
-                <span className="text-[10px] text-slate-500 font-mono">Draft Auto-Saved</span>
-              </div>
-              <textarea
+            <FormField
+              id="incident-desc"
+              label="Description & What You See"
+              caption="Draft is auto-saved locally"
+            >
+              <Textarea
                 id="incident-desc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="E.g., Water rising rapidly near Sector 12 community park. Power cables dangling over water channel."
+                placeholder="E.g., Rising floodwater on main road. Power lines down near tree."
                 rows={3}
                 required
-                className="w-full bg-[#0B1118] border border-[#1E293B] rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
               />
-            </div>
+            </FormField>
 
-            {/* Reporter & People count */}
+            {/* Reporter info */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label
-                  htmlFor="reporter-name"
-                  className="text-[11px] font-semibold text-slate-300 block mb-1"
-                >
-                  Your Name (Optional)
-                </label>
-                <input
+              <FormField id="reporter-name" label="Your Name (Optional)">
+                <Input
                   id="reporter-name"
                   type="text"
                   value={reporterName}
                   onChange={(e) => setReporterName(e.target.value)}
-                  placeholder="E.g., Amit Roy"
-                  className="w-full bg-[#0B1118] border border-[#1E293B] rounded-xl p-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                  placeholder="E.g., Aditi Roy"
                 />
-              </div>
+              </FormField>
 
-              <div>
-                <label
-                  htmlFor="affected-count"
-                  className="text-[11px] font-semibold text-slate-300 block mb-1"
-                >
-                  Estimated People Affected
-                </label>
-                <input
+              <FormField id="affected-count" label="People Affected (Est.)">
+                <Input
                   id="affected-count"
                   type="number"
                   min="1"
-                  max="1000"
+                  max="500"
                   value={affectedCount}
                   onChange={(e) => setAffectedCount(e.target.value)}
-                  className="w-full bg-[#0B1118] border border-[#1E293B] rounded-xl p-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
                 />
-              </div>
+              </FormField>
             </div>
 
-            {/* Polished Location Confirmation Box */}
-            <div className="bg-[#0B1118] border border-[#1E293B] rounded-xl p-3.5 space-y-3 text-xs">
+            {/* Location Confirmation Box */}
+            <div className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-3.5 space-y-3 text-xs">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-200 flex items-center gap-1.5">
-                  <span className="text-cyan-400">📍</span>
-                  <span>LOCATION CONFIRMATION</span>
+                <span className="font-bold text-salvus-text-primary flex items-center gap-1.5">
+                  <span>📍</span>
+                  <span>Detected Location</span>
                 </span>
-                <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${locationData.accuracyBadgeClass}`}
-                >
-                  {isAcquiringLocation ? 'Detecting Location...' : locationData.accuracy}
-                </span>
+                <Badge variant="safe" size="sm">
+                  {isAcquiringLocation ? 'Locating...' : 'GPS Active'}
+                </Badge>
               </div>
 
-              <div className="bg-[#111A24] p-2.5 rounded-lg border border-[#1E293B] space-y-1">
-                <div className="text-slate-200 font-medium text-xs">{locationData.address}</div>
-                <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between">
-                  <span>GPS: {locationData.coordinates}</span>
+              <div className="bg-salvus-surface p-2.5 rounded-lg border border-salvus-border space-y-1">
+                <div className="text-salvus-text-primary font-medium text-xs">
+                  {locationData.address}
+                </div>
+                <div className="text-[11px] text-salvus-text-muted flex items-center justify-between">
+                  <span>{locationData.coordinates}</span>
                   <button
                     type="button"
                     onClick={fetchLocation}
                     disabled={isAcquiringLocation}
-                    className="text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer underline disabled:opacity-50"
+                    className="text-salvus-info hover:underline font-semibold cursor-pointer disabled:opacity-50"
                   >
-                    {isAcquiringLocation ? 'Acquiring...' : '↺ Refresh GPS'}
+                    {isAcquiringLocation ? 'Acquiring...' : '↺ Refresh'}
                   </button>
                 </div>
               </div>
 
-              {/* Manual Landmark Selector Fallback */}
+              {/* Landmark Selection */}
               <div>
                 <label
                   htmlFor="landmark-select"
-                  className="text-[10px] font-semibold text-slate-400 block mb-1"
+                  className="text-xs font-semibold text-salvus-text-secondary block mb-1"
                 >
                   Or Select Nearest Landmark:
                 </label>
@@ -428,7 +389,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
                   id="landmark-select"
                   value={selectedLandmarkName}
                   onChange={handleSelectLandmark}
-                  className="w-full bg-[#111A24] border border-[#1E293B] rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                  className="w-full bg-salvus-surface border border-salvus-border rounded-lg p-2 text-xs text-salvus-text-primary focus:outline-none focus:border-salvus-info cursor-pointer"
                 >
                   {LANDMARKS.map((lm) => (
                     <option key={lm.name} value={lm.name}>
@@ -438,101 +399,74 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
                 </select>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-[#1E293B]">
-                <span className="text-slate-400">Attach Photo:</span>
+              <div className="flex items-center justify-between pt-2 border-t border-salvus-border">
+                <span className="text-salvus-text-secondary">Attach Photo:</span>
                 <button
                   type="button"
                   onClick={() => setPhotoAttached((prev) => !prev)}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                     photoAttached
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      : 'bg-[#1E293B] text-slate-300 hover:text-white'
+                      ? 'bg-salvus-safe-bg text-salvus-safe-text border border-salvus-safe-border'
+                      : 'bg-salvus-surface border border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
                   }`}
                 >
-                  {photoAttached ? '✓ photo_evidence.jpg attached' : '📷 Add Photo (Metadata)'}
+                  {photoAttached ? '✓ Photo Attached' : '📷 Add Photo'}
                 </button>
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-between pt-4 border-t border-[#1E293B]">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                disabled={isSubmitting}
-                className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
-              >
+            <div className="flex items-center justify-between pt-4 border-t border-salvus-border">
+              <Button variant="quiet" size="md" onClick={() => setStep(1)} disabled={isSubmitting}>
                 ← Back
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs tracking-wider uppercase transition-colors shadow-lg shadow-cyan-500/20 cursor-pointer disabled:opacity-50 flex items-center gap-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <span className="h-2 w-2 rounded-full bg-slate-950 animate-ping"></span>
-                    <span>Transmitting Report...</span>
-                  </>
-                ) : (
-                  'Submit Incident Report'
-                )}
-              </button>
+              </Button>
+              <Button variant="primary" size="md" type="submit" loading={isSubmitting}>
+                {isSubmitting ? 'Submitting Report...' : 'Submit Hazard Report'}
+              </Button>
             </div>
           </form>
         )}
 
         {step === 3 && (
           <div className="text-center py-4 space-y-4">
-            <div className="h-16 w-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-2xl mx-auto flex items-center justify-center">
+            <div className="h-14 w-14 rounded-full bg-salvus-safe-bg border border-salvus-safe-border text-salvus-safe text-2xl mx-auto flex items-center justify-center">
               ✓
             </div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">
-              Report Received & Logged
+            <h2 className="text-2xl font-bold text-salvus-text-primary tracking-tight">
+              Hazard Report Received
             </h2>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-sm mx-auto leading-relaxed">
-              Ticket{' '}
-              <strong className="text-cyan-400 font-mono">
+            <p className="text-xs sm:text-sm text-salvus-text-secondary max-w-sm mx-auto leading-relaxed">
+              Report ticket{' '}
+              <strong className="text-salvus-text-primary">
                 #{createdIncident?.ticket_id || 'SV-1001'}
               </strong>{' '}
-              has been logged to the Salvus spatial intelligence grid with status{' '}
-              <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold text-xs">
-                {createdIncident?.status || 'NEW'}
-              </span>
-              . Nearby citizens and response coordinators can now see this hazard zone.
+              has been shared with coordinators and added to the local safety map. Thank you for
+              protecting your neighbors.
             </p>
 
-            <div className="bg-[#0B1118] border border-[#1E293B] rounded-xl p-3 text-left text-xs font-mono space-y-1 max-w-sm mx-auto">
-              <div className="flex justify-between text-slate-400">
-                <span>Type:</span>
-                <span className="text-white font-bold uppercase">
+            <div className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-3.5 text-left text-xs space-y-1.5 max-w-sm mx-auto">
+              <div className="flex justify-between text-salvus-text-secondary">
+                <span>Hazard Type:</span>
+                <span className="text-salvus-text-primary font-bold uppercase">
                   {createdIncident?.type || category}
                 </span>
               </div>
-              <div className="flex justify-between text-slate-400">
+              <div className="flex justify-between text-salvus-text-secondary">
                 <span>Severity:</span>
-                <span className="text-rose-400 font-bold">
+                <span className="text-salvus-critical font-bold">
                   {createdIncident?.severity || severity}
                 </span>
               </div>
-              <div className="flex justify-between text-slate-400">
-                <span>Timestamp:</span>
-                <span className="text-cyan-300">
-                  {createdIncident?.created_at
-                    ? new Date(createdIncident.created_at).toLocaleTimeString()
-                    : new Date().toLocaleTimeString()}
-                </span>
+              <div className="flex justify-between text-salvus-text-secondary">
+                <span>Status:</span>
+                <span className="text-salvus-safe font-semibold">Logged Live</span>
               </div>
             </div>
 
-            <div className="pt-4 border-t border-[#1E293B]">
-              <button
-                type="button"
-                onClick={handleResetAndClose}
-                className="w-full py-3 rounded-xl bg-[#1E293B] hover:bg-[#2A3B4E] text-white text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer"
-              >
+            <div className="pt-4 border-t border-salvus-border">
+              <Button variant="secondary" size="lg" fullWidth={true} onClick={handleResetAndClose}>
                 Return to Citizen Home
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -540,3 +474,5 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     </div>
   )
 }
+
+export default IncidentReportModal

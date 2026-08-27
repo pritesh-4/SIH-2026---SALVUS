@@ -1,3 +1,10 @@
+import { Card } from '../../ui/Card'
+import { Badge } from '../../ui/Badge'
+import { StatusIndicator } from '../../ui/StatusIndicator'
+
+/**
+ * Reassuring Responder Profile & Live ETA Card
+ */
 export const ResponderPreviewCard = ({
   currentState = 'EN_ROUTE',
   responder = {},
@@ -12,137 +19,105 @@ export const ResponderPreviewCard = ({
 
   if (!isAssignedOrBeyond) {
     return (
-      <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl p-6 flex flex-col justify-center items-center text-center min-h-[260px]">
-        <div className="relative flex items-center justify-center h-16 w-16 mb-4">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-30"></span>
-          <span className="relative inline-flex rounded-full h-12 w-12 bg-amber-500/10 border border-amber-500/30 items-center justify-center text-amber-400 text-xl font-bold">
-            📡
-          </span>
+      <Card
+        padding="lg"
+        className="flex flex-col justify-center items-center text-center min-h-[240px]"
+      >
+        <div className="h-12 w-12 rounded-2xl bg-salvus-warning-bg border border-salvus-warning-border flex items-center justify-center text-xl mb-3">
+          📡
         </div>
-        <h3 className="text-base font-bold text-white tracking-tight">
+        <h3 className="text-base font-bold text-salvus-text-primary tracking-tight">
           {currentState === 'SOS_ACTIVE'
-            ? 'Transmitting Beacon to Dispatch Grid...'
-            : currentState === 'TRIAGING'
-              ? 'AI Triage Allocating Rescue Craft...'
-              : 'Coordinator Finalizing Deployment...'}
+            ? 'Notifying Emergency Coordinators...'
+            : 'Matching Nearest Rescue Team...'}
         </h3>
-        <p className="text-xs text-slate-400 mt-1.5 max-w-sm leading-relaxed">
-          Matching nearest active water rescue unit with high-water Zodiac boat capability in Salt
-          Lake / Sector 12.
+        <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 max-w-sm leading-relaxed">
+          Alerting active emergency rescue teams and boats in Sector 12 and surrounding districts.
         </p>
-        <div className="mt-4 flex items-center gap-2 text-[10px] font-mono text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 px-3 py-1 rounded-full">
-          <span>Priority Dispatch Queue: Position 1</span>
+        <div className="mt-4">
+          <Badge variant="warning" dot={true}>
+            Priority Dispatch: Active
+          </Badge>
         </div>
-      </div>
+      </Card>
     )
   }
 
   return (
-    <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl p-6 flex flex-col justify-between transition-all duration-300">
+    <Card padding="md" className="flex flex-col justify-between transition-all">
       <div>
-        {/* Header with Status and ETA / Arrival Badge */}
+        {/* Header with Status and ETA */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold tracking-wider text-slate-400 uppercase">
-              ASSIGNED RESCUE TEAM
-            </span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-sky-950/80 text-sky-300 border border-sky-500/40">
-              Status: {currentState}
+            <span className="text-xs font-bold tracking-wider text-salvus-text-secondary uppercase">
+              Assigned Rescue Team
             </span>
           </div>
-          <div
-            className={`px-3 py-1 rounded-full text-xs font-extrabold tracking-wider font-mono border ${
+
+          <StatusIndicator
+            status={isOnScene ? 'safe' : isNearby ? 'warning' : 'info'}
+            label={
               isOnScene
-                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                ? 'Arrived on Scene'
                 : isNearby
-                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 animate-pulse'
-                  : 'bg-sky-500/15 border-sky-500/40 text-sky-300'
-            }`}
-          >
-            {isOnScene
-              ? 'ARRIVED ON SCENE'
-              : isNearby
-                ? 'NEARBY (<100m)'
-                : `ETA: ${etaMinutes} MIN`}
-          </div>
+                  ? 'Nearby (<100m)'
+                  : `ETA: ~${etaMinutes} mins`
+            }
+            showDot={true}
+            showIcon={true}
+          />
         </div>
 
-        {/* Nearby Proximity Special Alert Callout */}
+        {/* Nearby Urgent Guidance */}
         {isNearby && (
-          <div className="mb-4 bg-amber-950/40 border border-amber-500/50 rounded-xl p-3 text-xs text-amber-200 flex items-start gap-2.5 animate-fadeIn">
-            <span className="text-base">🚨</span>
+          <div className="mb-4 bg-salvus-warning-bg border border-salvus-warning-border rounded-xl p-3.5 text-xs text-salvus-warning-text flex items-start gap-2.5 animate-fadeIn">
+            <span className="text-base" aria-hidden="true">
+              🚨
+            </span>
             <div>
-              <span className="font-bold block text-amber-300 uppercase tracking-wider text-[11px]">
-                RESPONDER IS NEARBY
+              <span className="font-bold block uppercase tracking-wider text-[11px]">
+                Rescue Team is on Your Street
               </span>
-              <p className="text-[11px] text-amber-100/90 mt-0.5">
-                Please remain at your reported location unless instructed otherwise. Prepare to
-                signal crew.
+              <p className="text-xs opacity-90 mt-0.5 leading-relaxed">
+                Turn on your phone flashlight, wave a bright cloth, or whistle to signal responders.
               </p>
             </div>
           </div>
         )}
 
         {/* Responder Details */}
-        <div className="flex items-start gap-4">
-          <div className="h-12 w-12 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-300 text-xl font-bold shrink-0">
+        <div className="flex items-start gap-3.5">
+          <div className="h-12 w-12 rounded-xl bg-salvus-info-bg border border-salvus-info-border flex items-center justify-center text-xl shrink-0">
             🚤
           </div>
           <div>
-            <span className="text-[10px] uppercase font-bold text-sky-400 font-mono block">
-              Responder
-            </span>
-            <h3 className="text-lg font-bold text-white tracking-tight">
+            <h3 className="text-base sm:text-lg font-bold text-salvus-text-primary tracking-tight">
               {responder.unitName || responder.unit_name || 'NDRF Unit 04'}
             </h3>
-            <p className="text-xs text-slate-300 mt-0.5">
-              {responder.teamLead || responder.team_lead || responder.lead || 'Capt. A. Roy'} ·{' '}
-              <span className="text-slate-400">
-                {responder.vehicle || responder.vehicle_type || 'Zodiac Rescue Boat'}
-              </span>
+            <p className="text-xs text-salvus-text-secondary mt-0.5">
+              Lead: {responder.teamLead || responder.team_lead || responder.lead || 'Capt. A. Roy'}{' '}
+              · <span>{responder.vehicle || responder.vehicle_type || 'Zodiac Rescue Boat'}</span>
             </p>
             <div className="flex flex-wrap items-center gap-2 mt-2">
-              <span className="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded font-semibold">
-                {responder.badge || 'WATER RESCUE'}
-              </span>
-              <span className="text-xs font-mono font-bold text-cyan-400">
-                {isOnScene ? 'At your building' : `Dist: ${distanceText}`}
+              <Badge variant="neutral">{responder.badge || 'Water Rescue'}</Badge>
+              <span className="text-xs font-semibold text-salvus-info">
+                {isOnScene ? 'At your location' : `Distance: ${distanceText}`}
               </span>
             </div>
           </div>
         </div>
-
-        {/* Capability & Comms metadata */}
-        <div className="mt-4 pt-4 border-t border-[#1E293B] grid grid-cols-2 gap-2 text-xs">
-          <div className="bg-[#0B1118] border border-[#1E293B] p-2.5 rounded-lg">
-            <span className="text-[9px] text-slate-400 block uppercase font-mono">
-              Radio Channel
-            </span>
-            <span className="font-mono font-bold text-white text-[11px]">
-              {responder.radioChannel || 'VHF Ch. 4'}
-            </span>
-          </div>
-          <div className="bg-[#0B1118] border border-[#1E293B] p-2.5 rounded-lg">
-            <span className="text-[9px] text-slate-400 block uppercase font-mono">
-              Craft Capacity
-            </span>
-            <span className="font-mono font-bold text-emerald-400 text-[11px]">
-              {responder.capacity || '6 Persons'}
-            </span>
-          </div>
-        </div>
       </div>
 
-      {/* Direct Dispatch Radio Action Footer */}
-      <div className="mt-5 pt-3.5 border-t border-[#1E293B] flex items-center justify-between gap-3">
-        <span className="text-[11px] text-slate-400">Emergency Dispatch Radio:</span>
+      {/* Direct Contact Action Footer */}
+      <div className="mt-5 pt-3.5 border-t border-salvus-border flex items-center justify-between gap-3">
+        <span className="text-xs text-salvus-text-muted">Emergency Dispatch Line:</span>
         <a
           href="tel:112"
-          className="px-3.5 py-2 rounded-lg bg-[#1E293B] hover:bg-[#2A3B4E] text-white text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+          className="px-3.5 py-1.5 rounded-lg bg-salvus-surface-elevated hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-primary text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer min-h-[36px]"
         >
-          <span>📞 Radio Link (112)</span>
+          <span>📞 Call 112</span>
         </a>
       </div>
-    </div>
+    </Card>
   )
 }

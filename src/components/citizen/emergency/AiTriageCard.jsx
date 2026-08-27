@@ -1,5 +1,10 @@
-import { SimulatedBadge } from '../../common/SimulatedBadge'
+import { Card } from '../../ui/Card'
+import { Badge } from '../../ui/Badge'
+import { StatusIndicator } from '../../ui/StatusIndicator'
 
+/**
+ * Reassuring Emergency Assessment Card
+ */
 export const AiTriageCard = ({ currentState = 'TRIAGING', aiTriage = {} }) => {
   const isTriaging = currentState === 'TRIAGING'
   const isPostTriage = [
@@ -12,53 +17,34 @@ export const AiTriageCard = ({ currentState = 'TRIAGING', aiTriage = {} }) => {
   ].includes(currentState)
 
   const steps = aiTriage.analysisSteps || [
-    { id: 'signal', label: 'GPS Telemetry & Spatial Mesh', status: 'verified' },
-    { id: 'hazard', label: 'Satellite Flood Hydro-Model', status: 'verified' },
-    { id: 'priority', label: 'Life-Safety Risk & Urgency Index', status: 'verified' },
-    { id: 'craft', label: 'Resource Matching & Route Feasibility', status: 'verified' },
+    { id: 'signal', label: 'Location Verified', status: 'verified' },
+    { id: 'hazard', label: 'Hazard Assessed', status: 'verified' },
+    { id: 'priority', label: 'Priority Assigned', status: 'verified' },
+    { id: 'craft', label: 'Team Allocated', status: 'verified' },
   ]
 
   return (
-    <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl p-5 sm:p-6 transition-all duration-300">
+    <Card padding="md" className="transition-all">
       {/* Top Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-xs">
-            ⚡
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-white tracking-tight">
-                Operational Intelligence Triage
-              </h3>
-              <SimulatedBadge label="SIMULATED MODEL" />
-            </div>
-            <p className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">
-              Salvus Incident Evaluation Engine
-            </p>
-          </div>
+          <span className="text-sm font-bold text-salvus-text-primary uppercase tracking-wider">
+            Emergency Assessment
+          </span>
+          <Badge variant="neutral" isMono={true}>
+            Coordinator Verified
+          </Badge>
         </div>
 
-        <div className="flex items-center gap-2">
-          {isTriaging ? (
-            <span className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping"></span>
-              Analyzing Distress Telemetry
-            </span>
-          ) : isPostTriage ? (
-            <span className="flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
-              <span>✓</span>
-              Triage Assessment Complete
-            </span>
-          ) : (
-            <span className="bg-slate-800 text-slate-400 border border-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-              Queued for Triage
-            </span>
-          )}
-        </div>
+        <StatusIndicator
+          status={isPostTriage ? 'safe' : isTriaging ? 'warning' : 'neutral'}
+          label={isPostTriage ? 'Assessment Complete' : isTriaging ? 'Reviewing...' : 'Queued'}
+          showDot={true}
+          size="sm"
+        />
       </div>
 
-      {/* Analysis Criteria Progress Grid */}
+      {/* Criteria Progress */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
         {steps.map((step, idx) => {
           const isDone = isPostTriage || (isTriaging && idx < 3)
@@ -67,81 +53,55 @@ export const AiTriageCard = ({ currentState = 'TRIAGING', aiTriage = {} }) => {
           return (
             <div
               key={step.id}
-              className={`p-2.5 rounded-xl border text-[11px] transition-all ${
+              className={`p-2.5 rounded-xl border text-xs transition-all ${
                 isDone
-                  ? 'bg-[#0B1118] border-emerald-500/30 text-slate-200'
+                  ? 'bg-salvus-safe-bg border-salvus-safe-border text-salvus-safe-text'
                   : isCurrent
-                    ? 'bg-amber-950/20 border-amber-500/40 text-amber-200 animate-pulse'
-                    : 'bg-[#0B1118]/60 border-[#1E293B] text-slate-500'
+                    ? 'bg-salvus-warning-bg border-salvus-warning-border text-salvus-warning-text'
+                    : 'bg-salvus-muted/40 border-salvus-border text-salvus-text-muted'
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="font-mono text-[9px] text-slate-400 font-bold">0{idx + 1}</span>
-                {isDone ? (
-                  <span className="text-emerald-400 text-[10px] font-bold">✓</span>
-                ) : isCurrent ? (
-                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping"></span>
-                ) : (
-                  <span className="text-slate-600 text-[10px]">○</span>
-                )}
+                <span className="font-bold text-[10px] opacity-75">0{idx + 1}</span>
+                <span>{isDone ? '✓' : isCurrent ? '•' : '○'}</span>
               </div>
-              <p className="font-medium leading-tight line-clamp-2 text-[10px]">{step.label}</p>
+              <p className="font-medium text-xs line-clamp-1">{step.label}</p>
             </div>
           )
         })}
       </div>
 
-      {/* Triage Output Breakdown Box */}
-      <div className="bg-[#0B1118] border border-[#1E293B] rounded-xl p-4 space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-3 border-b border-[#1E293B]">
+      {/* Summary Box */}
+      <div className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-3.5 space-y-2 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pb-2 border-b border-salvus-border">
           <div>
-            <span className="text-[10px] font-mono uppercase text-slate-400 block font-semibold">
-              Hazard Classification
-            </span>
-            <span className="text-xs font-bold text-white mt-0.5 block">
-              {aiTriage.hazardType || 'Flash Flood & Surge Inundation'}
+            <span className="text-salvus-text-muted block text-[11px]">Hazard Type</span>
+            <span className="font-bold text-salvus-text-primary mt-0.5 block">
+              {aiTriage.hazardType || 'Flash Flood Inundation'}
             </span>
           </div>
           <div>
-            <span className="text-[10px] font-mono uppercase text-slate-400 block font-semibold">
-              Estimated Severity
+            <span className="text-salvus-text-muted block text-[11px]">Severity Priority</span>
+            <span className="font-bold text-salvus-critical mt-0.5 block">
+              {aiTriage.severityClassification || 'High Priority (Level 1)'}
             </span>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-xs font-bold text-rose-400">
-                {aiTriage.severityClassification || 'Critical (Tier 4)'}
-              </span>
-              <span className="text-[9px] bg-rose-500/20 text-rose-300 px-1.5 py-0.2 rounded font-mono font-bold">
-                {aiTriage.aiConfidence || '94%'} conf.
-              </span>
-            </div>
           </div>
           <div>
-            <span className="text-[10px] font-mono uppercase text-slate-400 block font-semibold">
-              Allocated Craft Class
-            </span>
-            <span className="text-xs font-bold text-sky-400 mt-0.5 block">
+            <span className="text-salvus-text-muted block text-[11px]">Required Unit</span>
+            <span className="font-bold text-salvus-info mt-0.5 block">
               {aiTriage.requiredCapability || 'Zodiac Rescue Boat'}
             </span>
           </div>
         </div>
 
-        {/* Human in the loop verification stamp */}
-        <div className="flex items-start sm:items-center justify-between gap-3 pt-1 flex-col sm:flex-row">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="h-2 w-2 rounded-full bg-cyan-400"></span>
-            <span className="text-slate-300 text-[11px]">
-              <strong className="text-white">Human Coordinator Verification: </strong>
-              {aiTriage.humanVerification?.coordinator
-                ? `Approved by Dispatcher ${aiTriage.humanVerification.coordinator} (${aiTriage.humanVerification.station})`
-                : 'Salvus Central Hub human dispatcher authorized life-safety dispatch.'}
-            </span>
-          </div>
-
-          <span className="text-[10px] text-slate-400 font-mono italic shrink-0">
-            Life-Safety Verified
-          </span>
-        </div>
+        {/* Human Coordinator Note */}
+        <p className="text-xs text-salvus-text-secondary leading-relaxed pt-1">
+          <strong className="text-salvus-text-primary">Human Dispatcher: </strong>
+          {aiTriage.humanVerification?.coordinator
+            ? `Authorized by Dispatcher ${aiTriage.humanVerification.coordinator} (${aiTriage.humanVerification.station})`
+            : 'Central Command dispatcher has confirmed and dispatched nearest rescue units.'}
+        </p>
       </div>
-    </div>
+    </Card>
   )
 }

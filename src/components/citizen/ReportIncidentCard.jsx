@@ -1,32 +1,48 @@
+import { Card } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
+
+/**
+ * Report a Hazard Card
+ * Simple community hazard contribution card.
+ */
 export const ReportIncidentCard = ({
-  badgeText = 'Community report',
-  title = 'Report a local hazard',
-  subtitle = 'Submit photo and location in 30s',
-  actionText = 'Report hazard',
+  badgeText = 'Community Safety',
+  title = 'Report a Hazard',
+  subtitle = 'Help alert neighbors to flooded roads, fallen lines, or blocked pathways.',
+  actionText = 'Report a Hazard',
   onActionClick,
 }) => {
   return (
-    <div className="bg-[#0D141F] border border-[#1A2533] rounded-xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-200 hover:border-[#27384C]">
+    <Card padding="md" className="flex flex-col justify-between transition-all">
       <div>
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <span className="h-2 w-2 rounded-full bg-slate-400"></span>
-          <span className="text-xs font-semibold text-slate-400">{badgeText}</span>
+        <div className="flex items-center gap-1.5 mb-2">
+          <Badge variant="neutral" dot={true}>
+            {badgeText}
+          </Badge>
         </div>
-        <h3 className="text-base sm:text-lg font-bold text-slate-100 tracking-tight leading-snug">
+
+        <h3 className="text-base sm:text-lg font-bold text-salvus-text-primary tracking-tight leading-snug">
           {title}
         </h3>
-        <p className="text-xs sm:text-sm text-slate-400 mt-1">{subtitle}</p>
+
+        <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 leading-relaxed">
+          {subtitle}
+        </p>
       </div>
-      <div className="mt-4 pt-2">
-        <button
-          type="button"
+
+      <div className="mt-4 pt-3 border-t border-salvus-border">
+        <Button
+          variant="secondary"
+          size="sm"
+          fullWidth={true}
           onClick={onActionClick}
-          className="text-xs sm:text-sm font-semibold text-sky-400 hover:text-sky-300 transition-colors inline-flex items-center gap-1 cursor-pointer group"
+          leftIcon={<span aria-hidden="true">📍</span>}
+          className="font-semibold text-xs"
         >
-          <span>{actionText}</span>
-          <span className="transition-transform group-hover:translate-x-1">→</span>
-        </button>
+          {actionText}
+        </Button>
       </div>
-    </div>
+    </Card>
   )
 }

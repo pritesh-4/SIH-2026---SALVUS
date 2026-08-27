@@ -1,70 +1,77 @@
+import { Card } from '../../ui/Card'
+import { Badge } from '../../ui/Badge'
 import { STATE_ORDER } from '../../../features/citizen/emergency/useEmergencyState'
 
+/**
+ * Reassuring Emergency Progression Timeline
+ */
 export const EmergencyTimeline = ({ timelineSteps = [], currentState = 'SOS_ACTIVE' }) => {
   const currentIdx = STATE_ORDER.indexOf(currentState)
 
   return (
-    <div className="bg-[#111A24] border border-[#1E293B] rounded-2xl p-5 sm:p-6 transition-all duration-300">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-xs font-bold tracking-wider text-slate-400 uppercase block">
-          LIVE INCIDENT TIMELINE
-        </span>
-        <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 px-2 py-0.5 rounded-full">
-          Salvus Dispatch Audit Log
-        </span>
+    <Card padding="md" className="transition-all">
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <h3 className="text-sm font-bold text-salvus-text-primary uppercase tracking-wider">
+          Response Timeline
+        </h3>
+        <Badge variant="neutral" isMono={true}>
+          Live Log
+        </Badge>
       </div>
 
-      <div className="space-y-3.5 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#1E293B]">
+      <div className="space-y-4 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-salvus-border">
         {timelineSteps.map((step, idx) => {
           const isCompleted = idx < currentIdx
           const isCurrent = idx === currentIdx
 
           return (
-            <div key={step.id} className="relative flex items-start gap-3.5 pl-1.5">
-              {/* Timeline marker icon */}
+            <div key={step.id} className="relative flex items-start gap-3.5 pl-1">
+              {/* Timeline marker */}
               <div
-                className={`h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-bold z-10 shrink-0 mt-0.5 transition-all duration-300 ${
+                className={`h-4.5 w-4.5 rounded-full flex items-center justify-center text-[10px] font-bold z-10 shrink-0 mt-0.5 transition-colors ${
                   isCompleted
-                    ? 'bg-emerald-500 text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+                    ? 'bg-salvus-safe text-white'
                     : isCurrent
-                      ? 'bg-amber-400 text-slate-950 ring-4 ring-amber-400/25 animate-pulse'
-                      : 'bg-[#1E293B] text-slate-500'
+                      ? 'bg-salvus-warning text-salvus-bg ring-2 ring-salvus-warning/30'
+                      : 'bg-salvus-muted text-salvus-text-muted'
                 }`}
               >
                 {isCompleted ? '✓' : idx + 1}
               </div>
 
               {/* Step info */}
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <h4
-                    className={`text-xs font-bold transition-colors ${
+                    className={`text-xs font-bold ${
                       isCurrent
-                        ? 'text-white'
+                        ? 'text-salvus-text-primary'
                         : isCompleted
-                          ? 'text-slate-200'
-                          : 'text-slate-500 font-normal'
+                          ? 'text-salvus-text-primary'
+                          : 'text-salvus-text-muted font-normal'
                     }`}
                   >
                     {step.label}
                   </h4>
                   {isCurrent && (
-                    <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.2 rounded-full font-bold uppercase shrink-0">
-                      CURRENT
-                    </span>
+                    <Badge variant="warning" size="sm">
+                      Current
+                    </Badge>
                   )}
                   {isCompleted && (
-                    <span className="text-[10px] text-emerald-400 font-semibold shrink-0">
+                    <span className="text-[11px] text-salvus-safe font-semibold shrink-0">
                       Done
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">{step.description}</p>
+                <p className="text-xs text-salvus-text-secondary mt-0.5 leading-relaxed">
+                  {step.description}
+                </p>
               </div>
             </div>
           )
         })}
       </div>
-    </div>
+    </Card>
   )
 }

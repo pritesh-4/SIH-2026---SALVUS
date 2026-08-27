@@ -1,67 +1,63 @@
+import { Badge } from '../../ui/Badge'
+import { StatusIndicator } from '../../ui/StatusIndicator'
+import { Button } from '../../ui/Button'
+
+/**
+ * Reassuring, Focused Emergency Header
+ */
 export const EmergencyHeader = ({
   incidentId = 'SV-2048',
-  phaseLabel = 'BEACON ACTIVE',
+  phaseLabel = 'Help Request Active',
   badgeColor = 'rose',
   onCancelClick,
 }) => {
-  const getBadgePill = () => {
-    switch (badgeColor) {
-      case 'rose':
-        return 'bg-rose-500/10 border-rose-500/30 text-rose-400'
-      case 'amber':
-        return 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-      case 'blue':
-      case 'sky':
-        return 'bg-sky-500/10 border-sky-500/30 text-sky-400'
-      case 'emerald':
-        return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-      default:
-        return 'bg-slate-800 border-slate-700 text-slate-300'
-    }
+  const mapStatus = (color) => {
+    if (color === 'emerald') return 'safe'
+    if (color === 'amber') return 'warning'
+    if (color === 'blue' || color === 'sky') return 'info'
+    return 'critical'
   }
 
   return (
-    <header className="w-full border-b border-rose-500/20 bg-[#0B1118]/95 backdrop-blur-md sticky top-0 z-40">
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-8 h-16 flex items-center justify-between">
+    <header className="w-full border-b border-salvus-border bg-salvus-surface/95 backdrop-blur-md sticky top-0 z-40 transition-colors">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-8 h-16 flex items-center justify-between gap-4">
         {/* Brand & Mode Indicator */}
         <div className="flex items-center gap-3">
-          <span className="text-white font-black text-lg tracking-wider">SALVUS</span>
-          <div
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-extrabold tracking-widest uppercase ${getBadgePill()}`}
-          >
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-current"></span>
-            </span>
-            <span>{phaseLabel || 'EMERGENCY ACTIVE'}</span>
-          </div>
+          <span className="text-salvus-text-primary font-extrabold text-lg tracking-wider">
+            SALVUS
+          </span>
+          <StatusIndicator
+            status={mapStatus(badgeColor)}
+            label={phaseLabel || 'Help Request Active'}
+            showDot={true}
+            showIcon={true}
+          />
         </div>
 
-        {/* Incident ID & Action Group */}
-        <div className="flex items-center gap-2 sm:gap-4">
-          <div className="hidden sm:flex items-center gap-2 text-xs bg-[#111A24] border border-[#1E293B] px-3 py-1.5 rounded-lg font-mono text-slate-300">
-            <span className="text-slate-500">INCIDENT:</span>
-            <span className="font-bold text-white">#{incidentId}</span>
-          </div>
+        {/* Incident ID & Direct Call Action */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Badge variant="neutral" isMono={true} className="hidden sm:inline-flex">
+            INCIDENT #{incidentId}
+          </Badge>
 
           <a
             href="tel:112"
-            className="flex items-center gap-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
-            title="Dial national emergency dispatcher"
+            className="inline-flex items-center gap-1.5 bg-salvus-critical text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-xs min-h-[36px]"
+            title="Dial national emergency services"
           >
-            <span>📞</span>
-            <span className="hidden xs:inline">Call</span>
-            <span>112</span>
+            <span aria-hidden="true">📞</span>
+            <span>Call 112</span>
           </a>
 
           {onCancelClick && (
-            <button
-              type="button"
+            <Button
+              variant="quiet"
+              size="sm"
               onClick={onCancelClick}
-              className="text-xs text-slate-400 hover:text-rose-300 border border-[#1E293B] hover:border-rose-500/40 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+              className="text-salvus-text-muted hover:text-salvus-critical"
             >
               Cancel SOS
-            </button>
+            </Button>
           )}
         </div>
       </div>

@@ -1,21 +1,41 @@
+import { Card } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+
+/**
+ * 3-Part Active Warning Card
+ * Answers Question 2: "What is happening?" & Question 3: "What should I do?"
+ */
 export const ActiveAlertCard = ({
-  badgeText = 'Active weather advisory · Heavy rain',
-  description = 'Localized flooding possible in low-lying sectors. Move to higher ground if water rises.',
-  source = 'Verified by Meteorological Dept & GDACS · 14 min ago',
+  badgeText = 'Weather Warning · Heavy Rain',
+  headline = 'Localized waterlogging expected in low-lying areas',
+  description = 'Move electrical appliances and essential supplies to elevated levels if water accumulates.',
+  source = 'Official advisory · Meteorological Dept',
 }) => {
   return (
-    <div className="bg-[#0D141F] border border-[#1A2533] border-l-4 border-l-amber-500 rounded-xl p-5 sm:p-6 transition-all duration-200 hover:border-[#27384C] hover:border-l-amber-500">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="h-2 w-2 rounded-full bg-amber-400"></span>
-        <span className="text-xs font-semibold tracking-wide text-amber-400">{badgeText}</span>
+    <Card variant="warning" padding="md" className="transition-all">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <Badge variant="warning" dot={true}>
+          {badgeText}
+        </Badge>
+        <span className="text-[11px] text-salvus-text-muted hidden sm:inline">
+          Tap to view advisories
+        </span>
       </div>
-      <p className="text-sm sm:text-base text-slate-100 leading-relaxed font-medium">
+
+      <h3 className="text-base sm:text-lg font-bold text-salvus-text-primary tracking-tight">
+        {headline}
+      </h3>
+
+      <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 leading-relaxed">
         {description}
       </p>
-      <div className="mt-3 pt-2.5 border-t border-[#1A2533] flex items-center justify-between text-xs text-slate-400">
+
+      <div className="mt-3 pt-2.5 border-t border-salvus-border flex items-center justify-between text-xs text-salvus-text-muted">
         <span className="truncate">{source}</span>
-        <span className="text-sky-400 font-semibold text-xs shrink-0 ml-2">Read advisory →</span>
+        <span className="text-salvus-info font-semibold text-xs shrink-0 ml-2">
+          Read advisory →
+        </span>
       </div>
-    </div>
+    </Card>
   )
 }

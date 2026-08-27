@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, ChevronRight, ShieldCheck, CheckCircle2 } from 'lucide-react'
 import { fetchIncidentById } from '../../services/api'
 import { joinRoom, leaveRoom, subscribeToEvent } from '../../lib/realtime/socket'
+import { Badge } from '../ui/Badge'
 
 export const ActiveEmergencyBanner = () => {
   const navigate = useNavigate()
@@ -96,62 +96,53 @@ export const ActiveEmergencyBanner = () => {
     navigate(`/citizen/sos?incidentId=${activeIncidentId}`)
   }
 
+  const getBannerStyle = () => {
+    if (isResolved) return 'bg-salvus-safe-bg border-salvus-safe-border text-salvus-safe-text'
+    if (isAssigned) return 'bg-salvus-info-bg border-salvus-info-border text-salvus-info-text'
+    return 'bg-salvus-critical-bg border-salvus-critical-border text-salvus-critical-text'
+  }
+
   return (
     <div
       role="banner"
       onClick={handleNavigate}
-      className={`w-full py-2.5 px-4 sm:px-8 border-b text-xs font-mono transition-all cursor-pointer shadow-lg flex items-center justify-between gap-3 ${
-        isResolved
-          ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200 hover:bg-emerald-900/90'
-          : isAssigned
-            ? 'bg-sky-950/95 border-sky-500/50 text-sky-200 hover:bg-sky-900/95 animate-pulse'
-            : 'bg-rose-950/95 border-rose-500/50 text-rose-200 hover:bg-rose-900/95'
-      }`}
+      className={`w-full py-2.5 px-4 sm:px-8 border-b text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-between gap-3 ${getBannerStyle()}`}
     >
-      <div className="flex items-center gap-2.5 truncate">
-        {isResolved ? (
-          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-        ) : isAssigned ? (
-          <ShieldCheck className="h-4 w-4 text-sky-400 shrink-0 animate-bounce" />
-        ) : (
-          <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 animate-ping" />
-        )}
+      <div className="flex items-center gap-2.5 min-w-0">
+        <span className="text-base shrink-0" aria-hidden="true">
+          {isResolved ? '✅' : isAssigned ? '🚤' : '🚨'}
+        </span>
 
-        <div className="truncate">
-          <span className="font-bold uppercase tracking-wider mr-2">
+        <div className="truncate text-xs sm:text-sm">
+          <strong className="mr-2 font-bold">
             {isResolved
-              ? '✓ RESCUE COMPLETE:'
+              ? 'Rescue Complete:'
               : isAssigned
-                ? '⚡ HELP IS ON THE WAY:'
-                : '🚨 ACTIVE SOS BEACON:'}
-          </span>
-          <span className="text-slate-200">
+                ? 'Help is on the way:'
+                : 'Help Request Active:'}
+          </strong>
+          <span className="opacity-90">
             {isResolved
               ? 'Incident safely resolved by response team.'
               : isAssigned
-                ? `${incidentData.assigned_responder?.unit_name || 'Response Unit'} dispatched (${incidentData.status.replace('_', ' ')})`
-                : 'Salvus Command coordinator is reviewing your beacon.'}
+                ? `${incidentData.assigned_responder?.unit_name || 'Response Unit'} dispatched`
+                : 'Emergency coordinators have your location.'}
           </span>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="hidden sm:inline font-bold uppercase text-[10px] bg-black/40 px-2 py-0.5 rounded border border-white/10">
-          Ticket #{incidentData.ticket_id || 'SV-ACTIVE'}
-        </span>
-        <button
-          type="button"
-          onClick={handleNavigate}
-          className="flex items-center gap-1 font-bold text-white bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded text-[11px] transition-colors"
-        >
-          <span>Track Live</span>
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
+      <div className="flex items-center gap-2.5 shrink-0">
+        <Badge variant={isResolved ? 'safe' : isAssigned ? 'info' : 'critical'} isMono={true}>
+          #{incidentData.ticket_id || 'SOS-ACTIVE'}
+        </Badge>
+
+        <span className="font-semibold text-xs underline">Track Live →</span>
+
         {isResolved && (
           <button
             type="button"
             onClick={handleDismiss}
-            className="text-slate-400 hover:text-white text-[11px] px-1.5 py-0.5"
+            className="hover:opacity-75 text-xs p-1 select-none cursor-pointer"
             title="Dismiss notification"
           >
             ✕
@@ -161,4 +152,5 @@ export const ActiveEmergencyBanner = () => {
     </div>
   )
 }
+
 export default ActiveEmergencyBanner

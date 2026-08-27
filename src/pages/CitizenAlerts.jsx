@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { citizenAlertsData } from '../data/citizen/alerts.mock'
 import { fetchHazards } from '../services/api'
+import { Card } from '../components/ui/Card'
+import { Badge } from '../components/ui/Badge'
+import { Button } from '../components/ui/Button'
+import { StatusIndicator } from '../components/ui/StatusIndicator'
 
 export const CitizenAlerts = () => {
   const navigate = useNavigate()
@@ -16,7 +20,7 @@ export const CitizenAlerts = () => {
       const result = await fetchHazards(22.5726, 88.3639, 10.0)
       if (isMounted && result.success && result.data && result.data.length > 0) {
         setLiveHazards(result.data)
-        setLastUpdated('Updated just now')
+        setLastUpdated('Just now')
       }
     }
     loadHazards()
@@ -44,8 +48,8 @@ export const CitizenAlerts = () => {
           affectedArea: 'Sector 12 & Salt Lake Drainage Basin',
           actions: [
             hz.recommended_action,
-            'Monitor municipal emergency VHF / SMS broadcasts.',
-            'Keep power banks charged and move essential supplies above ground level.',
+            'Monitor official emergency broadcasts.',
+            'Keep power banks charged and move supplies above ground level.',
           ],
           nearestSafeHaven: {
             name: 'Salt Lake Stadium Evacuation Hub',
@@ -73,32 +77,34 @@ export const CitizenAlerts = () => {
     { id: 'all', label: 'All Alerts', count: displayAlerts.length },
     { id: 'critical', label: 'Critical Threats', count: criticalCount },
     { id: 'warning', label: 'Warnings', count: warningCount },
-    { id: 'watch', label: 'Advisories & Watch', count: watchCount },
+    { id: 'watch', label: 'Advisories', count: watchCount },
   ]
 
-  const getBadgeClasses = (severity) => {
+  const getCardVariant = (severity) => {
     switch (severity) {
       case 'CRITICAL':
-        return 'bg-rose-950/40 text-rose-300 border-rose-500/40'
+        return 'critical'
       case 'WARNING':
-        return 'bg-amber-950/40 text-amber-300 border-amber-500/40'
+        return 'warning'
       case 'WATCH':
-        return 'bg-sky-950/40 text-sky-300 border-sky-500/40'
+      case 'INFO':
+        return 'info'
       default:
-        return 'bg-slate-800 text-slate-300 border-slate-700'
+        return 'default'
     }
   }
 
-  const getBorderAccent = (severity) => {
+  const getBadgeVariant = (severity) => {
     switch (severity) {
       case 'CRITICAL':
-        return 'border-l-4 border-l-rose-500'
+        return 'critical'
       case 'WARNING':
-        return 'border-l-4 border-l-amber-500'
+        return 'warning'
       case 'WATCH':
-        return 'border-l-4 border-l-sky-500'
+      case 'INFO':
+        return 'info'
       default:
-        return 'border-l-4 border-l-slate-600'
+        return 'neutral'
     }
   }
 
@@ -108,22 +114,20 @@ export const CitizenAlerts = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-400">Safety advisories</span>
-            <span className="h-1 w-1 rounded-full bg-slate-600"></span>
-            <span className="text-xs text-rose-400 font-medium">
+            <span className="text-xs font-semibold text-salvus-text-secondary">
+              Safety Advisories
+            </span>
+            <span className="h-1 w-1 rounded-full bg-salvus-border-strong"></span>
+            <span className="text-xs text-salvus-critical font-medium">
               {criticalCount} Critical active
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100 tracking-tight mt-1">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary tracking-tight mt-0.5">
             Emergency Alerts & Advisories
           </h1>
         </div>
 
-        {/* Live Source Status */}
-        <div className="flex items-center gap-2 bg-[#0D141F] border border-[#1A2533] px-3.5 py-2 rounded-xl text-xs text-slate-300">
-          <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-          <span>Feed updated ({lastUpdated})</span>
-        </div>
+        <StatusIndicator status="safe" label={`Feed updated ${lastUpdated}`} showDot={true} />
       </div>
 
       {/* Filter Tabs */}
@@ -135,12 +139,18 @@ export const CitizenAlerts = () => {
             onClick={() => setSelectedFilter(f.id)}
             className={`px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
               selectedFilter === f.id
-                ? 'bg-slate-700 text-white shadow-sm'
-                : 'bg-[#0D141F] border border-[#1A2533] text-slate-300 hover:text-white'
+                ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
+                : 'bg-salvus-surface border border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
             }`}
           >
             <span>{f.label}</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-slate-900 text-slate-300">
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                selectedFilter === f.id
+                  ? 'bg-salvus-bg/20 text-salvus-bg'
+                  : 'bg-salvus-muted text-salvus-text-muted'
+              }`}
+            >
               {f.count}
             </span>
           </button>
@@ -150,159 +160,167 @@ export const CitizenAlerts = () => {
       {/* Alerts Feed List */}
       <div className="space-y-4">
         {filteredAlerts.map((alert) => (
-          <article
+          <Card
             key={alert.id}
+            variant={getCardVariant(alert.severity)}
+            padding="md"
             onClick={() => setActiveAlertDetail(alert)}
-            className={`bg-[#0D141F] border border-[#1A2533] ${getBorderAccent(
-              alert.severity
-            )} rounded-xl p-5 sm:p-6 transition-all duration-200 hover:border-[#27384C] hover:bg-[#121B27] cursor-pointer group`}
+            className="cursor-pointer transition-all hover:border-salvus-border-strong"
           >
             {/* Header: Severity & Location */}
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 mb-2">
               <div className="flex items-center gap-2">
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getBadgeClasses(
-                    alert.severity
-                  )}`}
-                >
+                <Badge variant={getBadgeVariant(alert.severity)} dot={true}>
                   {alert.severity}
-                </span>
-                <span className="text-xs text-slate-400">· {alert.timestamp}</span>
+                </Badge>
+                <span className="text-xs text-salvus-text-muted">· {alert.timestamp}</span>
               </div>
 
-              <div className="flex items-center gap-1.5 text-xs text-slate-400">
+              <div className="flex items-center gap-1.5 text-xs text-salvus-text-muted">
                 <span>📍</span>
                 <span>{alert.distance}</span>
               </div>
             </div>
 
             {/* 1. WHAT HAPPENED */}
-            <h2 className="text-base sm:text-lg font-bold text-slate-100 tracking-tight group-hover:text-sky-300 transition-colors">
+            <h2 className="text-base sm:text-lg font-bold text-salvus-text-primary tracking-tight">
               {alert.title}
             </h2>
 
-            {/* 2. WHY IT MATTERS HERE */}
-            <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed font-normal">
+            {/* 2. WHY IT MATTERS */}
+            <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 leading-relaxed">
               {alert.summary}
             </p>
 
-            {/* 3. WHAT TO DO (Prominent Action Preview) */}
-            <div className="mt-3.5 pt-3 border-t border-[#1A2533] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2 text-slate-400">
-                <span className="text-slate-500">Source:</span>
+            {/* 3. WHAT TO DO Preview */}
+            <div className="mt-3.5 pt-3 border-t border-salvus-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 text-salvus-text-muted truncate">
+                <span>Source:</span>
                 <span className="truncate max-w-[280px] sm:max-w-md">{alert.source}</span>
               </div>
-              <span className="text-sky-400 font-semibold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform shrink-0">
+              <span className="text-salvus-info font-semibold flex items-center gap-1 shrink-0">
                 View recommended safety actions →
               </span>
             </div>
-          </article>
+          </Card>
         ))}
       </div>
 
-      {/* Alert Detail Modal */}
+      {/* Detailed Alert Modal with 3-Part Guidance */}
       {activeAlertDetail && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-labelledby="alert-detail-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
+          aria-labelledby="alert-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setActiveAlertDetail(null)
+            }
+          }}
         >
-          <div className="bg-[#0D141F] border border-[#1A2533] rounded-2xl max-w-xl w-full p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto relative">
-            {/* Modal Top Bar */}
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <span
-                className={`px-3 py-0.5 rounded-full text-xs font-semibold border ${getBadgeClasses(
-                  activeAlertDetail.severity
-                )}`}
-              >
-                {activeAlertDetail.status}
-              </span>
+          <div className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-xl w-full p-6 sm:p-7 shadow-2xl relative text-salvus-text-primary max-h-[85vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-salvus-border">
+              <div className="flex items-center gap-2">
+                <Badge variant={getBadgeVariant(activeAlertDetail.severity)} dot={true}>
+                  {activeAlertDetail.severity}
+                </Badge>
+                <span className="text-xs text-salvus-text-muted">{activeAlertDetail.distance}</span>
+              </div>
               <button
                 type="button"
                 onClick={() => setActiveAlertDetail(null)}
-                className="text-slate-400 hover:text-white text-lg font-bold p-1 cursor-pointer"
+                aria-label="Close advisory"
+                className="text-salvus-text-muted hover:text-salvus-text-primary text-base font-bold p-1 cursor-pointer select-none"
               >
                 ✕
               </button>
             </div>
 
-            {/* Title & Area */}
-            <h3
-              id="alert-detail-title"
-              className="text-xl sm:text-2xl font-extrabold text-slate-100 tracking-tight leading-snug"
-            >
-              {activeAlertDetail.title}
-            </h3>
-            <p className="text-xs text-slate-400 mt-1">
-              Affecting area:{' '}
-              <strong className="text-slate-200">{activeAlertDetail.affectedArea}</strong>
-            </p>
-
-            {/* Why It Matters (Explanation) */}
-            <div className="bg-[#080C12] border border-[#182332] rounded-xl p-4 my-4 text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
-              {activeAlertDetail.details}
+            {/* 1. WHAT HAPPENED */}
+            <div>
+              <span className="text-xs font-bold text-salvus-text-muted uppercase tracking-wider block">
+                What Happened
+              </span>
+              <h2
+                id="alert-modal-title"
+                className="text-xl font-bold text-salvus-text-primary tracking-tight mt-0.5"
+              >
+                {activeAlertDetail.title}
+              </h2>
             </div>
 
-            {/* Recommended Safety Actions (What to do) */}
-            <div className="mb-5">
-              <h4 className="text-xs font-bold tracking-wide text-slate-200 uppercase mb-2.5">
-                What you should do:
-              </h4>
+            {/* 2. WHY IT MATTERS */}
+            <div className="mt-4 bg-salvus-muted/40 border border-salvus-border rounded-xl p-3.5">
+              <span className="text-xs font-bold text-salvus-text-primary uppercase block mb-1">
+                Why It Matters
+              </span>
+              <p className="text-xs sm:text-sm text-salvus-text-secondary leading-relaxed">
+                {activeAlertDetail.details || activeAlertDetail.summary}
+              </p>
+            </div>
+
+            {/* 3. WHAT TO DO */}
+            <div className="mt-4">
+              <span className="text-xs font-bold text-salvus-text-primary uppercase tracking-wider block mb-2">
+                What You Should Do
+              </span>
               <div className="space-y-2">
-                {activeAlertDetail.actions.map((act, i) => (
+                {activeAlertDetail.actions?.map((act, idx) => (
                   <div
-                    key={i}
-                    className="flex items-start gap-2.5 text-xs text-slate-300 bg-[#121B27] p-2.5 rounded-lg border border-[#1A2533]"
+                    key={idx}
+                    className="bg-salvus-safe-bg border border-salvus-safe-border rounded-xl p-3 flex items-start gap-2.5 text-xs text-salvus-safe-text"
                   >
-                    <span className="text-sky-400 font-bold">✓</span>
-                    <span>{act}</span>
+                    <span className="font-bold shrink-0">{idx + 1}.</span>
+                    <span className="font-medium leading-relaxed">{act}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Safe Haven recommendation */}
+            {/* Safe Destination Callout */}
             {activeAlertDetail.nearestSafeHaven && (
-              <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-3.5 mb-5 flex items-center justify-between gap-3">
+              <div className="mt-4 p-3.5 bg-salvus-surface-elevated border border-salvus-border rounded-xl flex items-center justify-between gap-3">
                 <div>
-                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
-                    Recommended Safe Shelter
+                  <span className="text-[11px] text-salvus-text-muted block font-semibold">
+                    Recommended Safe Place
                   </span>
-                  <span className="text-xs font-bold text-slate-100">
+                  <strong className="text-xs sm:text-sm text-salvus-text-primary">
                     {activeAlertDetail.nearestSafeHaven.name}
-                  </span>
-                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                  </strong>
+                  <span className="text-xs text-salvus-safe block mt-0.5">
                     {activeAlertDetail.nearestSafeHaven.distance} ·{' '}
                     {activeAlertDetail.nearestSafeHaven.routeStatus}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => navigate('/citizen/map')}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs whitespace-nowrap cursor-pointer"
+                <Button
+                  variant="safe"
+                  size="sm"
+                  onClick={() => {
+                    setActiveAlertDetail(null)
+                    navigate('/citizen/map')
+                  }}
+                  className="shrink-0"
                 >
-                  View on map
-                </button>
+                  View Route
+                </Button>
               </div>
             )}
 
-            {/* Modal Actions */}
-            <div className="flex flex-col sm:flex-row gap-3 pt-3 border-t border-[#1A2533]">
-              <button
-                type="button"
-                onClick={() => navigate('/citizen/sos')}
-                className="flex-1 py-2.5 px-4 rounded-xl bg-[#EF4444] hover:bg-rose-600 text-white font-bold text-xs tracking-wide transition-colors cursor-pointer text-center"
-              >
-                Request SOS evacuation
-              </button>
-              <button
-                type="button"
+            {/* Source & Actions */}
+            <div className="mt-6 pt-4 border-t border-salvus-border flex flex-col sm:flex-row items-center justify-between gap-3">
+              <span className="text-xs text-salvus-text-muted truncate">
+                Source: {activeAlertDetail.source}
+              </span>
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={() => setActiveAlertDetail(null)}
-                className="py-2.5 px-5 rounded-xl bg-[#1A2533] hover:bg-[#27384C] text-slate-200 font-semibold text-xs cursor-pointer"
+                className="w-full sm:w-auto"
               >
-                Dismiss
-              </button>
+                Close Advisory
+              </Button>
             </div>
           </div>
         </div>
