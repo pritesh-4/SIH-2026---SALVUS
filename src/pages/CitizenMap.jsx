@@ -1,52 +1,14 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLocation } from '../hooks/useLocation'
 import { LANDMARKS } from '../lib/location'
+import { loadNearbyPlaces, hasMovedSignificantly } from '../services/placesService'
 import { SalvusLeafletMap } from '../components/common/SalvusLeafletMap'
 import { SimulatedBadge } from '../components/common/SimulatedBadge'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { StatusIndicator } from '../components/ui/StatusIndicator'
-
-const CITIZEN_SHELTERS = [
-  {
-    id: 'm1',
-    name: 'Sector 12 Community Shelter',
-    address: 'Block CF, Sector 12, Salt Lake',
-    lat: 22.5726,
-    lng: 88.3639,
-    capacity: '140 / 200 beds free',
-    distance: '350m (4 min walk)',
-    type: 'shelter',
-    category: 'Primary Safe Shelter',
-    amenities: ['Emergency Power', 'Clean Water', 'Medical Aid', 'Warm Blankets'],
-  },
-  {
-    id: 'm2',
-    name: 'Salt Lake Stadium Evacuation Center',
-    address: 'Stadium Complex Gate 3',
-    lat: 22.568,
-    lng: 88.406,
-    capacity: '420 / 600 beds free',
-    distance: '1.2 km (14 min walk)',
-    type: 'shelter',
-    category: 'High-Capacity Safe Shelter',
-    amenities: ['Food Supplies', 'Medical Camp', 'Wheelchair Access', 'Helipad'],
-  },
-  {
-    id: 'm3',
-    name: 'Karunamoyee Terminus Medical Post',
-    address: 'Central Park East, Salt Lake',
-    lat: 22.5867,
-    lng: 88.4178,
-    capacity: 'Operational',
-    distance: '850m (9 min walk)',
-    type: 'medical',
-    category: 'First-Aid & Medical Station',
-    amenities: ['Ambulance Transfer', 'Oxygen Supplies', 'First Aid'],
-  },
-]
 
 const CITIZEN_HAZARDS = [
   {
@@ -60,6 +22,7 @@ const CITIZEN_HAZARDS = [
     latitude: 22.5841,
     longitude: 88.412,
     distance: '620m North',
+    distance_formatted: 'Approx. 620 m',
     recommendedAction: 'Use elevated northern bypass route. Do not attempt to cross on foot.',
   },
   {
@@ -73,20 +36,37 @@ const CITIZEN_HAZARDS = [
     latitude: 22.565,
     longitude: 88.358,
     distance: '480m West',
+    distance_formatted: 'Approx. 480 m',
     recommendedAction: 'Maintain minimum 50-meter clearance. Keep clear of standing water.',
   },
+]
+
+const CATEGORY_FILTERS = [
+  { id: 'all', label: 'All Places', icon: '📍' },
+  { id: 'hospital', label: 'Hospitals & Clinics', icon: '🏥' },
+  { id: 'pharmacy', label: 'Pharmacies', icon: '💊' },
+  { id: 'police', label: 'Police', icon: '🛡️' },
+  { id: 'fire_station', label: 'Fire & Rescue', icon: '🚒' },
+  { id: 'shelter', label: 'Safe Shelters', icon: '🏠' },
+  { id: 'hazards', label: 'Hazards', icon: '⚠️' },
 ]
 
 export const CitizenMap = () => {
   const navigate = useNavigate()
   const [activeFilter, setActiveFilter] = useState('all')
-  const [selectedItem, setSelectedItem] = useState(CITIZEN_SHELTERS[0])
+  const [selectedItem, setSelectedItem] = useState(null)
   const [activeRouteGuide, setActiveRouteGuide] = useState(null)
+
+  // Real-world nearby places state
+  const [nearbyPlaces, setNearbyPlaces] = useState([])
+  const [isLoadingPlaces, setIsLoadingPlaces] = useState(false)
+  const [placesError, setPlacesError] = useState(null)
 
   const { location, isAcquiring, recenterSignal, requestLocation, selectLandmark, recenterMap } =
     useLocation()
 
   const routeModalRef = useRef(null)
+  const prevCoordsRef = useRef(null)
 
   // Request location on map mount if not yet requested
   useEffect(() => {
@@ -98,6 +78,50 @@ export const CitizenMap = () => {
       requestLocation()
     }
   }, [location.source, location.latitude, location.permission, requestLocation])
+
+  // Fetch real-world nearby places from backend
+  const fetchPlaces = useCallback(
+    async (force = false) => {
+      const lat = location.latitude || 22.5726
+      const lon = location.longitude || 88.3639
+
+      const currentCoords = { latitude: lat, longitude: lon }
+
+      if (!force && !hasMovedSignificantly(prevCoordsRef.current, currentCoords, 150)) {
+        return
+      }
+
+      prevCoordsRef.current = currentCoords
+      setIsLoadingPlaces(true)
+      setPlacesError(null)
+
+      const result = await loadNearbyPlaces({
+        latitude: lat,
+        longitude: lon,
+        radius: 2500,
+        includeVerified: true,
+      })
+
+      setIsLoadingPlaces(false)
+      if (result.success && result.data?.length > 0) {
+        setNearbyPlaces(result.data)
+        setPlacesError(null)
+        // If no item selected yet, select first nearby place or shelter
+        setSelectedItem((prev) => prev || result.data[0])
+      } else if (!result.success) {
+        setPlacesError(result.error?.message || 'Nearby places are temporarily unavailable.')
+      }
+    },
+    [location.latitude, location.longitude]
+  )
+
+  // Refetch nearby places when citizen location becomes available or moves
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchPlaces(false)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [fetchPlaces])
 
   // Escape key + body scroll lock for route modal
   useEffect(() => {
@@ -119,16 +143,24 @@ export const CitizenMap = () => {
     }
   }, [activeRouteGuide])
 
-  const displayedIncidents = useMemo(() => {
-    if (activeFilter === 'shelters' || activeFilter === 'medical') return []
-    return CITIZEN_HAZARDS
-  }, [activeFilter])
-
-  const displayedShelters = useMemo(() => {
+  // Filter places based on active category filter
+  const displayedPlaces = useMemo(() => {
     if (activeFilter === 'hazards') return []
-    if (activeFilter === 'medical') return CITIZEN_SHELTERS.filter((s) => s.type === 'medical')
-    if (activeFilter === 'shelters') return CITIZEN_SHELTERS.filter((s) => s.type === 'shelter')
-    return CITIZEN_SHELTERS
+    if (activeFilter === 'all') return nearbyPlaces
+    return nearbyPlaces.filter((p) => {
+      const cat = p.category?.toLowerCase() || ''
+      if (activeFilter === 'hospital') return cat === 'hospital' || cat === 'clinic'
+      if (activeFilter === 'pharmacy') return cat === 'pharmacy'
+      if (activeFilter === 'police') return cat === 'police'
+      if (activeFilter === 'fire_station') return cat === 'fire_station'
+      if (activeFilter === 'shelter') return cat === 'shelter'
+      return true
+    })
+  }, [nearbyPlaces, activeFilter])
+
+  const displayedIncidents = useMemo(() => {
+    if (activeFilter !== 'all' && activeFilter !== 'hazards') return []
+    return CITIZEN_HAZARDS
   }, [activeFilter])
 
   const isPermissionDenied = location.permission === 'DENIED' || location.status === 'DENIED'
@@ -143,7 +175,7 @@ export const CitizenMap = () => {
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-salvus-text-secondary">
-              Area Navigation
+              Real-World Geographic Intelligence
             </span>
             <span className="h-1 w-1 rounded-full bg-salvus-border-strong"></span>
             <span className="text-xs text-salvus-info">
@@ -155,11 +187,22 @@ export const CitizenMap = () => {
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary tracking-tight mt-0.5">
-            Local Safe Places & Hazards
+            Nearby Emergency & Safe Facilities
           </h1>
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => fetchPlaces(true)}
+            disabled={isLoadingPlaces}
+            className="px-3 py-1.5 rounded-xl bg-salvus-surface border border-salvus-border hover:border-salvus-info text-salvus-text-secondary hover:text-salvus-text-primary text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            title="Refresh real-world places around your coordinates"
+          >
+            <span>{isLoadingPlaces ? '⏳' : '🔄'}</span>
+            <span>{isLoadingPlaces ? 'Searching...' : 'Refresh Places'}</span>
+          </button>
+
           {location.latitude && (
             <button
               type="button"
@@ -202,7 +245,7 @@ export const CitizenMap = () => {
                   ? 'Enable location to automatically center on your position, or select your nearest landmark below.'
                   : isLocationUnavailable
                     ? 'Browser security or device settings prevented location acquisition. You can select a sector landmark.'
-                    : 'Salvus only accesses your location on-demand to show nearby relief shelters and hazards.'}
+                    : 'Salvus accesses your location on-demand to display nearby hospitals, pharmacies, police, and verified safe shelters.'}
               </p>
             </div>
           </div>
@@ -245,37 +288,66 @@ export const CitizenMap = () => {
         </div>
       )}
 
+      {/* Places Provider Failure Notice (Calm Resilience) */}
+      {placesError && (
+        <div className="mb-4 bg-salvus-surface border border-salvus-warning-border/60 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs text-salvus-text-secondary animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span>ℹ️</span>
+            <span>
+              <strong>Nearby places feed is temporarily offline.</strong> Your live location and
+              emergency beacon remain active.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => fetchPlaces(true)}
+            className="text-xs font-semibold text-salvus-info hover:underline cursor-pointer"
+          >
+            Retry Feed
+          </button>
+        </div>
+      )}
+
       {/* Layer Filter Pills */}
       <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-4 no-scrollbar">
-        {[
-          { id: 'all', label: 'All places', count: 5 },
-          { id: 'shelters', label: 'Safe shelters', count: 2 },
-          { id: 'hazards', label: 'Hazards & Floods', count: 2 },
-          { id: 'medical', label: 'Medical aid', count: 1 },
-        ].map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setActiveFilter(f.id)}
-            aria-pressed={activeFilter === f.id}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              activeFilter === f.id
-                ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
-                : 'bg-salvus-surface border border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
-            }`}
-          >
-            <span>{f.label}</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+        {CATEGORY_FILTERS.map((f) => {
+          let count
+          if (f.id === 'all') count = nearbyPlaces.length + CITIZEN_HAZARDS.length
+          else if (f.id === 'hazards') count = CITIZEN_HAZARDS.length
+          else {
+            count = nearbyPlaces.filter((p) => {
+              const cat = p.category?.toLowerCase() || ''
+              if (f.id === 'hospital') return cat === 'hospital' || cat === 'clinic'
+              return cat === f.id
+            }).length
+          }
+
+          return (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setActiveFilter(f.id)}
+              aria-pressed={activeFilter === f.id}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
                 activeFilter === f.id
-                  ? 'bg-salvus-bg/20 text-salvus-bg'
-                  : 'bg-salvus-muted text-salvus-text-muted'
+                  ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
+                  : 'bg-salvus-surface border border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
               }`}
             >
-              {f.count}
-            </span>
-          </button>
-        ))}
+              <span>{f.icon}</span>
+              <span>{f.label}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  activeFilter === f.id
+                    ? 'bg-salvus-bg/20 text-salvus-bg'
+                    : 'bg-salvus-muted text-salvus-text-muted'
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {/* Map Layout Grid: Left Canvas (7 cols), Right Detail Sheet (5 cols) */}
@@ -341,11 +413,15 @@ export const CitizenMap = () => {
               recenterSignal={recenterSignal}
               onRecenter={recenterMap}
               showRecenterBtn={Boolean(location.latitude)}
+              places={displayedPlaces}
+              selectedPlaceId={selectedItem?.id}
+              onSelectPlace={(p) => setSelectedItem(p)}
               incidents={displayedIncidents}
-              shelters={displayedShelters}
+              shelters={[]}
               showLayers={{
-                incidents: activeFilter !== 'shelters' && activeFilter !== 'medical',
-                shelters: activeFilter !== 'hazards',
+                places: activeFilter !== 'hazards',
+                incidents: activeFilter === 'all' || activeFilter === 'hazards',
+                shelters: false,
                 responders: false,
               }}
               onSelectIncident={(inc) => setSelectedItem(inc)}
@@ -365,18 +441,20 @@ export const CitizenMap = () => {
                 <span>{isLandmarkFallback ? 'Approximate (Landmark)' : 'You (GPS)'}</span>
               </div>
               <div className="flex items-center gap-1.5 font-medium">
-                <span className="h-2.5 w-2.5 rounded-full bg-salvus-safe"></span>
-                <span>Safe Place ({displayedShelters.length})</span>
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
+                <span>Places ({displayedPlaces.length})</span>
               </div>
               <div className="flex items-center gap-1.5 font-medium">
                 <span className="h-2.5 w-2.5 rounded-full bg-salvus-critical"></span>
-                <span>Hazard ({displayedIncidents.length})</span>
+                <span>Hazards ({displayedIncidents.length})</span>
               </div>
             </div>
             <button
               type="button"
               onClick={() => {
-                setSelectedItem(CITIZEN_SHELTERS[0])
+                if (displayedPlaces.length > 0) {
+                  setSelectedItem(displayedPlaces[0])
+                }
                 recenterMap()
               }}
               className="text-salvus-info hover:underline font-semibold cursor-pointer text-xs"
@@ -394,21 +472,42 @@ export const CitizenMap = () => {
               className="flex flex-col justify-between min-h-[440px] transition-all"
             >
               <div>
-                {/* Header Tag & Distance */}
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <Badge
-                    variant={
-                      selectedItem.type === 'shelter'
-                        ? 'safe'
-                        : selectedItem.type === 'medical'
-                          ? 'info'
-                          : 'critical'
-                    }
-                  >
-                    {selectedItem.category || selectedItem.type}
-                  </Badge>
-                  <span className="text-xs font-semibold text-salvus-text-primary bg-salvus-muted px-2.5 py-1 rounded-lg border border-salvus-border">
-                    {selectedItem.distance || 'Near Sector 12'}
+                {/* Header Tag, Distance & Provenance Badge */}
+                <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        selectedItem.provenance === 'SALVUS_VERIFIED'
+                          ? 'safe'
+                          : selectedItem.category === 'hospital' ||
+                              selectedItem.category === 'clinic'
+                            ? 'info'
+                            : selectedItem.category === 'pharmacy'
+                              ? 'safe'
+                              : selectedItem.type === 'flood' || selectedItem.type === 'power_line'
+                                ? 'critical'
+                                : 'neutral'
+                      }
+                    >
+                      {selectedItem.category?.toUpperCase() || selectedItem.type?.toUpperCase()}
+                    </Badge>
+
+                    {/* Strict Provenance Badge */}
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase border ${
+                        selectedItem.provenance === 'SALVUS_VERIFIED'
+                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
+                          : 'bg-slate-900 text-slate-400 border-slate-700'
+                      }`}
+                    >
+                      {selectedItem.provenance === 'SALVUS_VERIFIED'
+                        ? '✓ SALVUS VERIFIED'
+                        : 'MAPPED (OSM)'}
+                    </span>
+                  </div>
+
+                  <span className="text-xs font-semibold text-salvus-text-primary bg-salvus-muted px-2.5 py-1 rounded-lg border border-salvus-border font-mono">
+                    {selectedItem.distance_formatted || selectedItem.distance || 'Near You'}
                   </span>
                 </div>
 
@@ -417,46 +516,68 @@ export const CitizenMap = () => {
                   {selectedItem.name || `Hazard #${selectedItem.ticket_id}`}
                 </h2>
                 <p className="text-xs text-salvus-text-secondary mt-1">
-                  {selectedItem.address || selectedItem.description}
+                  {selectedItem.address ||
+                    selectedItem.description ||
+                    'Address unlisted in OpenStreetMap'}
                 </p>
 
-                {/* Shelter-Specific Details */}
-                {selectedItem.type === 'shelter' && (
-                  <div className="mt-5 space-y-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-salvus-muted/40 border border-salvus-border p-3 rounded-xl">
-                        <span className="text-[11px] text-salvus-text-muted block font-medium">
-                          Capacity
-                        </span>
-                        <span className="text-sm font-bold text-salvus-safe">
-                          {selectedItem.capacity}
-                        </span>
-                      </div>
-                      <div className="bg-salvus-muted/40 border border-salvus-border p-3 rounded-xl">
-                        <span className="text-[11px] text-salvus-text-muted block font-medium">
-                          Area Sector
-                        </span>
-                        <span className="text-sm font-bold text-salvus-text-primary">
-                          Sector 12, Salt Lake
-                        </span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <span className="text-xs font-bold text-salvus-text-primary block mb-2">
-                        Available Resources:
+                {/* Provenance Explainer Callout */}
+                <div
+                  className={`mt-4 p-3 rounded-xl border text-xs leading-relaxed ${
+                    selectedItem.provenance === 'SALVUS_VERIFIED'
+                      ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-400'
+                  }`}
+                >
+                  {selectedItem.provenance === 'SALVUS_VERIFIED' ? (
+                    <div className="flex items-start gap-2">
+                      <span>🛡️</span>
+                      <span>
+                        <strong>Officially designated Salvus emergency refuge.</strong> Verified
+                        civil defense resources and intake active.
                       </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {selectedItem.amenities?.map((a) => (
-                          <span
-                            key={a}
-                            className="bg-salvus-surface-elevated border border-salvus-border text-salvus-text-secondary text-xs px-2.5 py-1 rounded-lg font-medium"
-                          >
-                            ✓ {a}
-                          </span>
-                        ))}
-                      </div>
                     </div>
+                  ) : (
+                    <div className="flex items-start gap-2">
+                      <span>ℹ️</span>
+                      <span>
+                        <strong>Real-world geographic place (OpenStreetMap).</strong> For general
+                        reference and situational orientation; not an official Salvus emergency
+                        shelter.
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Amenities / Resources Details */}
+                {selectedItem.amenities && selectedItem.amenities.length > 0 && (
+                  <div className="mt-4">
+                    <span className="text-xs font-bold text-salvus-text-primary block mb-2">
+                      Facilities & Tags:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedItem.amenities.map((a) => (
+                        <span
+                          key={a}
+                          className="bg-salvus-surface-elevated border border-salvus-border text-salvus-text-secondary text-xs px-2.5 py-1 rounded-lg font-medium"
+                        >
+                          ✓ {a}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Contact phone if available */}
+                {selectedItem.phone && (
+                  <div className="mt-3 bg-salvus-muted/40 border border-salvus-border p-2.5 rounded-xl flex items-center justify-between text-xs">
+                    <span className="text-salvus-text-muted">Contact Phone:</span>
+                    <a
+                      href={`tel:${selectedItem.phone}`}
+                      className="font-mono text-salvus-info font-bold hover:underline"
+                    >
+                      {selectedItem.phone}
+                    </a>
                   </div>
                 )}
 
@@ -464,8 +585,8 @@ export const CitizenMap = () => {
                 {(selectedItem.type === 'flood' ||
                   selectedItem.type === 'power_line' ||
                   selectedItem.type === 'hazard') && (
-                  <div className="mt-5 space-y-4">
-                    <div className="bg-salvus-critical-bg border border-salvus-critical-border p-4 rounded-xl">
+                  <div className="mt-4 space-y-3">
+                    <div className="bg-salvus-critical-bg border border-salvus-critical-border p-3.5 rounded-xl">
                       <div className="flex items-center gap-2 text-salvus-critical font-bold text-xs mb-1">
                         <span>⚠️ HAZARD WARNING</span>
                       </div>
@@ -474,9 +595,9 @@ export const CitizenMap = () => {
                       </p>
                     </div>
 
-                    <div className="bg-salvus-muted/40 border border-salvus-border p-3.5 rounded-xl">
+                    <div className="bg-salvus-muted/40 border border-salvus-border p-3 rounded-xl">
                       <span className="text-xs font-bold text-salvus-text-primary uppercase block mb-1">
-                        What To Do
+                        Recommended Action
                       </span>
                       <p className="text-xs text-salvus-text-secondary leading-relaxed">
                         {selectedItem.recommendedAction ||
@@ -485,35 +606,11 @@ export const CitizenMap = () => {
                     </div>
                   </div>
                 )}
-
-                {/* Medical Post Details */}
-                {selectedItem.type === 'medical' && (
-                  <div className="mt-5 space-y-3">
-                    <div className="bg-salvus-muted/40 border border-salvus-border p-3 rounded-xl">
-                      <span className="text-[11px] text-salvus-text-muted font-semibold block">
-                        Operating Status
-                      </span>
-                      <span className="text-xs font-bold text-salvus-safe">
-                        {selectedItem.capacity || 'Active & Open'}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedItem.amenities?.map((a) => (
-                        <span
-                          key={a}
-                          className="bg-salvus-surface-elevated border border-salvus-border text-salvus-text-secondary text-xs px-2.5 py-1 rounded-lg font-medium"
-                        >
-                          + {a}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Action Buttons */}
               <div className="mt-6 pt-4 border-t border-salvus-border flex flex-col sm:flex-row gap-3">
-                {selectedItem.type === 'shelter' && (
+                {selectedItem.provenance === 'SALVUS_VERIFIED' && (
                   <Button
                     variant="safe"
                     size="lg"
@@ -535,13 +632,16 @@ export const CitizenMap = () => {
                     Request Emergency SOS
                   </Button>
                 )}
-                {selectedItem.type === 'medical' && (
-                  <a
-                    href="tel:112"
-                    className="flex-1 py-3 px-4 rounded-xl bg-salvus-info hover:opacity-90 text-white font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer text-center min-h-[48px] flex items-center justify-center"
+                {selectedItem.provenance === 'OSM_MAPPED' && (
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    fullWidth={true}
+                    onClick={() => setActiveRouteGuide(selectedItem)}
+                    className="font-bold text-xs sm:text-sm"
                   >
-                    Call Medical Dispatch (112)
-                  </a>
+                    View Directions / Walking Guide
+                  </Button>
                 )}
               </div>
             </Card>
@@ -554,11 +654,11 @@ export const CitizenMap = () => {
                 📍
               </span>
               <h3 className="text-base font-bold text-salvus-text-primary">
-                Tap any point on the map
+                Select any place on the map
               </h3>
               <p className="text-xs text-salvus-text-secondary mt-1 max-w-xs leading-relaxed">
-                Select a safe shelter or active flood hazard to inspect real-time safety
-                information.
+                Click a hospital, pharmacy, police station, or safe shelter to view real-world
+                geographic context and provenance.
               </p>
             </Card>
           )}
@@ -585,8 +685,13 @@ export const CitizenMap = () => {
           >
             <div className="flex items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-2">
-                <Badge variant="safe" dot={true}>
-                  Safe Route Guidance
+                <Badge
+                  variant={activeRouteGuide.provenance === 'SALVUS_VERIFIED' ? 'safe' : 'neutral'}
+                  dot={true}
+                >
+                  {activeRouteGuide.provenance === 'SALVUS_VERIFIED'
+                    ? 'Safe Route Guidance'
+                    : 'Walking Guidance'}
                 </Badge>
                 <SimulatedBadge label="OFFLINE ROUTE" />
               </div>
@@ -604,12 +709,14 @@ export const CitizenMap = () => {
               id="route-modal-title"
               className="text-xl font-extrabold text-salvus-text-primary tracking-tight"
             >
-              Safe Route to {activeRouteGuide.name}
+              Route to {activeRouteGuide.name}
             </h3>
             <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1">
               Distance:{' '}
-              <strong className="text-salvus-text-primary">{activeRouteGuide.distance}</strong> ·
-              Estimated Walk Time: <strong className="text-salvus-safe">4-6 mins</strong>
+              <strong className="text-salvus-text-primary">
+                {activeRouteGuide.distance_formatted || activeRouteGuide.distance}
+              </strong>{' '}
+              · Estimated Time: <strong className="text-salvus-safe">4-8 mins</strong>
             </p>
 
             <div className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-4 my-4 space-y-3">
@@ -619,10 +726,10 @@ export const CitizenMap = () => {
                 </span>
                 <div>
                   <strong className="text-salvus-text-primary block">
-                    Head East on Elevated Arterial Road
+                    Head along main pedestrian access route
                   </strong>
                   <span className="text-salvus-text-secondary">
-                    Paved high ground with zero water logging (+3.8m elevation).
+                    Stay on paved pathways and avoid low-lying water collection zones.
                   </span>
                 </div>
               </div>
@@ -633,24 +740,10 @@ export const CitizenMap = () => {
                 </span>
                 <div>
                   <strong className="text-salvus-text-primary block">
-                    Bypass Sector 12 Underpass
-                  </strong>
-                  <span className="text-salvus-critical">
-                    Hazard avoidance: underpass submerged by 1.4m floodwater.
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 text-xs">
-                <span className="h-5 w-5 rounded-full bg-salvus-safe-bg border border-salvus-safe-border text-salvus-safe font-bold text-[11px] flex items-center justify-center shrink-0">
-                  3
-                </span>
-                <div>
-                  <strong className="text-salvus-text-primary block">
-                    Enter Shelter Reception Gate
+                    Approach destination entry
                   </strong>
                   <span className="text-salvus-text-secondary">
-                    Emergency triage and bed intake station open.
+                    {activeRouteGuide.address || 'Follow destination signage.'}
                   </span>
                 </div>
               </div>
@@ -663,7 +756,7 @@ export const CitizenMap = () => {
               onClick={() => setActiveRouteGuide(null)}
               className="font-bold text-xs sm:text-sm"
             >
-              Close Safe Route View
+              Close Route View
             </Button>
           </div>
         </div>

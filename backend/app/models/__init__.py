@@ -776,3 +776,54 @@ class SituationSummaryResponse(BaseModel):
     key_priorities: list[str] = []
     provider: str
     generated_at: str
+
+
+# ---------------------------------------------------------------------------
+# Real-World Nearby Places Models (Build 02: Real-World Geographic Context)
+# ---------------------------------------------------------------------------
+
+
+class PlaceProvenance(StrEnum):
+    OSM_MAPPED = "OSM_MAPPED"
+    SALVUS_VERIFIED = "SALVUS_VERIFIED"
+
+
+class PlaceCategory(StrEnum):
+    HOSPITAL = "hospital"
+    CLINIC = "clinic"
+    PHARMACY = "pharmacy"
+    POLICE = "police"
+    FIRE_STATION = "fire_station"
+    EMERGENCY_FACILITY = "emergency_facility"
+    SHELTER = "shelter"
+    OTHER = "other"
+
+
+class PlaceModel(BaseModel):
+    """Normalized real-world geographic place."""
+
+    id: str
+    name: str
+    category: PlaceCategory | str
+    latitude: float
+    longitude: float
+    address: str | None = None
+    distance_meters: float
+    distance_formatted: str
+    source: str = "OPENSTREETMAP"
+    provenance: PlaceProvenance = PlaceProvenance.OSM_MAPPED
+    amenities: list[str] = Field(default_factory=list)
+    phone: str | None = None
+    opening_hours: str | None = None
+    fetched_at: str
+
+
+class PlacesResponse(BaseModel):
+    """Response model for nearby real-world places."""
+
+    success: bool = True
+    data: list[PlaceModel]
+    count: int
+    query_center: dict[str, float]
+    radius_meters: int
+    cached: bool = False

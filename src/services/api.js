@@ -825,6 +825,56 @@ export const fetchSituationSummary = async () => {
 }
 
 // ---------------------------------------------------------------------------
+// Real-World Geographic Places (Build 02: Real-World Geographic Context)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch real-world nearby geographic places (hospitals, clinics, pharmacies, police, fire)
+ * with strict provenance separation (OSM_MAPPED vs SALVUS_VERIFIED).
+ */
+export const fetchNearbyPlaces = async ({
+  lat,
+  lng,
+  radius = 2000,
+  categories = null,
+  includeVerified = true,
+}) => {
+  try {
+    const params = {
+      lat,
+      lng,
+      radius,
+      include_verified: includeVerified,
+    }
+    if (categories && categories.length > 0) {
+      params.categories = Array.isArray(categories) ? categories.join(',') : categories
+    }
+
+    const response = await apiClient.get('/api/places/nearby', { params })
+    return {
+      success: true,
+      data: response.data.data || [],
+      count: response.data.count || 0,
+      cached: response.data.cached || false,
+      queryCenter: response.data.query_center,
+      radiusMeters: response.data.radius_meters,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Nearby places are temporarily unavailable.'
+    return {
+      success: false,
+      error: { message, code: error.code || 'PLACES_UNAVAILABLE' },
+      data: [],
+      count: 0,
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Developer & Demo Helpers
 // ---------------------------------------------------------------------------
 

@@ -27,6 +27,9 @@ export const SalvusLeafletMap = ({
   responders = [],
   hazards = [],
   clusters = [],
+  places = [],
+  selectedPlaceId = null,
+  onSelectPlace = null,
   activeRoute = null, // { coordinates: [[lat, lon], ...], distanceKm, etaFormatted, status, isFallback, label, responderId }
   previewRoute = null, // { coordinates: [[lat, lon], ...], label, color }
   onClearRoute = null,
@@ -37,6 +40,7 @@ export const SalvusLeafletMap = ({
     routes: true,
     hazards: true,
     clusters: true,
+    places: true,
   },
   interactive = true,
   className = 'h-full w-full',
@@ -656,6 +660,108 @@ export const SalvusLeafletMap = ({
         group.addLayer(marker)
       })
     }
+
+    // D. Real-World Nearby Places Layer (Build 02: Geographic Context)
+    if (showLayers.places !== false && places.length > 0) {
+      places.forEach((place) => {
+        if (typeof place.latitude !== 'number' || typeof place.longitude !== 'number') return
+
+        const isSelected = place.id === selectedPlaceId
+        const isVerified = place.provenance === 'SALVUS_VERIFIED'
+        const cat = place.category?.toLowerCase() || 'other'
+
+        let iconEmoji = '📍'
+        let bgClass = 'bg-[#121A28] border-slate-600/70 text-slate-300'
+        let typeLabel = 'Geographic Place'
+
+        if (cat === 'hospital' || cat === 'clinic') {
+          iconEmoji = cat === 'hospital' ? '🏥' : '🩺'
+          bgClass = 'bg-[#221214] border-rose-500/70 text-rose-300'
+          typeLabel = cat === 'hospital' ? 'Hospital' : 'Health Clinic'
+        } else if (cat === 'pharmacy') {
+          iconEmoji = '💊'
+          bgClass = 'bg-[#0B1E19] border-emerald-500/70 text-emerald-300'
+          typeLabel = 'Pharmacy / Chemist'
+        } else if (cat === 'police') {
+          iconEmoji = '🛡️'
+          bgClass = 'bg-[#0B1728] border-sky-500/70 text-sky-300'
+          typeLabel = 'Police Station'
+        } else if (cat === 'fire_station') {
+          iconEmoji = '🚒'
+          bgClass = 'bg-[#231508] border-amber-500/70 text-amber-300'
+          typeLabel = 'Fire & Rescue Station'
+        } else if (cat === 'shelter') {
+          iconEmoji = '🏠'
+          bgClass = isVerified
+            ? 'bg-[#0D241D] border-emerald-500 text-emerald-200 shadow-md ring-1 ring-emerald-400/40'
+            : 'bg-[#151D24] border-slate-600/80 text-slate-300'
+          typeLabel = isVerified ? 'Verified Salvus Refuge' : 'Community Shelter'
+        }
+
+        const size = isSelected ? 30 : 24
+        const placeIcon = L.divIcon({
+          className: 'custom-place-pin',
+          html: `
+            <div class="relative flex items-center justify-center rounded-lg border shadow-sm transition-all cursor-pointer ${
+              isRouteActive ? 'opacity-40 grayscale-30 hover:opacity-100 hover:grayscale-0' : ''
+            } ${bgClass} ${
+              isSelected
+                ? 'scale-110 ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-950 z-40'
+                : 'hover:scale-105'
+            }" style="width:${size}px; height:${size}px;">
+              <span style="font-size: ${size > 26 ? '12px' : '10px'}">${iconEmoji}</span>
+            </div>
+          `,
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2],
+        })
+
+        const marker = L.marker([place.latitude, place.longitude], {
+          icon: placeIcon,
+          zIndexOffset: isSelected ? 500 : isVerified ? 250 : 200,
+        })
+
+        const popupContent = document.createElement('div')
+        popupContent.className = 'p-3 text-slate-200 text-xs font-sans min-w-[220px]'
+        popupContent.innerHTML = `
+          <div class="flex items-center justify-between gap-2 mb-1 pb-1 border-b border-slate-800">
+            <span class="font-bold text-slate-100 text-xs truncate max-w-[150px]">${place.name}</span>
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase border ${
+              isVerified
+                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
+                : 'bg-slate-900 text-slate-400 border-slate-700'
+            }">${isVerified ? '✓ SALVUS VERIFIED' : 'MAPPED (OSM)'}</span>
+          </div>
+          <div class="text-[11px] text-slate-300 font-medium mb-1 flex items-center gap-1.5">
+            <span>${iconEmoji}</span>
+            <span>${typeLabel}</span>
+          </div>
+          <p class="text-slate-400 text-[11px] mb-2">${place.address || 'Address unlisted in OpenStreetMap'}</p>
+          <div class="text-[10px] text-slate-400 bg-slate-900/90 p-1.5 rounded border border-slate-800 font-mono flex items-center justify-between">
+            <span>Proximity:</span>
+            <span class="font-semibold text-sky-300">${place.distance_formatted}</span>
+          </div>
+        `
+
+        const actionBtn = document.createElement('button')
+        actionBtn.className =
+          'w-full mt-2 py-1 px-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-[10px] tracking-wide uppercase transition-colors text-center cursor-pointer'
+        actionBtn.textContent = isSelected ? 'Selected' : 'View Place Details'
+        actionBtn.onclick = () => {
+          if (onSelectPlace) onSelectPlace(place)
+          map.closePopup()
+        }
+        popupContent.appendChild(actionBtn)
+
+        marker.bindPopup(popupContent)
+
+        marker.on('click', () => {
+          if (onSelectPlace) onSelectPlace(place)
+        })
+
+        group.addLayer(marker)
+      })
+    }
   }, [
     incidents,
     selectedIncidentId,
@@ -663,8 +769,11 @@ export const SalvusLeafletMap = ({
     responders,
     hazards,
     clusters,
+    places,
+    selectedPlaceId,
     showLayers,
     onSelectIncident,
+    onSelectPlace,
     activeRoute,
   ])
 
