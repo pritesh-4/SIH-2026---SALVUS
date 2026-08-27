@@ -69,7 +69,7 @@ export const BottomNav = ({ unreadAlertsCount = 1 }) => {
   return (
     <nav
       aria-label="Mobile Bottom Navigation"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B1118]/95 border-t border-[#1E293B] backdrop-blur-lg px-2 py-2 safe-area-pb"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-salvus-surface/95 border-t border-salvus-border backdrop-blur-lg px-2 py-2 safe-area-pb transition-colors"
     >
       <div className="flex items-center justify-around">
         {navItems.map((item) => (
@@ -78,22 +78,22 @@ export const BottomNav = ({ unreadAlertsCount = 1 }) => {
             to={item.path}
             end={item.end}
             className={({ isActive }) =>
-              `flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all duration-200 relative ${
+              `flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all duration-150 relative min-w-[56px] min-h-[48px] ${
                 isActive
-                  ? 'text-cyan-400 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 font-medium'
+                  ? 'text-salvus-text-primary font-bold'
+                  : 'text-salvus-text-muted hover:text-salvus-text-secondary font-medium'
               }`
             }
           >
             <div className="relative">
               {item.icon}
               {item.badge > 0 && (
-                <span className="absolute -top-1 -right-1 h-3.5 min-w-3.5 px-0.5 rounded-full bg-rose-500 text-[9px] font-bold text-white flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 h-3.5 min-w-3.5 px-0.5 rounded-full bg-salvus-critical text-[9px] font-bold text-white flex items-center justify-center">
                   {item.badge}
                 </span>
               )}
             </div>
-            <span className="text-[10px] tracking-wide mt-1">{item.label}</span>
+            <span className="text-[11px] tracking-tight mt-1">{item.label}</span>
           </NavLink>
         ))}
       </div>

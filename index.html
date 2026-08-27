@@ -7,16 +7,37 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <title>Salvus — Citizen Emergency Portal</title>
+    <title>Salvus — Emergency Coordination & Citizen Safety Platform</title>
     <meta
       name="description"
-      content="Salvus AI-powered Disaster Intelligence & Rescue Coordination Platform"
+      content="Salvus Disaster Intelligence & Emergency Coordination Platform"
     />
+    <script>
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('salvus_theme')
+          var isDark =
+            stored === 'dark' ||
+            (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches) ||
+            (stored === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (isDark) {
+            document.documentElement.classList.add('dark')
+            document.documentElement.classList.remove('light')
+          } else {
+            document.documentElement.classList.remove('dark')
+            document.documentElement.classList.add('light')
+          }
+          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
+        } catch (e) {}
+      })()
+    </script>
   </head>
-  <body class="bg-[#0B1118] text-slate-100 antialiased">
+  <body
+    class="bg-salvus-bg text-salvus-text-primary antialiased min-h-screen transition-colors duration-200"
+  >
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

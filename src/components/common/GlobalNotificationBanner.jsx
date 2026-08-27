@@ -24,22 +24,22 @@ export const GlobalNotificationBanner = () => {
   const getStyle = (type) => {
     switch (type) {
       case 'error':
-        return 'bg-[#181114] border-rose-500/40 text-rose-200 shadow-xl'
+        return 'bg-salvus-critical-bg border-salvus-critical-border text-salvus-critical-text shadow-md'
       case 'warning':
-        return 'bg-[#18150E] border-amber-500/40 text-amber-200 shadow-xl'
+        return 'bg-salvus-warning-bg border-salvus-warning-border text-salvus-warning-text shadow-md'
       case 'success':
-        return 'bg-[#0E1814] border-emerald-500/40 text-emerald-200 shadow-xl'
+        return 'bg-salvus-safe-bg border-salvus-safe-border text-salvus-safe-text shadow-md'
       default:
-        return 'bg-[#0E1520] border-blue-500/40 text-slate-200 shadow-xl'
+        return 'bg-salvus-info-bg border-salvus-info-border text-salvus-info-text shadow-md'
     }
   }
 
   const getIcon = (type) => {
     switch (type) {
       case 'error':
-        return '⚠️'
+        return '🚨'
       case 'warning':
-        return '⚡'
+        return '⚠️'
       case 'success':
         return '✓'
       default:
@@ -50,21 +50,22 @@ export const GlobalNotificationBanner = () => {
   return (
     <aside
       aria-label="System Notification"
-      className="fixed top-3 left-1/2 -translate-x-1/2 z-50 max-w-md w-[92%] animate-fadeIn pointer-events-none"
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-[92%] animate-fadeIn pointer-events-none"
     >
       <div
-        className={`px-3.5 py-2 rounded-lg border backdrop-blur-md flex items-center justify-between gap-3 text-xs font-mono font-medium pointer-events-auto ${getStyle(
+        className={`px-4 py-2.5 rounded-xl border backdrop-blur-md flex items-center justify-between gap-3 text-xs sm:text-sm font-medium pointer-events-auto transition-all ${getStyle(
           activeNotification.type
         )}`}
       >
-        <div className="flex items-center gap-2">
-          <span>{getIcon(activeNotification.type)}</span>
-          <span className="text-slate-200">{activeNotification.message}</span>
+        <div className="flex items-center gap-2.5">
+          <span aria-hidden="true">{getIcon(activeNotification.type)}</span>
+          <span className="leading-snug">{activeNotification.message}</span>
         </div>
         <button
           type="button"
           onClick={() => setActiveNotification(null)}
-          className="text-slate-400 hover:text-white text-xs p-0.5 cursor-pointer"
+          aria-label="Dismiss notification"
+          className="hover:opacity-75 text-xs p-1 cursor-pointer select-none"
         >
           ✕
         </button>

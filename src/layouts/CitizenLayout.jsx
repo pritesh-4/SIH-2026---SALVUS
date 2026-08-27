@@ -7,7 +7,7 @@ import { GlobalNotificationBanner } from '../components/common/GlobalNotificatio
 
 export const CitizenLayout = () => {
   return (
-    <div className="min-h-screen bg-[#0B1118] text-slate-100 flex flex-col selection:bg-rose-500 selection:text-white">
+    <div className="min-h-screen bg-salvus-bg text-salvus-text-primary flex flex-col selection:bg-salvus-critical selection:text-white transition-colors duration-200">
       {/* Calm System Notifications */}
       <GlobalNotificationBanner />
 
