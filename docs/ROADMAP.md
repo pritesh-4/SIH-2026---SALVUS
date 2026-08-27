@@ -1,65 +1,91 @@
-# ROADMAP.md - Development Milestones & Status
+# ROADMAP.md — Development Milestones & Strategic Roadmap
 
-This roadmap tracks the development progress, completed frontend deliverables, and upcoming full-stack integration phases for Salvus.
+This document tracks completed engineering deliverables, current operational focus areas, upcoming architectural upgrades, and long-term future horizons for Salvus.
 
 ---
 
-## 1. Project Phases & Status
+## 1. Roadmap Progression & Status Overview
 
-### Phase 1: Frontend V1.0 Foundation — **COMPLETED & VALIDATED** ✅
+```
+[Phase 1: Frontend V1.0 Foundation] ────────► COMPLETED & VALIDATED ✅
+[Phase 2: Realtime & Async Intelligence] ───► COMPLETED & VALIDATED ✅
+[Phase 3: Authority Domain Refactor] ───────► COMPLETED & VALIDATED ✅
+[Phase 5: Security Hardening & Allocation] ─► COMPLETED & VALIDATED ✅
+[Current Focus: Master Docs & Deployment] ──► ACTIVE EXECUTION 🚀
+[Phase 6: PostgreSQL / PostGIS Migration] ──► NEXT PHASE ⏳
+[Phase 7: Satellite Mesh & Native Mobile] ──► FUTURE HORIZONS 🔮
+```
 
-- [x] **Design System & Visual Language:** Sleek high-contrast dark theme, semantic disaster tokens (Emerald, Amber, Rose, Cyan).
+---
+
+## 2. Completed Milestones (Validated in Codebase)
+
+### Phase 1: Frontend V1.0 Foundation ✅
+
+- [x] **Calm Intelligence Design System:** High-contrast dark theme, 85–90% neutral slate budget (`#080C12`), strictly semantic tokens (Red = Critical, Amber = Triage, Blue = Active, Green = Safe).
 - [x] **Citizen Safety Console (`/citizen`):**
-  - [x] Citizen Home with safety status & active alert previews.
-  - [x] In-App 3-step Hazard Reporting modal (`IncidentReportModal.jsx`).
-  - [x] Situational Map with flood hydro-contours & in-app Safe Route Guidance.
-  - [x] Hazard Advisory feed with Critical/Warning/Watch filters & safety guidance.
+  - [x] Citizen Home with 2-second safety status and active advisory stream.
+  - [x] In-app 3-step hazard reporting modal with GPS coordinates and deduplication locking.
+  - [x] Situational Leaflet map with flood hydro-contours and in-app shelter safe route guidance.
+  - [x] Categorized advisory feed with Critical, Warning, and Watch filters.
   - [x] Emergency Profile with verified identity, medical passport, and siren testing.
-- [x] **State-Focused Progressive Disclosure Emergency Journey (`/citizen/emergency`):**
-  - [x] Complete 8-state progression (`SOS_ACTIVE` → `TRIAGING` → `VERIFIED` → `ASSIGNED` → `EN_ROUTE` → `NEARBY` → `ON_SCENE` → `RESOLVED`).
-  - [x] Tactical Rescue Radar with animated vessel telemetry, route corridor, and ETA countdown.
-  - [x] AI Intelligence classification & Human Dispatcher verification approval stamp.
-  - [x] Urgent proximity signaling guidance (<100m) & arrival handoff protocol.
-  - [x] Safeguarded cancellation flow with instant re-trigger support.
-- [x] **Authority Command Center (`/authority`):**
-  - [x] High-density operational KPI metrics strip.
-  - [x] Incident Priority Queue with AI urgency scoring & 1-click dispatch approval.
-  - [x] Multi-layer Tactical Operational Command Map with marker telemetry inspection.
-  - [x] Responder fleet tracking matrix & shelter supply logistics.
-- [x] **Navigation & Presentation Excellence:**
-  - [x] 1-Click dual-portal switcher in top navigation bars.
-  - [x] Collapsible demo simulator dock with network health simulation (`Grid Connected`, `Limited SMS`, `Offline Cache`).
-  - [x] Zero dead buttons, placeholder UI, or console warnings.
+- [x] **8-State Progressive Emergency Journey (`/citizen/emergency`):**
+  - [x] Full state lifecycle (`SOS_ACTIVE` $\rightarrow$ `TRIAGING` $\rightarrow$ `VERIFIED` $\rightarrow$ `ASSIGNED` $\rightarrow$ `EN_ROUTE` $\rightarrow$ `NEARBY` $\rightarrow$ `ON_SCENE` $\rightarrow$ `RESOLVED`).
+  - [x] Tactical Rescue Radar with animated vessel telemetry and dynamic ETA countdown.
+  - [x] Urgent proximity signaling guidance (<100m) with torch/whistle visual cues.
+  - [x] Safeguarded cancellation confirmation with instant re-trigger support.
+
+### Phase 2: Realtime Gateway & Async Intelligence ✅
+
+- [x] **FastAPI REST API Gateway:** High-performance async endpoints for incidents, assignments, responders, shelters, routing, triage, and hazards.
+- [x] **Bi-Directional Socket.IO Server:** Real-time event synchronization with room authorization (`authorities`, `incident:{id}`).
+- [x] **AI Decision Support Pipeline:** Multi-tier waterfall (Gemini 2.5 Flash $\rightarrow$ Groq Llama-3.3 $\rightarrow$ Deterministic Heuristics) with PII sanitization and strict Pydantic validation.
+- [x] **Routing Layer:** OSRM async routing engine with 5-minute TTL caching and 15-waypoint fallback vector corridor calculation.
+
+### Phase 3: Authority Command Center Architecture Refactor ✅
+
+- [x] **Monolithic Page Decomposition:** Refactored 1,875-line `AuthorityCommandCenter.jsx` into a clean 400-line orchestrator page.
+- [x] **Domain Feature Modules (`src/features/authority/`):**
+  - [x] `incidents/`: Out-of-order event guards and status transitions.
+  - [x] `fleet/`: Responder inventory, filtering, and manual status overrides.
+  - [x] `shelters/`: Evacuation capacity, bed intake arithmetic, and hazard proximity alerts.
+  - [x] `intelligence/`: Situation briefing, normalized hazards, and spatial clusters.
+  - [x] `dispatch/`: Deterministic recommendation ranking, OSRM routing, GPS movement simulation, and AI triage actions.
+
+### Phase 5: Security Hardening & Allocation Engine ✅
+
+- [x] **Explainable Deterministic Allocation Engine:** 6-factor auditable scoring formula (Capability 30, Availability 20, Distance 15, ETA 15, Workload 10, Severity Fit 10 = Max 100) with multi-level tie-breaking.
+- [x] **Cryptographic Authentication & RBAC:** HMAC-SHA256 JWT token minting, verification, and role-based permissions (`CITIZEN`, `AUTHORITY`, `RESPONDER`, `SYSTEM`).
+- [x] **Defensive Middleware Hardening:** Security headers (CSP, HSTS, X-Frame-Options), 5MB payload limits, and correlation ID propagation.
+- [x] **Test Suite Verification:** **204 passing automated tests** across 19 backend test suites with zero regressions.
 
 ---
 
-### Phase 2: Async Intelligence & Real-time Gateway — **COMPLETED & VALIDATED** ✅
+## 3. Current Focus Area (Production Polish)
 
-- [x] **FastAPI API Gateway:** REST endpoints for incident lifecycle, responder fleet status, shelter capacity, hazard zones, and incident clusters.
-- [x] **Bi-directional WebSockets (Socket.IO):** Instant event synchronization for `incident.created`, `responder.status_changed`, `assignment.created`, and telemetry updates with room isolation (`authorities`, `incident:{id}`).
-- [x] **AI Intelligence Pipeline (Gemini / Groq LLM):** Dynamic triage classification, severity scoring, confidence rating, and situational summary briefing.
-- [x] **OSRM Routing Engine:** Realistic road/water routing profiles with fallback vector corridor calculation.
-- [x] **Deterministic Resource Allocation:** Auditable weighted scoring formula for unit recommendation.
+- [x] **Master Technical Documentation System Overhaul:** 100% codebase alignment across README and 14 technical manuals.
+- [x] **Production Infrastructure & Deployment Validation:** Dual-platform hosting on Vercel (frontend) and Render (backend) with Infrastructure as Code (`render.yaml`).
 
 ---
 
-### Phase 3: Authority Command Center Architecture Refactor — **COMPLETED & VALIDATED** ✅
+## 4. Next Phase: Enterprise Scaling (Phase 6) ⏳
 
-- [x] **Monolithic Page Decomposition:** Refactored 1,875-line `AuthorityCommandCenter.jsx` into a clean orchestrator page (406 lines).
-- [x] **Domain Feature Hooks (`src/features/authority/`):**
-  - [x] `incidents/`: Incident state, out-of-order event protection, and status transitions.
-  - [x] `fleet/`: Responder fleet state, capability/status filtering, and manual status overrides.
-  - [x] `shelters/`: Evacuation hub capacity, bed intake adjustments, and hazard proximity alerts.
-  - [x] `intelligence/`: Situation briefing, hazard feeds, clusters, and provenance state.
-  - [x] `dispatch/`: Candidate recommendation ranking, OSRM routing, GPS movement simulation, and AI triage actions.
-- [x] **Presentation Component Isolation (`src/components/authority/`):**
-  - [x] `AuthorityHeader`, `OperationalMetrics`, `SituationBriefing`, `IncidentQueue`, `AuthorityMap`, `IncidentInspector`, `ResponderPanel`, `ShelterPanel`.
-- [x] **Zero Visual or Behavioral Regressions:** 100% parity across triage, assignment, telemetry simulation, and shelter workflows.
+- [ ] **PostgreSQL 16 + PostGIS Migration:**
+  - Transition from local SQLite to managed PostgreSQL with native spatial indexing (GIST / `ST_DWithin`).
+  - Support multi-region active-active replication for disaster redundancy.
+- [ ] **Redis Pub/Sub Socket.IO Adapter:**
+  - Enable multi-instance backend clustering behind load balancers using `socketio.AsyncRedisManager`.
+- [ ] **Web Push & SMS Dispatcher Alerts:**
+  - Browser Web Push Notifications (VAPID) for high-urgency citizen proximity alerts when the screen is locked.
+  - Twilio / Infobip SMS fallback for low-bandwidth citizen notifications.
 
 ---
 
-### Phase 4: Hardware & Offline Resilience — **FUTURE ROADMAP** 🔮
+## 5. Future Horizons (Phase 7) 🔮
 
-- [ ] Low-bandwidth SMS & satellite mesh emergency beacon fallback.
-- [ ] Direct integration with official emergency response dispatch protocols (CAP/EDXL).
-- [ ] Mobile native applications (React Native / PWA offline caching).
+- [ ] **Low-Bandwidth Satellite & Mesh Beaconry:**
+  - Integration with Iridium / Garmin inReach and LoRa mesh radio hardware for zero-cellular disaster zones.
+- [ ] **Official Emergency Protocol Interoperability (CAP / EDXL):**
+  - Common Alerting Protocol (CAP v1.2) XML export and ingestion for direct integration with NDMA / FEMA emergency broadcasting systems.
+- [ ] **Offline Progressive Web App (PWA):**
+  - ServiceWorker offline tile caching for complete map functionality in zero-connectivity air-gapped environments.

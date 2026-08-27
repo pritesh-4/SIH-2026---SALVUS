@@ -1,140 +1,235 @@
-# DATABASE.md - Database Schema & Storage Architecture
+# DATABASE.md — Database Schema & Storage Architecture
 
-This document describes the current database schema, storage engine, and future migration path for Salvus.
+This document details the database architecture, schema migrations, complete 6-table entity definitions, Mermaid Entity-Relationship (ER) model, performance indexes, transactional boundaries, and cloud persistence characteristics for Salvus.
 
 ---
 
 ## 1. Storage Architecture
 
-- **Primary Storage:** Asynchronous local SQLite (`aiosqlite`) stored in `backend/data/salvus.db`.
-  - Configured with Write-Ahead Logging (`PRAGMA journal_mode=WAL`) for high-concurrency read and write throughput.
-  - Foreign key constraints strictly enforced (`PRAGMA foreign_keys=ON`).
-- **Production Target (Future):** PostgreSQL with PostGIS extension for multi-region replication.
+Salvus uses asynchronous local SQLite powered by Python's `aiosqlite` driver as its primary operational storage engine:
+
+- **Database File Location:** `backend/data/salvus.db` (configurable via `DATABASE_PATH` environment variable).
+- **Write-Ahead Logging (`WAL`):** Configured with `PRAGMA journal_mode=WAL` to maximize concurrency, allowing simultaneous non-blocking reads while atomic write transactions are underway.
+- **Foreign Key Integrity:** Strictly enforced on every connection with `PRAGMA foreign_keys=ON`.
+- **Synchronous Mode:** Set to `PRAGMA synchronous=NORMAL` for optimal balance of disk write throughput and crash recovery safety.
+- **Production Migration Target (Future):** PostgreSQL 16+ with PostGIS extension for distributed multi-region disaster coordination grids.
 
 ---
 
-## 2. Implemented Tables (IMPLEMENTED ✅)
+## 2. Mermaid Entity-Relationship (ER) Diagram
 
-### Table: `incidents`
+```mermaid
+erDiagram
+    INCIDENTS ||--o{ INCIDENT_EVENTS : "tracks audit history"
+    INCIDENTS ||--o{ AI_TRIAGE_ASSESSMENTS : "evaluated by"
+    INCIDENTS ||--o| ASSIGNMENTS : "allocated via"
+    RESPONDERS ||--o| ASSIGNMENTS : "dispatched via"
+    INCIDENTS ||--o| RESPONDERS : "linked mission (assigned_incident_id)"
 
-Stores emergency SOS distress beacons and citizen hazard reports.
+    INCIDENTS {
+        text id PK "UUIDv4 string"
+        text ticket_id UK "e.g. SV-2048"
+        text type "flood, fire, medical, hazard, etc."
+        text severity "CRITICAL, HIGH, MEDIUM, LOW"
+        text description "Detailed distress description"
+        text reporter_name "Citizen name or 'Anonymous'"
+        text reporter_phone "Contact phone number"
+        text reporter_id "Authenticated user ID"
+        real latitude "GPS Latitude [-90, 90]"
+        real longitude "GPS Longitude [-180, 180]"
+        integer affected_count "Victim count (default 1)"
+        integer is_sos "1 for SOS beacon, 0 for report"
+        text status "NEW, TRIAGE_PENDING, VERIFIED, etc."
+        text ai_state "NOT_STARTED, AVAILABLE, FAILED"
+        text triage_hash "SHA-256 payload fingerprint"
+        text created_at "ISO 8601 UTC timestamp"
+        text updated_at "ISO 8601 UTC timestamp"
+    }
 
-| Column           | Type      | Constraints                    | Description                                                                                      |
-| ---------------- | --------- | ------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `id`             | `TEXT`    | `PRIMARY KEY`                  | UUIDv4 string                                                                                    |
-| `ticket_id`      | `TEXT`    | `UNIQUE NOT NULL`              | Public identifier (e.g. `SV-2048`)                                                               |
-| `type`           | `TEXT`    | `NOT NULL`                     | `flood`, `fire`, `medical`, `hazard`, `power_line`, `structural`, `other`                        |
-| `severity`       | `TEXT`    | `NOT NULL DEFAULT 'MEDIUM'`    | `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`                                                              |
-| `description`    | `TEXT`    | `NOT NULL DEFAULT ''`          | Detailed hazard / rescue description                                                             |
-| `reporter_name`  | `TEXT`    | `NOT NULL DEFAULT 'Anonymous'` | Name of reporting citizen                                                                        |
-| `reporter_phone` | `TEXT`    | `NULL`                         | Contact phone number                                                                             |
-| `latitude`       | `REAL`    | `NOT NULL`                     | Latitude coordinate (-90 to 90)                                                                  |
-| `longitude`      | `REAL`    | `NOT NULL`                     | Longitude coordinate (-180 to 180)                                                               |
-| `affected_count` | `INTEGER` | `NOT NULL DEFAULT 1`           | Estimated number of people in danger                                                             |
-| `is_sos`         | `INTEGER` | `NOT NULL DEFAULT 0`           | 1 if high-priority SOS, 0 if hazard report                                                       |
-| `status`         | `TEXT`    | `NOT NULL DEFAULT 'NEW'`       | `NEW`, `TRIAGE_PENDING`, `VERIFIED`, `ASSIGNED`, `EN_ROUTE`, `ON_SCENE`, `RESOLVED`, `CANCELLED` |
-| `created_at`     | `TEXT`    | `NOT NULL`                     | ISO 8601 UTC timestamp                                                                           |
-| `updated_at`     | `TEXT`    | `NOT NULL`                     | ISO 8601 UTC timestamp                                                                           |
+    INCIDENT_EVENTS {
+        text id PK "UUIDv4 string"
+        text incident_id FK "References incidents(id) ON DELETE CASCADE"
+        text event_type "CREATED, STATUS_CHANGE, ASSIGNMENT"
+        text previous_status "Status before transition"
+        text new_status "Status after transition"
+        text actor "Dispatcher ID or system"
+        text metadata "JSON payload for audit context"
+        text created_at "ISO 8601 UTC timestamp"
+    }
 
-### Table: `incident_events`
+    RESPONDERS {
+        text id PK "e.g. resp-101"
+        text unit_name "e.g. NDRF Rescue Unit 4"
+        text team_lead "e.g. Capt. A. Roy"
+        text vehicle_type "e.g. Gemini Z-Craft Inflatable"
+        text capability "FLOOD_BOAT, AMBULANCE, HAZMAT, etc."
+        text status "AVAILABLE, ASSIGNED, EN_ROUTE, ON_SCENE, OFFLINE"
+        real latitude "Current GPS Latitude"
+        real longitude "Current GPS Longitude"
+        text radio_channel "e.g. VHF Ch. 4 (156.2 MHz)"
+        integer max_capacity "Passenger limit (default 6)"
+        integer current_load "Current evacuees on board"
+        text assigned_incident_id FK "References incidents(id) ON DELETE SET NULL"
+        text last_seen "ISO 8601 timestamp of last ping"
+        text created_at "ISO 8601 UTC timestamp"
+        text updated_at "ISO 8601 UTC timestamp"
+    }
 
-Immutable audit trail logging every state transition and operational action on an incident.
+    ASSIGNMENTS {
+        text id PK "UUIDv4 string"
+        text incident_id FK "References incidents(id) ON DELETE CASCADE"
+        text responder_id FK "References responders(id) ON DELETE CASCADE"
+        text status "PROPOSED, ASSIGNED, EN_ROUTE, NEARBY, ON_SCENE, COMPLETED, CANCELLED"
+        text assigned_by "Dispatcher name or authority ID"
+        text assigned_at "ISO 8601 creation timestamp"
+        text accepted_at "ISO 8601 acceptance timestamp"
+        text started_at "ISO 8601 en route timestamp"
+        text nearby_at "ISO 8601 proximity timestamp"
+        text arrived_at "ISO 8601 on scene timestamp"
+        text completed_at "ISO 8601 resolution timestamp"
+        text cancelled_at "ISO 8601 cancellation timestamp"
+        real score "Total match score (0-100)"
+        text score_breakdown "JSON {capability, availability, distance, eta, workload, severity_fit}"
+        text assignment_reason "Explainable tactical justification"
+        text created_at "ISO 8601 UTC timestamp"
+        text updated_at "ISO 8601 UTC timestamp"
+    }
 
-| Column            | Type   | Constraints                                       | Description                                    |
-| ----------------- | ------ | ------------------------------------------------- | ---------------------------------------------- |
-| `id`              | `TEXT` | `PRIMARY KEY`                                     | UUIDv4 string                                  |
-| `incident_id`     | `TEXT` | `NOT NULL, FK -> incidents(id) ON DELETE CASCADE` | Associated incident                            |
-| `event_type`      | `TEXT` | `NOT NULL`                                        | `CREATED`, `STATUS_CHANGE`, `ASSIGNMENT`, etc. |
-| `previous_status` | `TEXT` | `NULL`                                            | Status before transition                       |
-| `new_status`      | `TEXT` | `NULL`                                            | Status after transition                        |
-| `actor`           | `TEXT` | `NOT NULL DEFAULT 'system'`                       | User/service who triggered event               |
-| `metadata`        | `TEXT` | `NULL`                                            | Optional JSON metadata payload                 |
-| `created_at`      | `TEXT` | `NOT NULL`                                        | ISO 8601 UTC timestamp                         |
+    SHELTERS {
+        text id PK "e.g. shl-01"
+        text name "Facility name"
+        text address "Street address or landmark"
+        real latitude "GPS Latitude"
+        real longitude "GPS Longitude"
+        integer total_beds "Total facility bed capacity"
+        integer available_beds "Unoccupied beds ready for intake"
+        text occupancy_rate "Calculated percentage string"
+        text supplies_status "Rations, generator & medical status"
+        text status "OPEN, NEAR_CAPACITY, FULL, CLOSED"
+        text amenities "JSON array of amenities"
+        integer is_active "1 if active, 0 if closed"
+        text created_at "ISO 8601 UTC timestamp"
+        text updated_at "ISO 8601 UTC timestamp"
+    }
 
-### Table: `responders`
+    AI_TRIAGE_ASSESSMENTS {
+        text id PK "UUIDv4 string"
+        text incident_id FK "References incidents(id) ON DELETE CASCADE"
+        text provider "GeminiProvider, GroqProvider, Heuristic"
+        text model "gemini-2.5-flash, llama-3.3-70b-versatile"
+        text assessment "Full validated JSON assessment"
+        real confidence "Model confidence score [0.0, 1.0]"
+        text review_status "PENDING, VERIFIED, ADJUSTED"
+        text operator_adjustments "JSON override notes"
+        text operator_id "Reviewing authority identity"
+        text created_at "ISO 8601 UTC timestamp"
+        text reviewed_at "ISO 8601 UTC timestamp"
+    }
+```
 
-Active rescue craft, medical ambulances, and disaster response units.
+---
 
-| Column                 | Type      | Constraints                                    | Description                                                           |
-| ---------------------- | --------- | ---------------------------------------------- | --------------------------------------------------------------------- |
-| `id`                   | `TEXT`    | `PRIMARY KEY`                                  | Unique responder unit ID (e.g. `resp-101`)                            |
-| `unit_name`            | `TEXT`    | `NOT NULL`                                     | Public unit title (e.g. `NDRF Rescue Unit 4`)                         |
-| `team_lead`            | `TEXT`    | `NOT NULL`                                     | Commander / lead officer name                                         |
-| `vehicle_type`         | `TEXT`    | `NOT NULL`                                     | Craft / vehicle class (e.g. `Gemini Z-Craft Inflatable`)              |
-| `capability`           | `TEXT`    | `NOT NULL`                                     | `FLOOD_BOAT`, `AMBULANCE`, `STRETCHER_TEAM`, `DEBRIS_CLEAR`, `HAZMAT` |
-| `status`               | `TEXT`    | `NOT NULL DEFAULT 'AVAILABLE'`                 | `AVAILABLE`, `ASSIGNED`, `EN_ROUTE`, `ON_SCENE`, `OFFLINE`            |
-| `latitude`             | `REAL`    | `NOT NULL`                                     | Current GPS latitude coordinate                                       |
-| `longitude`            | `REAL`    | `NOT NULL`                                     | Current GPS longitude coordinate                                      |
-| `radio_channel`        | `TEXT`    | `NOT NULL`                                     | VHF tactical communication frequency                                  |
-| `max_capacity`         | `INTEGER` | `NOT NULL DEFAULT 6`                           | Maximum passenger/evacuee capacity                                    |
-| `current_load`         | `INTEGER` | `NOT NULL DEFAULT 0`                           | Current evacuees on board                                             |
-| `assigned_incident_id` | `TEXT`    | `NULL, FK -> incidents(id) ON DELETE SET NULL` | Active incident ticket assigned                                       |
-| `last_seen`            | `TEXT`    | `NOT NULL`                                     | ISO 8601 timestamp of last GPS ping                                   |
-| `created_at`           | `TEXT`    | `NOT NULL`                                     | ISO 8601 UTC timestamp                                                |
-| `updated_at`           | `TEXT`    | `NOT NULL`                                     | ISO 8601 UTC timestamp                                                |
+## 3. Table Specifications & Invariants
 
-### Table: `assignments`
+### 3.1 `incidents` (Authoritative Distress Domain)
 
-First-class domain entity linking one incident to one responder with explicit lifecycle milestones and audit score breakdown.
+- **Primary Key:** `id` (UUIDv4)
+- **Unique Constraint:** `ticket_id` (e.g. `SV-2048`)
+- **Key Invariant:** Status transitions follow strict forward-only finite state machine validation (`NEW` $\rightarrow$ `TRIAGE_PENDING` $\rightarrow$ `VERIFIED` $\rightarrow$ `ASSIGNED` $\rightarrow$ `EN_ROUTE` $\rightarrow$ `NEARBY` $\rightarrow$ `ON_SCENE` $\rightarrow$ `RESOLVED` / `CANCELLED`).
+- **Deduplication:** Inserts check for matching `(type, description, latitude, longitude)` in the preceding 4 seconds to eliminate double-tap duplicate records.
 
-> **Architectural Boundary Notice:**
->
-> - `ASSIGNMENT DOMAIN FOUNDATION` = **IMPLEMENTED & ACTIVE ✅**
-> - `ROUTING ENGINE (OSRM / Corridor)` = **FUTURE ⏳**
-> - `RESPONDER SCORING & ALLOCATION` = **FUTURE ⏳**
-> - `AI DISPATCH OPTIMIZATION` = **FUTURE ⏳**
+### 3.2 `incident_events` (Immutable Audit Trail)
 
-| Column              | Type   | Constraints                                        | Description                                                                        |
-| ------------------- | ------ | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `id`                | `TEXT` | `PRIMARY KEY`                                      | UUIDv4 string                                                                      |
-| `incident_id`       | `TEXT` | `NOT NULL, FK -> incidents(id) ON DELETE CASCADE`  | Linked emergency incident                                                          |
-| `responder_id`      | `TEXT` | `NOT NULL, FK -> responders(id) ON DELETE CASCADE` | Linked rescue unit                                                                 |
-| `status`            | `TEXT` | `NOT NULL DEFAULT 'PROPOSED'`                      | `PROPOSED`, `ASSIGNED`, `EN_ROUTE`, `NEARBY`, `ON_SCENE`, `COMPLETED`, `CANCELLED` |
-| `assigned_by`       | `TEXT` | `NOT NULL DEFAULT 'authority'`                     | Dispatcher actor or authority ID                                                   |
-| `assigned_at`       | `TEXT` | `NOT NULL`                                         | ISO 8601 UTC creation timestamp                                                    |
-| `accepted_at`       | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when assignment transitioned to `ASSIGNED`                  |
-| `started_at`        | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when responder moved `EN_ROUTE`                             |
-| `nearby_at`         | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when responder arrived `NEARBY`                             |
-| `arrived_at`        | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when responder arrived `ON_SCENE`                           |
-| `completed_at`      | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when mission `COMPLETED`                                    |
-| `cancelled_at`      | `TEXT` | `NULL`                                             | ISO 8601 UTC timestamp when assignment was `CANCELLED`                             |
-| `score`             | `REAL` | `NULL`                                             | Match score (0-100) (Future scoring integration)                                   |
-| `score_breakdown`   | `TEXT` | `NULL`                                             | JSON `{ capability, distance, eta, workload, severity_fit }` (Future breakdown)    |
-| `assignment_reason` | `TEXT` | `NULL`                                             | Tactical justification text                                                        |
-| `created_at`        | `TEXT` | `NOT NULL`                                         | ISO 8601 UTC timestamp                                                             |
-| `updated_at`        | `TEXT` | `NOT NULL`                                         | ISO 8601 UTC timestamp                                                             |
+- **Primary Key:** `id` (UUIDv4)
+- **Foreign Key:** `incident_id` $\rightarrow$ `incidents(id)` with `ON DELETE CASCADE`.
+- **Key Invariant:** Records in this table are append-only. Zero updates or manual deletes are permitted, ensuring strict legal auditability for emergency operations.
 
-### Table: `shelters`
+### 3.3 `responders` (Fleet Inventory & Telemetry)
 
-Designated evacuation shelters and disaster supply hubs with live bed occupancy.
+- **Primary Key:** `id` (e.g. `resp-101`)
+- **Foreign Key:** `assigned_incident_id` $\rightarrow$ `incidents(id)` with `ON DELETE SET NULL`.
+- **Key Invariant:** A responder can only be linked to at most one active incident at any given time.
 
-| Column            | Type      | Constraints               | Description                                                  |
-| ----------------- | --------- | ------------------------- | ------------------------------------------------------------ |
-| `id`              | `TEXT`    | `PRIMARY KEY`             | Unique shelter ID (e.g. `shl-01`)                            |
-| `name`            | `TEXT`    | `NOT NULL`                | Shelter facility name                                        |
-| `address`         | `TEXT`    | `NOT NULL`                | Street address / landmark location                           |
-| `latitude`        | `REAL`    | `NOT NULL`                | GPS latitude coordinate                                      |
-| `longitude`       | `REAL`    | `NOT NULL`                | GPS longitude coordinate                                     |
-| `total_beds`      | `INTEGER` | `NOT NULL`                | Total capacity of facility                                   |
-| `available_beds`  | `INTEGER` | `NOT NULL`                | Vacant beds available for immediate check-in                 |
-| `occupancy_rate`  | `TEXT`    | `NOT NULL DEFAULT '0%'`   | Calculated occupancy percentage                              |
-| `supplies_status` | `TEXT`    | `NOT NULL`                | Food, clean water, power generator & medical readiness state |
-| `status`          | `TEXT`    | `NOT NULL DEFAULT 'OPEN'` | `OPEN`, `NEAR_CAPACITY`, `FULL`, `CLOSED`                    |
-| `is_active`       | `INTEGER` | `NOT NULL DEFAULT 1`      | 1 if accepting evacuees, 0 if deactivated                    |
-| `created_at`      | `TEXT`    | `NOT NULL`                | ISO 8601 UTC timestamp                                       |
-| `updated_at`      | `TEXT`    | `NOT NULL`                | ISO 8601 UTC timestamp                                       |
+### 3.4 `assignments` (First-Class Dispatch Coordination)
 
-### Database Indexes
+- **Primary Key:** `id` (UUIDv4)
+- **Foreign Keys:**
+  - `incident_id` $\rightarrow$ `incidents(id)` with `ON DELETE CASCADE`
+  - `responder_id` $\rightarrow$ `responders(id)` with `ON DELETE CASCADE`
+- **Key Invariant:** Only one active assignment (`PROPOSED`, `ASSIGNED`, `EN_ROUTE`, `NEARBY`, `ON_SCENE`) is permitted per responder and per incident.
+
+### 3.5 `shelters` (Evacuation Logistics)
+
+- **Primary Key:** `id` (e.g. `shl-01`)
+- **Key Invariant:** `available_beds` $\le$ `total_beds`. `occupancy_rate` is dynamically derived and formatted.
+
+### 3.6 `ai_triage_assessments` (Decision Support Audit)
+
+- **Primary Key:** `id` (UUIDv4)
+- **Foreign Key:** `incident_id` $\rightarrow$ `incidents(id)` with `ON DELETE CASCADE`.
+- **Key Invariant:** Persists complete model outputs, provider names, latency telemetry, and subsequent human operator adjustment records.
+
+---
+
+## 4. Performance Indexes
 
 ```sql
-CREATE INDEX idx_incidents_status ON incidents(status);
-CREATE INDEX idx_incidents_coords ON incidents(latitude, longitude);
-CREATE INDEX idx_incidents_created_at ON incidents(created_at DESC);
-CREATE INDEX idx_incident_events_incident_id ON incident_events(incident_id);
-CREATE INDEX idx_responders_status ON responders(status);
-CREATE INDEX idx_responders_assigned ON responders(assigned_incident_id);
-CREATE INDEX idx_assignments_incident ON assignments(incident_id);
-CREATE INDEX idx_assignments_responder ON assignments(responder_id);
-CREATE INDEX idx_assignments_status ON assignments(status);
-CREATE INDEX idx_shelters_status ON shelters(status);
+-- High-throughput status and temporal queries
+CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
+CREATE INDEX IF NOT EXISTS idx_incidents_created_at ON incidents(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_incidents_coords ON incidents(latitude, longitude);
+
+-- Foreign key lookup and event history joins
+CREATE INDEX IF NOT EXISTS idx_incident_events_incident_id ON incident_events(incident_id);
+CREATE INDEX IF NOT EXISTS idx_ai_triage_incident_id ON ai_triage_assessments(incident_id);
+
+-- Fleet status and mission tracking
+CREATE INDEX IF NOT EXISTS idx_responders_status ON responders(status);
+CREATE INDEX IF NOT EXISTS idx_responders_assigned ON responders(assigned_incident_id);
+
+-- Assignment joins and status filters
+CREATE INDEX IF NOT EXISTS idx_assignments_incident ON assignments(incident_id);
+CREATE INDEX IF NOT EXISTS idx_assignments_responder ON assignments(responder_id);
+CREATE INDEX IF NOT EXISTS idx_assignments_status ON assignments(status);
+
+-- Shelter status filtering
+CREATE INDEX IF NOT EXISTS idx_shelters_status ON shelters(status);
 ```
+
+---
+
+## 5. Transaction Boundaries & Atomicity
+
+All mission-critical operations execute inside atomic SQLite transactions (`async with db.transaction()`):
+
+1. **Assignment Creation Transaction:**
+
+   ```
+   BEGIN TRANSACTION;
+   1. Insert record into 'assignments' (status: 'ASSIGNED').
+   2. Update 'responders' SET status = 'ASSIGNED', assigned_incident_id = incident_id.
+   3. Update 'incidents' SET status = 'ASSIGNED'.
+   4. Append record to 'incident_events' (event_type: 'ASSIGNMENT_CREATED').
+   COMMIT;
+   ```
+
+   If any step fails (e.g. duplicate assignment constraint violation), the entire transaction rolls back cleanly.
+
+2. **Triage Verification Transaction:**
+   ```
+   BEGIN TRANSACTION;
+   1. Update 'ai_triage_assessments' SET review_status = 'VERIFIED', operator_id = actor.
+   2. Update 'incidents' SET status = 'VERIFIED', ai_state = 'AVAILABLE'.
+   3. Append record to 'incident_events' (event_type: 'TRIAGE_VERIFIED').
+   COMMIT;
+   ```
+
+---
+
+## 6. Cloud Deployment Persistence (Render)
+
+- **Render Free Tier (Ephemeral Storage):**
+  - Web services on Render's Free tier run on ephemeral containers. Local database files stored at `data/salvus.db` reset upon container restart, deployment, or spin-down.
+  - The `AUTO_SEED=true` environment variable detects an empty database on startup and automatically seeds the complete Kolkata disaster response grid (NDRF Unit 4, Salt Lake Stadium Shelter, active flood beacons).
+- **Render Starter Tier (Persistent Disk):**
+  - For permanent production persistence, mount a Render Persistent Disk at `/var/data` (1 GB) and configure `DATABASE_PATH=/var/data/salvus.db`. All records permanently persist across redeploys.

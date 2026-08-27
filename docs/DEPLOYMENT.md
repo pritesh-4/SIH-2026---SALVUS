@@ -1,127 +1,164 @@
-# Salvus Production Deployment Guide (Render & Full-Stack)
+# DEPLOYMENT.md — Production Deployment & Infrastructure
 
-This guide provides end-to-end instructions for deploying the **Salvus** platform (FastAPI + Socket.IO backend and React Vite frontend) to **Render** and modern edge static hosting platforms.
+This guide details the production deployment architecture, Infrastructure as Code (IaC) blueprints, environment configurations, and database persistence strategies for Salvus across **Vercel** and **Render**.
 
 ---
 
-## 1. Fast Track: Render Blueprint (Infrastructure as Code)
+## 1. Production Architecture Overview
 
-The repository includes a ready-to-use [`render.yaml`](../render.yaml) blueprint configuring both the backend Web Service and an optional frontend Static Site.
+```mermaid
+flowchart TD
+    subgraph Source_Repo ["GitHub Repository (pritesh-4/SIH-2026---SALVUS)"]
+        FrontendDir["src/ (React 19 + Vite SPA)"]
+        BackendDir["backend/ (FastAPI + Socket.IO)"]
+        IaCBlueprint["render.yaml (Render Blueprint)"]
+        VercelConfig["vercel.json (Vercel SPA Rewrites)"]
+    end
 
-### Steps:
+    subgraph Vercel_Edge ["Vercel Edge Network (Frontend Hosting)"]
+        VercelBuild["npm run build -> dist/"]
+        VercelEdge["Global CDN Edge Routing"]
+        VercelApp["https://salvus.vercel.app"]
+    end
 
-1. Push your repository to GitHub / GitLab.
-2. Log into [Render Dashboard](https://dashboard.render.com/).
-3. Click **New +** → **Blueprint**.
-4. Connect your Salvus repository.
-5. Render will automatically read `render.yaml` and configure:
-   - **`salvus-backend`** (Python Web Service with zero-downtime health checking on `/health`)
-   - **`salvus-frontend`** (Static Site with SPA rewrite rules)
-6. Set any secret API keys (e.g. `GEMINI_API_KEY`, `GROQ_API_KEY`) in the environment variables prompt.
+    subgraph Render_Cloud ["Render Cloud (Backend Web Service)"]
+        RenderService["Python 3.12 Web Service (salvus-backend)"]
+        RenderUvicorn["uvicorn app.main:combined_asgi_app"]
+        RenderHealthCheck["Health Check on /health"]
+        RenderDisk["Ephemeral /data OR Persistent /var/data"]
+    end
+
+    FrontendDir -->|Push to main| VercelBuild --> VercelEdge --> VercelApp
+    BackendDir -->|Push to main| RenderService --> RenderUvicorn --> RenderHealthCheck
+    IaCBlueprint -.->|Automates| RenderService
+
+    VercelApp <-->|HTTPS REST API & WSS WebSockets| RenderService
+```
+
+---
+
+## 2. Fast-Track Deployment via Render Blueprint
+
+The repository provides a complete Infrastructure as Code blueprint in [`render.yaml`](../render.yaml).
+
+### Setup Steps:
+
+1. Push repository changes to GitHub.
+2. Navigate to the [Render Dashboard](https://dashboard.render.com/).
+3. Click **New +** $\rightarrow$ **Blueprint**.
+4. Select your Salvus repository.
+5. Render reads `render.yaml` and initializes:
+   - **`salvus-backend`**: Python ASGI web service.
+   - **`salvus-frontend`**: Static web application (optional fallback).
+6. Fill in any optional AI API keys (`GEMINI_API_KEY`, `GROQ_API_KEY`).
 7. Click **Apply**.
 
 ---
 
-## 2. Manual Backend Deployment on Render
+## 3. Backend Deployment on Render (Manual Walkthrough)
 
-If you prefer to configure the backend web service manually in the Render dashboard:
+### 3.1 Web Service Configuration:
 
-### A. Create Web Service
+| Setting               | Recommended Value                                                                                          | Notes                                      |
+| :-------------------- | :--------------------------------------------------------------------------------------------------------- | :----------------------------------------- |
+| **Service Type**      | Web Service                                                                                                | Python ASGI Application                    |
+| **Name**              | `salvus-backend`                                                                                           | Or any unique identifier                   |
+| **Region**            | `Oregon (US West)`                                                                                         | Select closest region                      |
+| **Branch**            | `main`                                                                                                     | Production branch                          |
+| **Root Directory**    | `backend`                                                                                                  | **Crucial:** Points to backend subfolder   |
+| **Runtime**           | `Python 3`                                                                                                 | Uses Python 3.12 via `runtime.txt`         |
+| **Build Command**     | `pip install --upgrade pip && pip install -r requirements.txt`                                             | Installs dependencies                      |
+| **Start Command**     | `uvicorn app.main:combined_asgi_app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'` | Starts combined FastAPI + Socket.IO        |
+| **Plan**              | `Free` or `Starter`                                                                                        | Free spins down on idle; Starter runs 24/7 |
+| **Health Check Path** | `/health`                                                                                                  | Zero-downtime health verification          |
 
-1. In Render, click **New +** → **Web Service**.
-2. Connect your Git repository.
-3. Configure the following fields:
-
-| Field              | Value                                                                                                      | Notes                                                   |
-| ------------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| **Name**           | `salvus-backend`                                                                                           | Or any preferred name                                   |
-| **Region**         | `Oregon (US West)`                                                                                         | Or closest region                                       |
-| **Branch**         | `main`                                                                                                     | Production branch                                       |
-| **Root Directory** | `backend`                                                                                                  | **Important:** Points to the backend subfolder          |
-| **Runtime**        | `Python 3`                                                                                                 | Uses Python 3.12 via `runtime.txt`                      |
-| **Build Command**  | `pip install --upgrade pip && pip install -r requirements.txt`                                             | Installs dependencies                                   |
-| **Start Command**  | `uvicorn app.main:combined_asgi_app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'` | Runs ASGI + Socket.IO app                               |
-| **Plan**           | `Free` or `Starter`                                                                                        | Free tier spins down on idle; Starter runs continuously |
-
-### B. Health Check Path
-
-- Under **Advanced Settings**, set **Health Check Path** to:
-  ```text
-  /health
-  ```
-  _(Render will query `/health` to verify database readiness before routing live traffic.)_
-
-### C. Environment Variables
-
-Add the following key-value pairs in the **Environment** tab:
+### 3.2 Backend Environment Variables:
 
 ```env
 ENVIRONMENT=production
 PYTHON_VERSION=3.12.9
-CORS_ORIGIN=*
+PORT=8000
+HOST=0.0.0.0
+CORS_ORIGIN=https://salvus.vercel.app,http://localhost:5173
 DATABASE_PATH=data/salvus.db
 AUTO_SEED=true
 OSRM_BASE_URL=https://router.project-osrm.org
 
-# Optional AI Triage Providers:
+# Optional AI Triage Keys:
 GEMINI_API_KEY=your_gemini_api_key_here
 GROQ_API_KEY=your_groq_api_key_here
+SECRET_KEY=generate_random_32_char_string
 ```
 
-> [!TIP]
-> **Production CORS Best Practice:**
-> Replace `CORS_ORIGIN=*` with your specific frontend domain(s) separated by commas, for example:
-> `CORS_ORIGIN=https://salvus.vercel.app,https://salvus-frontend.onrender.com,http://localhost:5173`
-
 ---
 
-## 3. Database Persistence on Render
+## 4. Frontend Deployment on Vercel
 
-Salvus uses SQLite with `aiosqlite` in Write-Ahead Logging (`WAL`) mode for high concurrency.
+Deploy the React 19 + Vite frontend to Vercel for global edge CDN distribution:
 
-- **Free Tier:** Render Free tier web services use ephemeral storage. Databases stored in `data/salvus.db` reset on service restart or redeploy. The `AUTO_SEED=true` setting guarantees that fresh instances automatically populate active Kolkata emergency response infrastructure, responders, and shelters.
-- **Starter Plan (Persistent Disk):**
-  If upgrading to Render Starter, add a **Persistent Disk**:
-  1. Mount Path: `/var/data`
-  2. Size: `1 GB`
-  3. Set environment variable: `DATABASE_PATH=/var/data/salvus.db`
-     All incidents, audit logs, and coordinates will permanently persist across deploys.
+### 4.1 Vercel Project Settings:
 
----
-
-## 4. Frontend Deployment (Vercel / Netlify / Render)
-
-Deploy the frontend React + Vite application to Vercel, Netlify, or Render Static Sites:
-
-### Build Settings:
-
+- **Framework Preset:** `Vite`
+- **Root Directory:** `./` (Repository root)
 - **Build Command:** `npm run build`
 - **Output Directory:** `dist`
 - **Install Command:** `npm install`
 
-### Environment Variables:
+### 4.2 Frontend Environment Variables:
 
 ```env
 VITE_API_URL=https://salvus-backend.onrender.com
 VITE_WS_URL=https://salvus-backend.onrender.com
 ```
 
-_(Replace with your actual Render backend URL without trailing slashes)._
+### 4.3 SPA Client-Side Routing:
 
-### Single Page App (SPA) Routing:
+Vercel requires rewrite rules so direct navigations or page refreshes on routes like `/authority` or `/citizen/emergency` do not return HTTP 404. This is pre-configured in [`vercel.json`](../vercel.json):
 
-Ensure client-side routing is configured so direct refreshes on routes like `/authority` or `/rescue` do not return 404:
-
-- **Render Static Sites:** Configured in `render.yaml` with rewrite `/* -> /index.html`.
-- **Vercel:** Configured via `vercel.json` rewrites.
-- **Netlify:** `_redirects` file with `/* /index.html 200`.
+```json
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+```
 
 ---
 
-## 5. Security & Reliability Highlights
+## 5. SQLite Persistence & Render Disk Strategies
 
-- **Security Headers:** Injected on all endpoints (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1`, `Referrer-Policy: strict-origin-when-cross-origin`, `Strict-Transport-Security`).
-- **Payload Guard:** Rejects requests larger than 5MB to prevent denial-of-service/memory exhaustion.
-- **Reverse Proxy Support:** `--proxy-headers --forwarded-allow-ips='*'` enables accurate client IP and protocol detection behind Render's Cloudflare edge.
-- **Multi-Origin CORS:** Flexible comma-separated origin parsing for staging, preview, and production domains.
-- **Fallback AI Triage:** Automatic graceful degradation from Gemini → Groq → Deterministic Local Heuristics when API keys are omitted or rate-limited.
+Salvus utilizes SQLite in Write-Ahead Logging (`WAL`) mode. Understanding the storage lifecycle is critical:
+
+### Option A: Render Free Tier (Ephemeral Storage)
+
+- **Disk Nature:** Ephemeral container disk. Files stored at `data/salvus.db` reset whenever the container spins down due to inactivity or redeployment.
+- **Auto-Seeding Safeguard:** When `AUTO_SEED=true`, the backend detects a clean/empty database on boot and automatically populates active Kolkata disaster response infrastructure (NDRF Unit 4, Salt Lake Stadium Shelter, active flood distress beacons).
+
+### Option B: Render Starter Tier (Persistent Disk)
+
+- **Disk Nature:** Persistent SSD mounted to container.
+- **Mount Configuration:**
+  1. Add a **Persistent Disk** in Render Dashboard.
+  2. Mount Path: `/var/data`
+  3. Size: `1 GB`
+  4. Environment Variable: `DATABASE_PATH=/var/data/salvus.db`
+- **Result:** All incidents, audit logs, and coordinates permanently persist across restarts and deploys.
+
+---
+
+## 6. Post-Deployment Verification Runbook
+
+1. **Verify Backend Health:**
+   ```bash
+   curl -i https://salvus-backend.onrender.com/health
+   # Expected: HTTP/1.1 200 OK {"status":"healthy","service":"Salvus API","version":"0.1.0"}
+   ```
+2. **Verify OpenAPI Docs:**
+   Open `https://salvus-backend.onrender.com/docs` in a browser.
+3. **Verify Frontend Connectivity:**
+   Open `https://salvus.vercel.app/authority` and observe the bottom-right connection badge displays `LIVE` (green indicator).
+4. **Trigger End-to-End Test Beacon:**
+   Open `/citizen` in one window and `/authority` in another; trigger an SOS beacon and confirm instant WebSocket appearance.

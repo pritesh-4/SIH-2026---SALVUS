@@ -1,16 +1,35 @@
-# API.md - API Specifications
+# API.md — REST & WebSocket API Specification
 
-This document outlines the REST and WebSocket API contracts for the Salvus platform.
+This document provides the complete API contracts, authentication rules, request/response schemas, error codes, and canonical Socket.IO event emissions for all implemented Salvus endpoints.
 
 ---
 
-## 1. System Health & Diagnostics (IMPLEMENTED ✅)
+## 1. Authentication & Base Configuration
+
+- **Base URL (Local):** `http://localhost:8000`
+- **Base URL (Production):** `https://salvus-backend.onrender.com`
+- **Authentication Scheme:** Bearer Token (`Authorization: Bearer <JWT_TOKEN>`)
+- **Roles:** `CITIZEN`, `AUTHORITY`, `RESPONDER`, `SYSTEM`
+- **Standard Error Format:**
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "ERROR_CODE_STRING",
+      "message": "Human readable error description."
+    }
+  }
+  ```
+
+---
+
+## 2. System Diagnostics
 
 ### `GET /health`
 
-Returns service health status.
+Returns service and database health status.
 
-- **Authentication:** None
+- **Auth:** None (Public)
 - **Response (200 OK):**
   ```json
   {
@@ -20,21 +39,37 @@ Returns service health status.
   }
   ```
 
+### `GET /`
+
+Root identification endpoint.
+
+- **Auth:** None (Public)
+- **Response (200 OK):**
+  ```json
+  {
+    "status": "online",
+    "service": "Salvus API",
+    "version": "0.1.0",
+    "docs": "/docs",
+    "health": "/health"
+  }
+  ```
+
 ---
 
-## 2. Incident Domain API (IMPLEMENTED ✅)
+## 3. Incident Domain API (`/api/incidents`)
 
 ### `POST /api/incidents`
 
-Creates a new emergency SOS beacon or citizen hazard report and emits `incident:new` over Socket.IO to the `authorities` room.
+Creates a new emergency SOS distress beacon or citizen hazard report. Automatically triggers asynchronous AI triage assessment.
 
-- **Authentication:** Public / Anonymous allowed
+- **Auth:** Public / Anonymous allowed
 - **Request Payload:**
   ```json
   {
     "type": "flood",
     "severity": "CRITICAL",
-    "description": "Water entering ground floor rapidly. Family of 3 trapped on balcony.",
+    "description": "Rising surge flood entering ground floor. 3 people stranded on terrace.",
     "reporter_name": "Aditi Roy",
     "reporter_phone": "+91 98301 24890",
     "latitude": 22.5726,
@@ -43,62 +78,198 @@ Creates a new emergency SOS beacon or citizen hazard report and emits `incident:
     "is_sos": true
   }
   ```
-- **Response (201 Created):** Single `IncidentResponse` object with initial `CREATED` event.
-- **Error Responses:**
-  - `422 Unprocessable Entity`: Validation failure on coordinates, type, or missing required fields.
+- **Response (201 Created):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "909ec355-6bcf-46d4-a035-71fa2e022f42",
+      "ticket_id": "SV-2048",
+      "type": "flood",
+      "severity": "CRITICAL",
+      "description": "Rising surge flood entering ground floor. 3 people stranded on terrace.",
+      "reporter_name": "Aditi Roy",
+      "reporter_phone": "+91 98301 24890",
+      "latitude": 22.5726,
+      "longitude": 88.3639,
+      "affected_count": 3,
+      "is_sos": true,
+      "status": "NEW",
+      "ai_state": "NOT_STARTED",
+      "triage_hash": null,
+      "created_at": "2026-08-27T12:00:00+00:00",
+      "updated_at": "2026-08-27T12:00:00+00:00",
+      "events": [
+        {
+          "id": "evt-001",
+          "incident_id": "909ec355-6bcf-46d4-a035-71fa2e022f42",
+          "event_type": "CREATED",
+          "previous_status": null,
+          "new_status": "NEW",
+          "actor": "citizen",
+          "created_at": "2026-08-27T12:00:00+00:00"
+        }
+      ]
+    }
+  }
+  ```
+- **Socket Emission:** `incident.created` $\rightarrow$ `authorities` room.
+- **Errors:** `422 Unprocessable Entity` (invalid coordinates or missing required fields).
 
 ---
 
 ### `GET /api/incidents`
 
-Lists all incidents in descending order of creation (newest first).
+Lists incidents in descending order of creation (newest first) with optional status filtering.
 
-- **Authentication:** None (Public / Command Console)
-- **Response (200 OK):** `IncidentListResponse` with `data` array and `count`.
+- **Auth:** None (Public / Command Console)
+- **Query Params:** `status` (optional: `NEW`, `TRIAGE_PENDING`, `VERIFIED`, `ASSIGNED`, `EN_ROUTE`, `NEARBY`, `ON_SCENE`, `RESOLVED`, `CANCELLED`)
+- **Response (200 OK):** `IncidentListResponse` (`data: IncidentResponse[]`, `count: int`).
 
 ---
 
 ### `GET /api/incidents/{id}`
 
-Retrieves a single incident by its UUID along with its complete audit event history.
+Retrieves complete incident record and audit event timeline by UUID.
 
-- **Authentication:** None
-- **Response (200 OK):** Single `IncidentResponse` object.
-- **Error Responses:**
-  - `404 Not Found`: Incident UUID does not exist.
+- **Auth:** None (Public / Scoped)
+- **Response (200 OK):** `IncidentSingleResponse`
+- **Errors:** `404 Not Found` (`INCIDENT_NOT_FOUND`).
 
 ---
 
 ### `PATCH /api/incidents/{id}/status`
 
-Transitions an incident to a new status governed by the state machine (`NEW` $\rightarrow$ `TRIAGE_PENDING` $\rightarrow$ `VERIFIED` $\rightarrow$ `RESOLVED` / `CANCELLED`) and emits `incident:status_changed` over Socket.IO to both `authorities` and `incident:{id}` rooms.
+Transitions an incident along its controlled lifecycle.
 
-- **Authorization:** Operational status transitions (`TRIAGE_PENDING`, `VERIFIED`, `RESOLVED`) require authority role (`actor != "citizen"`). Citizens may only trigger `CANCELLED`.
+- **Auth:** Verified JWT (`CITIZEN` can only trigger `CANCELLED`; `AUTHORITY` / `SYSTEM` can trigger all transitions).
 - **Request Payload:**
   ```json
   {
     "status": "VERIFIED",
-    "actor": "authority"
+    "actor": "dispatcher_alok"
   }
   ```
-- **Response (200 OK):** Updated `IncidentResponse` with new audit event appended.
-- **Error Responses:**
-  - `400 Bad Request`: Invalid state transition attempt (e.g. skipping steps or mutating terminal state).
-  - `403 Forbidden`: Unauthorized attempt by a citizen actor to perform authority verification or resolution.
-  - `404 Not Found`: Incident does not exist.
+- **Response (200 OK):** `IncidentSingleResponse` with updated status and appended audit event.
+- **Socket Emission:** `incident.response_state_changed` $\rightarrow$ `authorities` + `incident:{id}` rooms.
+- **Errors:**
+  - `400 Bad Request` (`INVALID_TRANSITION`): Illegal status jump or mutation on terminal state.
+  - `403 Forbidden` (`FORBIDDEN`): Citizen actor attempting operational verification/resolution.
+  - `404 Not Found` (`INCIDENT_NOT_FOUND`).
 
 ---
 
-## 3. Responder Fleet API (IMPLEMENTED ✅)
+## 4. Assignment Domain API (`/api/assignments`)
 
-### `GET /api/responders`
+### `POST /api/assignments`
 
-Lists all active rescue craft, ambulances, and disaster response units.
+Authoritatively creates a first-class assignment linking an emergency incident to a responder unit. Synchronously updates linked responder and incident records.
 
-- **Response (200 OK):**
+- **Auth:** `AUTHORITY` or `SYSTEM` role required.
+- **Request Payload:**
+  ```json
+  {
+    "incident_id": "909ec355-6bcf-46d4-a035-71fa2e022f42",
+    "responder_id": "resp-101",
+    "status": "ASSIGNED",
+    "assigned_by": "dispatcher_alok",
+    "score": 94.0,
+    "score_breakdown": {
+      "capability": 30.0,
+      "availability": 20.0,
+      "distance": 14.0,
+      "eta": 12.0,
+      "workload": 10.0,
+      "severity_fit": 8.0
+    },
+    "assignment_reason": "Optimal flood boat capability match with direct waterway access corridor"
+  }
+  ```
+- **Response (201 Created):**
   ```json
   {
     "success": true,
+    "data": {
+      "id": "c7a8b411-e40f-48d6-953e-862ad9b06822",
+      "incident_id": "909ec355-6bcf-46d4-a035-71fa2e022f42",
+      "responder_id": "resp-101",
+      "status": "ASSIGNED",
+      "assigned_by": "dispatcher_alok",
+      "assigned_at": "2026-08-27T12:05:00+00:00",
+      "accepted_at": "2026-08-27T12:05:00+00:00",
+      "started_at": null,
+      "nearby_at": null,
+      "arrived_at": null,
+      "completed_at": null,
+      "cancelled_at": null,
+      "score": 94.0,
+      "score_breakdown": {
+        "capability": 30.0,
+        "availability": 20.0,
+        "distance": 14.0,
+        "eta": 12.0,
+        "workload": 10.0,
+        "severity_fit": 8.0
+      },
+      "assignment_reason": "Optimal flood boat capability match with direct waterway access corridor",
+      "created_at": "2026-08-27T12:05:00+00:00",
+      "updated_at": "2026-08-27T12:05:00+00:00"
+    }
+  }
+  ```
+- **Socket Emissions:** `assignment.created` and `incident.response_state_changed` $\rightarrow$ `authorities` + `incident:{id}` rooms.
+- **Errors:**
+  - `400 Bad Request` (`RESPONDER_ALREADY_ASSIGNED`): Unit already assigned to an active mission.
+  - `400 Bad Request` (`INCIDENT_ALREADY_ASSIGNED`): Incident already has an active unit assigned.
+  - `400 Bad Request` (`RESPONDER_OFFLINE`): Unit is marked OFFLINE.
+  - `400 Bad Request` (`TERMINAL_INCIDENT`): Cannot assign to resolved/cancelled incident.
+  - `403 Forbidden`: Citizens cannot create assignments.
+  - `404 Not Found`: Incident or responder does not exist.
+
+---
+
+### `PATCH /api/assignments/{id}/status`
+
+Transitions assignment along its milestone progression (`PROPOSED` $\rightarrow$ `ASSIGNED` $\rightarrow$ `EN_ROUTE` $\rightarrow$ `NEARBY` $\rightarrow$ `ON_SCENE` $\rightarrow$ `COMPLETED` / `CANCELLED`).
+
+- **Auth:** `AUTHORITY`, `RESPONDER` (own mission), or `SYSTEM`.
+- **Request Payload:**
+  ```json
+  {
+    "status": "EN_ROUTE",
+    "actor": "NDRF Rescue Unit 4",
+    "notes": "Vessel navigating flood bypass corridor"
+  }
+  ```
+- **Response (200 OK):** Updated `AssignmentResponse` with updated timestamp (`started_at`, `nearby_at`, etc.).
+- **Socket Emission:** `assignment.status_changed` $\rightarrow$ `authorities` + `incident:{id}` rooms.
+- **Errors:** `400 Bad Request` (`INVALID_TRANSITION`), `403 Forbidden`, `404 Not Found`.
+
+---
+
+## 5. Responder Fleet API (`/api/responders`)
+
+### `GET /api/responders`
+
+Lists all active disaster response craft, ambulances, and specialized teams.
+
+- **Auth:** None (Public / Command Console)
+- **Response (200 OK):** `ResponderListResponse` (`data: ResponderResponse[]`, `count: int`).
+
+---
+
+### `GET /api/responders/candidates/{incident_id}`
+
+Computes deterministic 6-factor recommendation scores for all eligible fleet craft against an emergency incident.
+
+- **Auth:** `AUTHORITY` or `SYSTEM` role.
+- **Query Params:** `include_routes` (`true` to enrich top units with OSRM geometries).
+- **Response (200 OK):**
+  ```json
+  {
+    "incident_id": "909ec355-6bcf-46d4-a035-71fa2e022f42",
+    "allocation_status": "RECOMMENDED",
+    "message": null,
     "data": [
       {
         "id": "resp-101",
@@ -112,148 +283,130 @@ Lists all active rescue craft, ambulances, and disaster response units.
         "radio_channel": "VHF Ch. 4 (156.2 MHz)",
         "max_capacity": 8,
         "current_load": 0,
-        "assigned_incident_id": null,
-        "last_seen": "2026-08-23T14:20:00+00:00",
-        "created_at": "2026-08-23T14:20:00+00:00",
-        "updated_at": "2026-08-23T14:20:00+00:00"
+        "distance_km": 0.85,
+        "eta_minutes": 4.0,
+        "eta_formatted": "4 min",
+        "match_score": 94,
+        "match_reason": "Specialized Inflatable Flood Rescue Watercraft",
+        "is_recommended": true,
+        "rank": 1,
+        "explanation": {
+          "headline": "★ PRIMARY RECOMMENDATION — NDRF Rescue Unit 4",
+          "positive_factors": [
+            "✓ Specialized Inflatable Flood Rescue Watercraft (100% profile match)",
+            "✓ Available immediately with zero active commitments",
+            "✓ Rapid response transit (~4 min / 0.9 km)",
+            "✓ Full crew availability (0/8 load)",
+            "✓ High crew capacity (≥6) optimized for Critical Life Threat"
+          ],
+          "negative_factors": [],
+          "breakdown": {
+            "final_score": 94,
+            "capability_score": 30,
+            "availability_score": 20,
+            "distance_score": 14,
+            "eta_score": 13,
+            "workload_score": 10,
+            "severity_fit_score": 7,
+            "max_weights": {
+              "capability": 30,
+              "availability": 20,
+              "distance": 15,
+              "eta": 15,
+              "workload": 10,
+              "severity_fit": 10
+            }
+          }
+        },
+        "route_geometry": [
+          [22.574, 88.372],
+          [22.573, 88.368],
+          [22.5726, 88.3639]
+        ],
+        "route_status": "OPTIMAL_OSRM"
       }
     ],
-    "count": 4
+    "count": 1
   }
   ```
 
-### `GET /api/responders/{id}`
-
-Fetches single responder details.
-
-### `PATCH /api/responders/{id}/status`
-
-Updates responder operational status (`AVAILABLE`, `ASSIGNED`, `EN_ROUTE`, `ON_SCENE`, `OFFLINE`) or sets `assigned_incident_id`, emitting `responder:status_changed` over Socket.IO.
+---
 
 ### `POST /api/responders/{id}/location`
 
-Updates real-time GPS telemetry coordinates of a response unit and emits `responder:location_updated`.
+Updates GPS telemetry coordinates for an active responder unit.
+
+- **Auth:** `RESPONDER` (own unit), `AUTHORITY`, or `SYSTEM`.
+- **Request Payload:** `{"latitude": 22.5735, "longitude": 88.3680}`
+- **Response (200 OK):** `ResponderSingleResponse`
+- **Socket Emission:** `responder.location_updated` $\rightarrow$ `authorities` + `incident:{assigned_id}`.
 
 ---
 
-## 4. Assignment Domain API (IMPLEMENTED ✅)
+## 6. AI Triage & Verification API (`/api/triage`)
 
-> **Architectural Boundary Notice:**
->
-> - `ASSIGNMENT DOMAIN FOUNDATION` = **IMPLEMENTED & ACTIVE ✅**
-> - `ROUTING ENGINE (OSRM / Corridor)` = **FUTURE ⏳**
-> - `RESPONDER SCORING & ALLOCATION` = **FUTURE ⏳**
-> - `AI DISPATCH OPTIMIZATION` = **FUTURE ⏳**
+### `POST /api/triage/analyze/{incident_id}`
 
-### `POST /api/assignments`
+Triggers multi-tier AI evaluation (Gemini 2.5 $\rightarrow$ Groq Llama-3.3 $\rightarrow$ Heuristics) on an incident.
 
-Authoritatively creates a first-class assignment linking an emergency incident to a responder unit. Transactionally synchronizes responder state (`ASSIGNED`) and incident state (`ASSIGNED`), and appends an auditable `assignment.created` event to the incident timeline. Rejects duplicate active assignments per responder or per incident.
-
-- **Authorization:** Requires authority role (`assigned_by != "citizen"`).
-- **Request Payload:**
+- **Auth:** `AUTHORITY` or `SYSTEM` role.
+- **Response (200 OK):**
   ```json
   {
-    "incident_id": "909ec355-6bcf-46d4-a035-71fa2e022f42",
-    "responder_id": "resp-101",
-    "status": "ASSIGNED",
-    "assigned_by": "dispatcher_alok",
-    "score": 92.5,
-    "score_breakdown": {
-      "capability": 30.0,
-      "distance": 25.0,
-      "eta": 20.0,
-      "workload": 10.0,
-      "severity_fit": 7.5
-    },
-    "assignment_reason": "Optimal flood boat capability match with direct waterway access"
-  }
-  ```
-- **Response (201 Created):**
-  ```json
-  {
-    "success": true,
     "data": {
-      "id": "c7a8b411-e40f-48d6-953e-862ad9b06822",
-      "incident_id": "909ec355-6bcf-46d4-a035-71fa2e022f42",
-      "responder_id": "resp-101",
-      "status": "ASSIGNED",
-      "assigned_by": "dispatcher_alok",
-      "assigned_at": "2026-08-25T12:00:00+00:00",
-      "accepted_at": "2026-08-25T12:00:00+00:00",
-      "started_at": null,
-      "nearby_at": null,
-      "arrived_at": null,
-      "completed_at": null,
-      "cancelled_at": null,
-      "score": 92.5,
-      "score_breakdown": {
-        "capability": 30.0,
-        "distance": 25.0,
-        "eta": 20.0,
-        "workload": 10.0,
-        "severity_fit": 7.5
-      },
-      "assignment_reason": "Optimal flood boat capability match with direct waterway access",
-      "created_at": "2026-08-25T12:00:00+00:00",
-      "updated_at": "2026-08-25T12:00:00+00:00"
+      "incident_type": "flood",
+      "severity": "CRITICAL",
+      "severity_level": 4,
+      "confidence": 0.94,
+      "hazard_type": "Flash Flood & Surge Inundation",
+      "affected_people": 3,
+      "key_signals": ["SOS beacon active", "water entering ground floor", "terrace refuge"],
+      "recommended_capability": "FLOOD_BOAT",
+      "priority_reasoning": "High water velocity detected. Submerged ground floor structure with 3 individuals trapped on terrace.",
+      "uncertainty_flags": [],
+      "damage_type": "Structural Inundation",
+      "hazard_detected": "Rising Floodwater",
+      "water_depth_estimate": "1.4m Rising",
+      "image_assessment_hint": null,
+      "provider": "GeminiProvider",
+      "model": "gemini-2.5-flash",
+      "evaluated_at": "2026-08-27T12:01:00+00:00",
+      "ai_state": "AVAILABLE",
+      "needs_review": false,
+      "review_status": "PENDING"
     }
   }
   ```
-- **Error Responses:**
-  - `400 Bad Request` (`RESPONDER_ALREADY_ASSIGNED`): Responder already has an active assignment.
-  - `400 Bad Request` (`INCIDENT_ALREADY_ASSIGNED`): Incident already has an active assignment.
-  - `400 Bad Request` (`RESPONDER_OFFLINE`): Responder is OFFLINE.
-  - `400 Bad Request` (`TERMINAL_INCIDENT`): Cannot assign responder to resolved/cancelled incident.
-  - `403 Forbidden`: Citizens cannot create assignments.
-  - `404 Not Found`: Incident or responder does not exist.
+- **Socket Emission:** `incident.triage_updated` $\rightarrow$ `authorities` + `incident:{id}`.
 
 ---
 
-### `GET /api/assignments`
+### `POST /api/triage/verify/{incident_id}`
 
-Lists assignments with optional query filters (`incident_id`, `responder_id`, `status`).
+Operator verifies and approves the AI assessment, transitioning the incident to `VERIFIED`.
 
----
-
-### `GET /api/assignments/{id}`
-
-Retrieves single assignment details with milestone timestamps and scoring factor breakdown.
-
----
-
-### `GET /api/incidents/{incident_id}/assignments`
-
-Retrieves all assignment records associated with an incident.
-
----
-
-### `PATCH /api/assignments/{id}/status`
-
-Transitions an assignment along its controlled lifecycle (`PROPOSED` $\rightarrow$ `ASSIGNED` $\rightarrow$ `EN_ROUTE` $\rightarrow$ `NEARBY` $\rightarrow$ `ON_SCENE` $\rightarrow$ `COMPLETED` / `CANCELLED`). Synchronously transitions the linked responder and incident states and emits `assignment.status_changed`.
-
-- **Authorization:** Authority dispatcher role (`actor != "citizen"`).
+- **Auth:** `AUTHORITY` role required.
 - **Request Payload:**
   ```json
   {
-    "status": "EN_ROUTE",
     "actor": "dispatcher_alok",
-    "notes": "Unit underway on tactical channel 4"
+    "verified_severity": "CRITICAL",
+    "verified_capability": "FLOOD_BOAT",
+    "operator_notes": "Ground reports confirm flood level exceeds 1.2m"
   }
   ```
-- **Response (200 OK):** Updated `AssignmentResponse` object with updated milestone timestamps (`started_at`, `nearby_at`, `arrived_at`, `completed_at`, `cancelled_at`).
-- **Error Responses:**
-  - `400 Bad Request` (`INVALID_TRANSITION`): Disallowed jump or attempting to modify a terminal assignment.
-  - `403 Forbidden`: Citizens cannot mutate assignment status.
-  - `404 Not Found`: Assignment does not exist.
+- **Response (200 OK):** `IncidentSingleResponse` (status: `VERIFIED`).
+- **Socket Emissions:** `incident.triage_verified` and `incident.response_state_changed`.
 
 ---
 
-## 5. Shelter Logistics API (IMPLEMENTED ✅)
+## 7. Shelter Logistics API (`/api/shelters`)
 
 ### `GET /api/shelters`
 
-Lists all registered evacuation shelters, bed occupancies, and supplies statuses.
+Lists all registered evacuation shelters, bed occupancies, and supply statuses.
 
+- **Auth:** None (Public)
 - **Response (200 OK):**
   ```json
   {
@@ -267,46 +420,38 @@ Lists all registered evacuation shelters, bed occupancies, and supplies statuses
         "longitude": 88.406,
         "total_beds": 600,
         "available_beds": 420,
-        "occupancy_rate": "68%",
+        "occupancy_rate": "30%",
         "supplies_status": "HIGH (3 days rations, generator backup)",
         "status": "OPEN",
+        "amenities": "[\"Medical Aid\", \"Clean Water\", \"Power Backup\", \"Childcare\"]",
         "is_active": true,
-        "created_at": "2026-08-23T14:20:00+00:00",
-        "updated_at": "2026-08-23T14:20:00+00:00"
+        "created_at": "2026-08-27T10:00:00+00:00",
+        "updated_at": "2026-08-27T10:00:00+00:00"
       }
     ],
     "count": 3
   }
   ```
 
-### `GET /api/shelters/{id}`
-
-Fetches single evacuation shelter hub.
+---
 
 ### `PATCH /api/shelters/{id}`
 
-Updates shelter bed availability, occupancy percentage, or supplies readiness state.
+Updates bed intake, occupancy percentage, or supplies readiness status.
+
+- **Auth:** `AUTHORITY` or `SYSTEM` role.
+- **Socket Emission:** `shelter.updated` $\rightarrow$ `authorities`.
 
 ---
 
-## 6. Routing & Navigational Geometry API (IMPLEMENTED ✅)
-
-> **Architectural Boundary Notice:**
->
-> - `ROUTING SERVICE FOUNDATION (OSRM + Normalized Fallback)` = **IMPLEMENTED & ACTIVE ✅**
-> - `RESPONDER SCORING & ALLOCATION` = **FUTURE ⏳**
-> - `AI DISPATCH OPTIMIZATION` = **FUTURE ⏳**
-
-The routing layer provides a clean, normalized abstraction for distance, ETA, and geometry between GPS coordinates. React components and frontend modules never call OSRM directly; all routing requests pass through the Salvus backend.
+## 8. Routing & Navigational Geometry API (`/api/routes`)
 
 ### `GET /api/routes` / `GET /api/routing/route`
 
-Computes route distance, ETA, and geometry between origin and destination coordinates using OSRM with automatic resilient fallback.
+Calculates real-world distance, duration, ETA, and coordinate arrays between origin and destination coordinates using OSRM with automatic resilient fallback corridors.
 
-- **Query Parameters:**
-  - `origin_lat`, `origin_lng` (or `origin` as `"lat,lon"`)
-  - `dest_lat`, `dest_lng` (or `destination` as `"lat,lon"`)
-  - `profile`: `driving` | `walking` | `boat` (Default: `driving`)
+- **Auth:** None (Public / System)
+- **Query Params:** `origin_lat`, `origin_lng`, `dest_lat`, `dest_lng`, `profile` (`driving` / `walking` / `boat`)
 - **Response (200 OK):**
   ```json
   {
@@ -332,112 +477,87 @@ Computes route distance, ETA, and geometry between origin and destination coordi
       "status": "OPTIMAL_OSRM",
       "summary": "Sector V Expressway",
       "provider": "osrm",
-      "calculated_at": "2026-08-25T18:15:00+00:00",
+      "calculated_at": "2026-08-27T12:00:00+00:00",
       "is_fallback": false
     }
   }
   ```
-- **Error Responses:**
-  - `422 Unprocessable Entity` (`INVALID_COORDINATES`): Invalid coordinate bounds (latitude outside [-90, 90] or longitude outside [-180, 180]).
-
-### `POST /api/routes` / `POST /api/routing/route`
-
-Computes route from request body payload (`origin_latitude`, `origin_longitude`, `destination_latitude`, `destination_longitude`, `profile`).
 
 ---
 
-## 7. Responder Candidate Generation API (IMPLEMENTED ✅)
+## 9. Disaster Intelligence & Hazards API (`/api/hazards`)
 
-> **Architectural Boundary Notice:**
->
-> - `CANDIDATE GENERATION (FILTERING & ELIGIBILITY)` = **IMPLEMENTED & ACTIVE ✅**
-> - `RESPONDER SCORING & RANKING` = **FUTURE ⏳**
-> - `AUTOMATIC DISPATCH & ALLOCATION` = **FUTURE ⏳**
-> - `AI DISPATCH OPTIMIZATION` = **FUTURE ⏳**
+### `GET /api/hazards`
 
-The Candidate Generation service provides deterministic, explainable decision-support filtering that evaluates a responder fleet against an emergency incident. It applies strict hard filters and deterministic capability rules to partition responders into **Eligible** and **Excluded** sets with auditable exclusion reasons.
+Retrieves normalized disaster signals from Open-Meteo, USGS, GDACS, and IMD feeds with optional location filtering.
 
-### `GET /api/responders/candidate-pool/{incident_id}` / `GET /api/incidents/{incident_id}/candidate-pool`
+- **Query Params:** `lat`, `lon`, `max_distance_km`
+- **Response (200 OK):** `HazardListResponse` (`data: HazardSignal[]`, `count: int`, `source_summary: str`).
 
-Retrieves the partitioned candidate pool for an active emergency incident.
+### `GET /api/hazards/clusters`
 
-- **Query Parameters:**
-  - `required_capability` (optional): Filter to an explicit required capability (e.g. `FLOOD_BOAT`).
-- **Response (200 OK):**
-  ```json
-  {
-    "success": true,
-    "data": {
-      "incident_id": "909ec355-6bcf-46d4-a035-71fa2e022f42",
-      "incident_type": "flood",
-      "required_capability": null,
-      "eligible_responders": [
-        {
-          "responder_id": "resp-101",
-          "unit_name": "NDRF Rescue Unit 4",
-          "capability": "FLOOD_BOAT",
-          "status": "AVAILABLE",
-          "is_eligible": true,
-          "exclusion_reason": null,
-          "match_reason": "Specialized Inflatable Flood Rescue Watercraft",
-          "responder": {
-            "id": "resp-101",
-            "unit_name": "NDRF Rescue Unit 4",
-            "team_lead": "Capt. A. Roy",
-            "vehicle_type": "Gemini Z-Craft Inflatable",
-            "capability": "FLOOD_BOAT",
-            "status": "AVAILABLE",
-            "latitude": 22.574,
-            "longitude": 88.372,
-            "radio_channel": "VHF-14",
-            "max_capacity": 8,
-            "current_load": 0,
-            "assigned_incident_id": null,
-            "last_seen": "2026-08-25T18:00:00Z",
-            "created_at": "2026-08-25T18:00:00Z",
-            "updated_at": "2026-08-25T18:00:00Z"
-          }
-        }
-      ],
-      "excluded_responders": [
-        {
-          "responder_id": "resp-102",
-          "unit_name": "Hazmat Team 2",
-          "capability": "HAZMAT",
-          "status": "AVAILABLE",
-          "is_eligible": false,
-          "exclusion_reason": "Capability mismatch ('HAZMAT' cannot service 'flood' incident)",
-          "match_reason": null,
-          "responder": { ... }
-        },
-        {
-          "responder_id": "resp-103",
-          "unit_name": "Medic Bravo",
-          "capability": "AMBULANCE",
-          "status": "OFFLINE",
-          "is_eligible": false,
-          "exclusion_reason": "Unit is OFFLINE / Out of Service",
-          "match_reason": null,
-          "responder": { ... }
-        }
-      ],
-      "total_evaluated": 4,
-      "total_eligible": 1,
-      "total_excluded": 3
-    }
-  }
-  ```
+Computes spatial incident clusters to identify high-density disaster epicenters.
 
-### `POST /api/responders/candidate-pool/evaluate`
+- **Response (200 OK):** `IncidentClusterListResponse`.
 
-Evaluates candidate eligibility for an incident payload and responder list in a stateless manner (without DB dependency).
+### `GET /api/situation/summary`
 
+Generates grounded operational situation intelligence summary and active disaster statistics.
+
+- **Response (200 OK):** `SituationSummaryResponse`.
+
+---
+
+## 10. Simulation & Fleet Controls (`/api/simulation`)
+
+### `POST /api/simulation/step`
+
+Advances simulated responder movement by one telemetry waypoint along the mission corridor.
+
+- **Auth:** `AUTHORITY` or `SYSTEM` role.
 - **Request Payload:**
   ```json
   {
-    "incident": { ... },
-    "responders": [ ... ],
-    "required_capability": null
+    "responder_id": "resp-101",
+    "latitude": 22.5735,
+    "longitude": 88.368,
+    "step_index": 3,
+    "total_steps": 15,
+    "target_status": "EN_ROUTE"
   }
   ```
-- **Response (200 OK):** `CandidateGenerationResponse`
+- **Socket Emissions:** `responder.location_updated`, `responder.status_changed`, `assignment.status_changed`.
+
+### `POST /api/simulation/reset-fleet`
+
+Resets all responder coordinates and statuses to baseline seed values.
+
+- **Auth:** `AUTHORITY` or `SYSTEM` role.
+
+---
+
+## 11. Authentication API (`/api/auth`)
+
+### `POST /api/auth/token`
+
+Issues a cryptographically signed HMAC-SHA256 JWT access token for a role.
+
+- **Request Payload:** `{"role": "AUTHORITY", "name": "Duty Dispatcher"}`
+- **Response (200 OK):**
+  ```json
+  {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token_type": "bearer",
+    "role": "AUTHORITY",
+    "user_id": "authority-a1b2c3d4",
+    "name": "Duty Dispatcher",
+    "expires_in": 86400
+  }
+  ```
+
+### `GET /api/auth/me`
+
+Retrieves verified identity, claims, and permission list for the calling token.
+
+- **Auth:** Bearer Token.
+- **Response (200 OK):** `UserProfileResponse`.
