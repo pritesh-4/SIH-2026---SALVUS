@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { citizenHomeData } from '../data/citizenHome'
+import { useLocation } from '../hooks/useLocation'
 import { SafetyStatusCard } from '../components/citizen/SafetyStatusCard'
+
 import { EmergencyCard } from '../components/citizen/EmergencyCard'
 import { ActiveAlertCard } from '../components/citizen/ActiveAlertCard'
 import { ShelterPreviewCard } from '../components/citizen/ShelterPreviewCard'
@@ -10,10 +12,10 @@ import { AreaMapCard } from '../components/citizen/AreaMapCard'
 import { EmergencyConfirmationModal } from '../components/citizen/emergency/EmergencyConfirmationModal'
 import { IncidentReportModal } from '../components/citizen/IncidentReportModal'
 import { createIncident } from '../services/api'
-import { getCurrentLocation } from '../lib/location'
 
 export const CitizenHome = () => {
   const navigate = useNavigate()
+  const { location, requestLocation } = useLocation()
   const [isConfirmingSos, setIsConfirmingSos] = useState(false)
   const [isReportingIncident, setIsReportingIncident] = useState(false)
   const [isSubmittingSos, setIsSubmittingSos] = useState(false)
@@ -31,7 +33,20 @@ export const CitizenHome = () => {
 
     try {
       // 1. Acquire current coordinates safely
-      const loc = await getCurrentLocation()
+      let locLat = location?.latitude
+      let locLng = location?.longitude
+
+      if (!locLat || !locLng) {
+        const freshLoc = await requestLocation({ timeout: 6000 })
+        if (freshLoc?.latitude && freshLoc?.longitude) {
+          locLat = freshLoc.latitude
+          locLng = freshLoc.longitude
+        } else {
+          // Fallback to Sector 12 default if unavailable
+          locLat = 22.5726
+          locLng = 88.3639
+        }
+      }
 
       // 2. Submit SOS Beacon to backend
       const result = await createIncident({
@@ -40,8 +55,8 @@ export const CitizenHome = () => {
         description: 'Immediate emergency SOS beacon activated by citizen.',
         reporter_name: 'Aditi Roy',
         reporter_phone: '+91 98301 24890',
-        latitude: loc.latitude,
-        longitude: loc.longitude,
+        latitude: locLat,
+        longitude: locLng,
         affected_count: 1,
         is_sos: true,
       })
@@ -156,8 +171,21 @@ export const CitizenHome = () => {
             title="Click to open local situational map"
           >
             <AreaMapCard
-              badgeText={areaMap.badgeText}
-              location={areaMap.location}
+              badgeText={
+                location.source === 'BROWSER'
+                  ? 'GPS Active'
+                  : location.source === 'LANDMARK'
+                    ? 'Approximate Location'
+                    : areaMap.badgeText
+              }
+              location={
+                location.latitude
+                  ? location.address
+                  : location.source === 'LANDMARK'
+                    ? `${location.landmarkName} (Approximate)`
+                    : areaMap.location
+              }
+              userLocation={location}
               legend={areaMap.legend}
             />
           </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createIncident } from '../../services/api'
-import { getCurrentLocation, LANDMARKS } from '../../lib/location'
+import { useLocation } from '../../hooks/useLocation'
+import { getCurrentLocation, createLandmarkLocation, LANDMARKS } from '../../lib/location'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Input, Textarea, FormField } from '../ui/Input'
@@ -18,6 +19,8 @@ const getSavedDraft = () => {
 }
 
 export const IncidentReportModal = ({ isOpen, onClose }) => {
+  const { location: globalLocation } = useLocation()
+
   const [draft] = useState(getSavedDraft)
   const [step, setStep] = useState(1) // 1: Select Type, 2: Details & Location, 3: Success Confirmation
   const [category, setCategory] = useState(() => draft?.category || 'flood')
@@ -31,14 +34,12 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
   const [submissionError, setSubmissionError] = useState(null)
   const [createdIncident, setCreatedIncident] = useState(null)
 
-  // Geolocation state
-  const [locationData, setLocationData] = useState({
-    latitude: 22.5726,
-    longitude: 88.3639,
-    accuracy: 'Detecting...',
-    coordinates: '22.5726° N, 88.3639° E',
-    address: 'Sector 12 Community Hub',
-    status: 'ACQUIRING',
+  // Local Geolocation state for modal
+  const [locationData, setLocationData] = useState(() => {
+    if (globalLocation && globalLocation.latitude) {
+      return globalLocation
+    }
+    return createLandmarkLocation(LANDMARKS[0], 'PROMPT')
   })
   const [isAcquiringLocation, setIsAcquiringLocation] = useState(false)
   const [selectedLandmarkName, setSelectedLandmarkName] = useState(LANDMARKS[0].name)
@@ -95,55 +96,39 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
 
   const fetchLocation = useCallback(async () => {
     setIsAcquiringLocation(true)
-    const loc = await getCurrentLocation()
-    setLocationData({
-      latitude: loc.latitude,
-      longitude: loc.longitude,
-      accuracy: loc.accuracy || 'Standard accuracy',
-      coordinates: loc.coordinates,
-      address: loc.address || 'Detected Location',
-      status: loc.status || (loc.success ? 'ACTIVE' : 'FALLBACK'),
-      error: loc.error,
-    })
+    const result = await getCurrentLocation({ timeout: 8000 })
+    if (result.success && result.model) {
+      setLocationData(result.model)
+    } else {
+      // Fallback to currently selected landmark
+      const found = LANDMARKS.find((l) => l.name === selectedLandmarkName) || LANDMARKS[0]
+      setLocationData(createLandmarkLocation(found, 'DENIED'))
+    }
     setIsAcquiringLocation(false)
-  }, [])
+  }, [selectedLandmarkName])
 
   useEffect(() => {
     if (!isOpen) return
-    let isMounted = true
 
-    getCurrentLocation().then((loc) => {
-      if (!isMounted) return
-      setLocationData({
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-        accuracy: loc.accuracy || 'Standard accuracy',
-        coordinates: loc.coordinates,
-        address: loc.address || 'Detected Location',
-        status: loc.status || (loc.success ? 'ACTIVE' : 'FALLBACK'),
-        error: loc.error,
-      })
-      setIsAcquiringLocation(false)
-    })
+    if (globalLocation?.latitude && globalLocation?.source === 'BROWSER') {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      fetchLocation()
+    }, 0)
 
     return () => {
-      isMounted = false
+      clearTimeout(timer)
     }
-  }, [isOpen])
+  }, [isOpen, globalLocation, fetchLocation])
 
   const handleSelectLandmark = (e) => {
     const name = e.target.value
     setSelectedLandmarkName(name)
     const found = LANDMARKS.find((l) => l.name === name)
     if (found) {
-      setLocationData({
-        latitude: found.latitude,
-        longitude: found.longitude,
-        accuracy: 'Manual Confirmation',
-        coordinates: `${found.latitude.toFixed(4)}° N, ${found.longitude.toFixed(4)}° E`,
-        address: found.address,
-        status: 'MANUAL_CONFIRMED',
-      })
+      setLocationData(createLandmarkLocation(found, locationData.permission))
     }
   }
 
@@ -382,16 +367,31 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
               <div className="flex items-center justify-between">
                 <span className="font-bold text-salvus-text-primary flex items-center gap-1.5">
                   <span>📍</span>
-                  <span>Detected Location</span>
+                  <span>
+                    {locationData.source === 'LANDMARK' || locationData.isFallback
+                      ? 'Landmark Fallback'
+                      : 'Detected Location'}
+                  </span>
                 </span>
-                <Badge variant="safe" size="sm">
-                  {isAcquiringLocation ? 'Locating...' : 'GPS Active'}
+                <Badge
+                  variant={
+                    locationData.source === 'LANDMARK' || locationData.isFallback
+                      ? 'warning'
+                      : 'safe'
+                  }
+                  size="sm"
+                >
+                  {isAcquiringLocation
+                    ? 'Locating...'
+                    : locationData.source === 'LANDMARK' || locationData.isFallback
+                      ? 'APPROXIMATE LOCATION'
+                      : locationData.accuracyLabel || 'GPS Active'}
                 </Badge>
               </div>
 
               <div className="bg-salvus-surface p-2.5 rounded-lg border border-salvus-border space-y-1">
                 <div className="text-salvus-text-primary font-medium text-xs">
-                  {locationData.address}
+                  {locationData.address || locationData.landmarkName}
                 </div>
                 <div className="text-[11px] text-salvus-text-muted flex items-center justify-between">
                   <span>{locationData.coordinates}</span>

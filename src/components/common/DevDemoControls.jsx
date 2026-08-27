@@ -87,13 +87,15 @@ export const DevDemoControls = ({ onRefresh = null }) => {
   const handleSimulateSos = async () => {
     setIsLoading(true)
     const loc = await getCurrentLocation()
+    const baseLat = loc.latitude || loc.model?.latitude || 22.5726
+    const baseLng = loc.longitude || loc.model?.longitude || 88.3639
     const result = await createIncident({
       type: 'flood',
       severity: 'CRITICAL',
       description: 'DEVELOPER TRIGGER: Surge flood testing on sector grid.',
       reporter_name: 'Dev Sim User',
-      latitude: loc.latitude + (Math.random() - 0.5) * 0.01,
-      longitude: loc.longitude + (Math.random() - 0.5) * 0.01,
+      latitude: baseLat + (Math.random() - 0.5) * 0.01,
+      longitude: baseLng + (Math.random() - 0.5) * 0.01,
       affected_count: 4,
       is_sos: true,
     })

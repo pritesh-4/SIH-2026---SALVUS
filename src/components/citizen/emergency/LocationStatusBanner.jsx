@@ -11,6 +11,8 @@ export const LocationStatusBanner = ({
     address: 'Sector 12, Salt Lake, Kolkata',
     coordinates: '22.5726° N, 88.3639° E',
     accuracy: 'High Precision (±4m)',
+    accuracyLabel: 'High Precision (±4m)',
+    source: 'BROWSER',
     status: 'ACTIVE',
   },
   locationStatus = 'ACTIVE',
@@ -18,10 +20,15 @@ export const LocationStatusBanner = ({
 }) => {
   const [showCoordinates, setShowCoordinates] = useState(false)
 
+  const isLandmark = location?.source === 'LANDMARK' || location?.isFallback
+
   const getLocationLabel = () => {
     switch (locationStatus) {
       case 'ACTIVE':
-        return { status: 'safe', label: 'Location Shared Live' }
+        return {
+          status: 'safe',
+          label: isLandmark ? 'Approximate Location Shared' : 'Location Shared Live',
+        }
       case 'ACQUIRING':
         return { status: 'warning', label: 'Acquiring GPS...' }
       case 'TEMPORARILY UNAVAILABLE':
@@ -53,6 +60,8 @@ export const LocationStatusBanner = ({
     connectivityStatus === 'LIMITED_CONNECTION' ||
     connectivityStatus === 'RECONNECTING'
 
+  const accuracyText = location?.accuracyLabel || location?.accuracy || 'Active'
+
   return (
     <div className="space-y-3">
       <Card
@@ -69,15 +78,20 @@ export const LocationStatusBanner = ({
               <span className="text-xs font-bold text-salvus-text-primary">
                 Your Shared Location
               </span>
-              <Badge variant="safe" size="sm">
-                GPS Locked
+              <Badge variant={isLandmark ? 'warning' : 'safe'} size="sm">
+                {isLandmark ? 'APPROXIMATE LANDMARK' : 'GPS LOCKED'}
               </Badge>
+              {!isLandmark && accuracyText && (
+                <span className="text-[10px] text-salvus-text-muted font-mono font-medium">
+                  {accuracyText}
+                </span>
+              )}
             </div>
             <p className="text-xs sm:text-sm font-semibold text-salvus-text-primary">
-              {location.address || 'Detected Location'}
+              {location.address || (isLandmark ? location.landmarkName : 'Detected Location')}
             </p>
             <div className="flex items-center gap-2 text-xs text-salvus-text-muted mt-0.5">
-              <span>Shared with response team</span>
+              <span>Shared with emergency response grid</span>
               <span>·</span>
               <button
                 type="button"
@@ -89,7 +103,8 @@ export const LocationStatusBanner = ({
             </div>
             {showCoordinates && (
               <p className="text-[11px] font-mono text-salvus-text-secondary mt-1">
-                {location.coordinates} ({location.accuracy || '±4m'})
+                {location.coordinates || 'Coordinates unavailable'}{' '}
+                {location.accuracy ? `(${location.accuracyLabel || `±${location.accuracy}m`})` : ''}
               </p>
             )}
           </div>
@@ -120,3 +135,5 @@ export const LocationStatusBanner = ({
     </div>
   )
 }
+
+export default LocationStatusBanner

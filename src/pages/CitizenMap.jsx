@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { citizenMapData } from '../data/citizen/map.mock'
+import { useLocation } from '../hooks/useLocation'
+import { LANDMARKS } from '../lib/location'
 import { SalvusLeafletMap } from '../components/common/SalvusLeafletMap'
 import { SimulatedBadge } from '../components/common/SimulatedBadge'
 import { Card } from '../components/ui/Card'
@@ -82,8 +83,21 @@ export const CitizenMap = () => {
   const [selectedItem, setSelectedItem] = useState(CITIZEN_SHELTERS[0])
   const [activeRouteGuide, setActiveRouteGuide] = useState(null)
 
-  const { userLocation } = citizenMapData
+  const { location, isAcquiring, recenterSignal, requestLocation, selectLandmark, recenterMap } =
+    useLocation()
+
   const routeModalRef = useRef(null)
+
+  // Request location on map mount if not yet requested
+  useEffect(() => {
+    if (
+      location.source === 'UNKNOWN' &&
+      location.latitude === null &&
+      location.permission !== 'DENIED'
+    ) {
+      requestLocation()
+    }
+  }, [location.source, location.latitude, location.permission, requestLocation])
 
   // Escape key + body scroll lock for route modal
   useEffect(() => {
@@ -117,6 +131,11 @@ export const CitizenMap = () => {
     return CITIZEN_SHELTERS
   }, [activeFilter])
 
+  const isPermissionDenied = location.permission === 'DENIED' || location.status === 'DENIED'
+  const isLocationUnavailable =
+    location.permission === 'UNAVAILABLE' || location.status === 'UNAVAILABLE'
+  const isLandmarkFallback = location.source === 'LANDMARK' || location.isFallback
+
   return (
     <div className="max-w-[1440px] w-full mx-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 animate-fadeIn">
       {/* Top Header */}
@@ -127,15 +146,104 @@ export const CitizenMap = () => {
               Area Navigation
             </span>
             <span className="h-1 w-1 rounded-full bg-salvus-border-strong"></span>
-            <span className="text-xs text-salvus-info">{userLocation.address}</span>
+            <span className="text-xs text-salvus-info">
+              {location.latitude
+                ? location.address
+                : isLandmarkFallback
+                  ? `${location.landmarkName} (Approximate)`
+                  : 'Sector 12, Salt Lake'}
+            </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary tracking-tight mt-0.5">
             Local Safe Places & Hazards
           </h1>
         </div>
 
-        <StatusIndicator status="safe" label="Area Monitored Live" showDot={true} />
+        <div className="flex items-center gap-3">
+          {location.latitude && (
+            <button
+              type="button"
+              onClick={recenterMap}
+              className="px-3 py-1.5 rounded-xl bg-salvus-surface border border-salvus-border hover:border-salvus-info text-salvus-text-secondary hover:text-salvus-text-primary text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+              title="Center map on your location"
+            >
+              <span>🎯</span>
+              <span>Recenter on me</span>
+            </button>
+          )}
+          <StatusIndicator status="safe" label="Area Monitored Live" showDot={true} />
+        </div>
       </div>
+
+      {/* Permission / Geolocation Guidance Banner (Calm & Non-Alarming) */}
+      {(isPermissionDenied ||
+        isLocationUnavailable ||
+        (!location.latitude && !isLandmarkFallback)) && (
+        <div className="mb-5 bg-salvus-surface border border-salvus-border rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-fadeIn">
+          <div className="flex items-start gap-3.5">
+            <div className="h-10 w-10 rounded-xl bg-salvus-muted border border-salvus-border flex items-center justify-center text-salvus-text-secondary shrink-0 text-base">
+              📍
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-salvus-text-primary">
+                  {isPermissionDenied
+                    ? 'Location access is off'
+                    : isLocationUnavailable
+                      ? 'Your browser cannot provide location right now'
+                      : 'Detecting device location...'}
+                </span>
+                <Badge variant={isPermissionDenied ? 'warning' : 'neutral'} size="sm">
+                  {isPermissionDenied ? 'OFF' : 'OPTIONAL'}
+                </Badge>
+              </div>
+              <p className="text-xs text-salvus-text-secondary mt-0.5 max-w-xl leading-relaxed">
+                {isPermissionDenied
+                  ? 'Enable location to automatically center on your position, or select your nearest landmark below.'
+                  : isLocationUnavailable
+                    ? 'Browser security or device settings prevented location acquisition. You can select a sector landmark.'
+                    : 'Salvus only accesses your location on-demand to show nearby relief shelters and hazards.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 self-stretch md:self-auto flex-wrap">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => requestLocation({ timeout: 10000 })}
+              loading={isAcquiring}
+            >
+              {isAcquiring
+                ? 'Acquiring...'
+                : isPermissionDenied
+                  ? 'Enable Location'
+                  : 'Detect Location'}
+            </Button>
+
+            {/* Landmark fallback selector */}
+            <div className="relative">
+              <select
+                aria-label="Select Landmark Fallback"
+                onChange={(e) => {
+                  if (e.target.value) selectLandmark(e.target.value)
+                }}
+                defaultValue=""
+                className="bg-salvus-surface-elevated border border-salvus-border hover:border-salvus-border-strong text-salvus-text-primary text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-salvus-info cursor-pointer font-medium"
+              >
+                <option value="" disabled>
+                  Select Landmark Fallback...
+                </option>
+                {LANDMARKS.map((lm) => (
+                  <option key={lm.name} value={lm.name}>
+                    {lm.name} (Approx.)
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Layer Filter Pills */}
       <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-4 no-scrollbar">
@@ -178,27 +286,61 @@ export const CitizenMap = () => {
           className="lg:col-span-7 flex flex-col justify-between relative overflow-hidden min-h-[440px] sm:min-h-[520px]"
         >
           {/* Map Top Status Bar */}
-          <div className="flex items-center justify-between z-10 bg-salvus-surface/90 backdrop-blur-md px-3.5 py-2 rounded-xl border border-salvus-border text-xs mb-3">
+          <div className="flex items-center justify-between z-10 bg-salvus-surface/90 backdrop-blur-md px-3.5 py-2 rounded-xl border border-salvus-border text-xs mb-3 flex-wrap gap-2">
             <div className="flex items-center gap-2 font-medium text-salvus-text-primary">
-              <span className="h-2.5 w-2.5 rounded-full bg-salvus-info shrink-0"></span>
-              <span>Your location: Sector 12, Salt Lake</span>
+              <span
+                className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                  location.source === 'BROWSER'
+                    ? 'bg-salvus-info animate-pulse'
+                    : isLandmarkFallback
+                      ? 'bg-amber-400'
+                      : 'bg-slate-500'
+                }`}
+              ></span>
+              <span className="truncate max-w-[240px] sm:max-w-none">
+                {location.source === 'BROWSER'
+                  ? `Your location: ${location.address}`
+                  : isLandmarkFallback
+                    ? `Approximate landmark: ${location.landmarkName}`
+                    : 'Location access off · Overview mode'}
+              </span>
             </div>
-            <span className="text-salvus-text-muted text-xs">GPS accuracy: ±4m</span>
+
+            <div className="flex items-center gap-2">
+              <span
+                className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${location.accuracyBadgeClass || 'bg-slate-800 text-slate-400 border-slate-700'}`}
+              >
+                {isLandmarkFallback
+                  ? 'APPROXIMATE LOCATION'
+                  : location.accuracyLabel || 'Standard Map'}
+              </span>
+
+              {location.latitude && (
+                <button
+                  type="button"
+                  onClick={recenterMap}
+                  className="text-salvus-info hover:underline text-xs font-semibold cursor-pointer"
+                  title="Recenter on me"
+                >
+                  Recenter
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Real Leaflet Map Surface */}
           <div className="relative w-full h-[380px] rounded-xl border border-salvus-border overflow-hidden">
             <SalvusLeafletMap
-              center={[22.5726, 88.3639]}
+              center={
+                location.latitude && location.longitude
+                  ? [location.latitude, location.longitude]
+                  : [22.5726, 88.3639]
+              }
               zoom={14}
-              userLocation={{
-                latitude: 22.5726,
-                longitude: 88.3639,
-                address: userLocation.address,
-                coordinates: userLocation.coordinates,
-                accuracy: 'High Precision (±4m)',
-                accuracyM: 15,
-              }}
+              userLocation={location.latitude ? location : null}
+              recenterSignal={recenterSignal}
+              onRecenter={recenterMap}
+              showRecenterBtn={Boolean(location.latitude)}
               incidents={displayedIncidents}
               shelters={displayedShelters}
               showLayers={{
@@ -215,8 +357,12 @@ export const CitizenMap = () => {
           <div className="mt-3 bg-salvus-surface px-3.5 py-2 rounded-xl border border-salvus-border flex items-center justify-between text-xs text-salvus-text-secondary flex-wrap gap-2">
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-1.5 font-medium">
-                <span className="h-2.5 w-2.5 rounded-full bg-salvus-info"></span>
-                <span>You</span>
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    isLandmarkFallback ? 'bg-amber-400' : 'bg-salvus-info'
+                  }`}
+                ></span>
+                <span>{isLandmarkFallback ? 'Approximate (Landmark)' : 'You (GPS)'}</span>
               </div>
               <div className="flex items-center gap-1.5 font-medium">
                 <span className="h-2.5 w-2.5 rounded-full bg-salvus-safe"></span>
@@ -229,7 +375,10 @@ export const CitizenMap = () => {
             </div>
             <button
               type="button"
-              onClick={() => setSelectedItem(CITIZEN_SHELTERS[0])}
+              onClick={() => {
+                setSelectedItem(CITIZEN_SHELTERS[0])
+                recenterMap()
+              }}
               className="text-salvus-info hover:underline font-semibold cursor-pointer text-xs"
             >
               Reset view

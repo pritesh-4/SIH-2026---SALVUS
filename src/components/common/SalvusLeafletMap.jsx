@@ -20,6 +20,9 @@ export const SalvusLeafletMap = ({
   selectedIncidentId = null,
   onSelectIncident = null,
   userLocation = null,
+  recenterSignal = 0,
+  onRecenter = null,
+  showRecenterBtn = true,
   shelters = [],
   responders = [],
   hazards = [],
@@ -44,6 +47,8 @@ export const SalvusLeafletMap = ({
   const markersGroupRef = useRef(null)
   const routesGroupRef = useRef(null)
   const userMarkerRef = useRef(null)
+  const userInteractedRef = useRef(false)
+  const prevRecenterSignalRef = useRef(recenterSignal)
 
   // ---------------------------------------------------------------------------
   // 1. Initialize Map Instance & Viewport Observer
@@ -52,14 +57,33 @@ export const SalvusLeafletMap = ({
     if (!mapContainerRef.current) return
     if (mapInstanceRef.current) return
 
+    const initialCenter =
+      userLocation &&
+      typeof userLocation.latitude === 'number' &&
+      typeof userLocation.longitude === 'number'
+        ? [userLocation.latitude, userLocation.longitude]
+        : center && typeof center[0] === 'number' && typeof center[1] === 'number'
+          ? center
+          : DEFAULT_CENTER
+
     const map = L.map(mapContainerRef.current, {
-      center: center && center[0] ? center : DEFAULT_CENTER,
+      center: initialCenter,
       zoom,
       zoomControl: interactive,
       dragging: interactive,
       scrollWheelZoom: interactive ? 'center' : false,
       doubleClickZoom: interactive,
       attributionControl: false,
+    })
+
+    // Listen for manual user interactions so we do not fight user panning
+    map.on('dragstart', () => {
+      userInteractedRef.current = true
+    })
+    map.on('zoomstart', (e) => {
+      if (e.originalEvent) {
+        userInteractedRef.current = true
+      }
     })
 
     // Dark-themed tiles
@@ -102,14 +126,45 @@ export const SalvusLeafletMap = ({
   }, [])
 
   // ---------------------------------------------------------------------------
-  // 2. Center/Pan Camera on Target Coordinates
+  // 2. Smooth Recenter Handler (Signals & User Requests)
   // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    if (!map) return
+
+    // Recenter triggered programmatically
+    if (recenterSignal !== prevRecenterSignalRef.current) {
+      prevRecenterSignalRef.current = recenterSignal
+      userInteractedRef.current = false
+
+      if (
+        userLocation &&
+        typeof userLocation.latitude === 'number' &&
+        typeof userLocation.longitude === 'number'
+      ) {
+        map.flyTo([userLocation.latitude, userLocation.longitude], Math.max(map.getZoom(), 14), {
+          animate: true,
+          duration: 0.6,
+        })
+        return
+      }
+
+      if (center && typeof center[0] === 'number' && typeof center[1] === 'number') {
+        map.flyTo(center, Math.max(map.getZoom(), 14), {
+          animate: true,
+          duration: 0.6,
+        })
+      }
+    }
+  }, [recenterSignal, userLocation, center])
+
+  // Center/Pan Camera on Target Coordinates when not actively panned by user
   const centerLat = center && typeof center[0] === 'number' ? center[0] : null
   const centerLng = center && typeof center[1] === 'number' ? center[1] : null
 
   useEffect(() => {
     const map = mapInstanceRef.current
-    if (!map) return
+    if (!map || userInteractedRef.current) return
 
     if (centerLat != null && centerLng != null && !activeRoute?.coordinates?.length) {
       map.panTo([centerLat, centerLng], { animate: true, duration: 0.5 })
@@ -205,7 +260,7 @@ export const SalvusLeafletMap = ({
   }, [activeRoute, previewRoute, showLayers.routes])
 
   // ---------------------------------------------------------------------------
-  // 4. Render User Location Marker
+  // 4. Render User Location Marker (Browser GPS vs Landmark Fallback)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const map = mapInstanceRef.current
@@ -216,40 +271,79 @@ export const SalvusLeafletMap = ({
       userMarkerRef.current = null
     }
 
-    if (userLocation && userLocation.latitude && userLocation.longitude) {
+    if (
+      userLocation &&
+      typeof userLocation.latitude === 'number' &&
+      typeof userLocation.longitude === 'number'
+    ) {
       const userGroup = L.layerGroup()
+      const isLandmark = userLocation.source === 'LANDMARK' || userLocation.isFallback
+      const rawAccuracy = userLocation.accuracy ?? userLocation.accuracyM ?? null
+      const accuracyLabel = userLocation.accuracyLabel || userLocation.accuracy || 'GPS Active'
+      const badgeClass =
+        userLocation.accuracyBadgeClass ||
+        (isLandmark
+          ? 'bg-amber-950/60 text-amber-300 border-amber-500/40'
+          : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40')
 
       const userIcon = L.divIcon({
         className: 'custom-user-pin',
-        html: `
+        html: isLandmark
+          ? `
           <div class="relative flex items-center justify-center w-7 h-7">
-            <span class="absolute w-6 h-6 rounded-full bg-blue-500/20"></span>
-            <span class="relative w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white shadow-md"></span>
+            <span class="absolute w-6 h-6 rounded-full bg-amber-500/20"></span>
+            <span class="relative w-3.5 h-3.5 rounded-full bg-amber-500 border-2 border-white shadow-md"></span>
+          </div>
+        `
+          : `
+          <div class="relative flex items-center justify-center w-8 h-8">
+            <span class="absolute w-7 h-7 rounded-full bg-blue-500/25 animate-ping"></span>
+            <span class="relative w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-[0_0_12px_#3b82f6]"></span>
           </div>
         `,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
+        iconSize: isLandmark ? [28, 28] : [32, 32],
+        iconAnchor: isLandmark ? [14, 14] : [16, 16],
       })
+
+      const popupHtml = isLandmark
+        ? `
+        <div class="p-3 text-slate-200 text-xs font-sans min-w-[210px]">
+          <div class="font-bold text-amber-400 flex items-center gap-1.5 mb-1 font-mono text-[11px]">
+            <span class="h-2 w-2 rounded-full bg-amber-400"></span>
+            <span>APPROXIMATE LOCATION</span>
+          </div>
+          <p class="text-slate-200 font-semibold">${userLocation.landmarkName || userLocation.address || 'Landmark Location'}</p>
+          <p class="text-[10px] text-slate-400 font-mono mt-0.5">${userLocation.coordinates || `${userLocation.latitude.toFixed(4)}°, ${userLocation.longitude.toFixed(4)}°`}</p>
+          <div class="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold ${badgeClass}">
+            <span>${accuracyLabel}</span>
+          </div>
+        </div>
+      `
+        : `
+        <div class="p-3 text-slate-200 text-xs font-sans min-w-[210px]">
+          <div class="font-bold text-blue-400 flex items-center gap-1.5 mb-1 font-mono text-[11px]">
+            <span class="h-2 w-2 rounded-full bg-blue-400"></span>
+            <span>DEVICE GPS LOCATION</span>
+          </div>
+          <p class="text-slate-200 font-semibold">${userLocation.address || 'Current Device Coordinates'}</p>
+          <p class="text-[10px] text-slate-400 font-mono mt-0.5">${userLocation.coordinates || `${userLocation.latitude.toFixed(4)}°, ${userLocation.longitude.toFixed(4)}°`}</p>
+          <div class="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold ${badgeClass}">
+            <span>${accuracyLabel}</span>
+          </div>
+        </div>
+      `
 
       const marker = L.marker([userLocation.latitude, userLocation.longitude], {
         icon: userIcon,
         zIndexOffset: 1000,
-      }).bindPopup(`
-        <div class="p-3 text-slate-200 text-xs font-sans">
-          <div class="font-bold text-blue-400 flex items-center gap-1.5 mb-1 font-mono text-[11px]">
-            <span class="h-2 w-2 rounded-full bg-blue-400"></span>
-            <span>REPORTED LOCATION</span>
-          </div>
-          <p class="text-slate-300">${userLocation.address || 'Active Device Coordinates'}</p>
-          <p class="text-[10px] text-slate-500 font-mono mt-1">${userLocation.coordinates || `${userLocation.latitude.toFixed(4)}°, ${userLocation.longitude.toFixed(4)}°`}</p>
-        </div>
-      `)
+      }).bindPopup(popupHtml)
 
       userGroup.addLayer(marker)
 
-      if (userLocation.accuracyM && userLocation.accuracyM < 500) {
+      // Only draw accuracy circle for real browser GPS with reasonable precision
+      if (!isLandmark && rawAccuracy && rawAccuracy < 800) {
         const accuracyCircle = L.circle([userLocation.latitude, userLocation.longitude], {
-          radius: userLocation.accuracyM,
+          radius: rawAccuracy,
           color: '#3b82f6',
           fillColor: '#3b82f6',
           fillOpacity: 0.08,
@@ -635,6 +729,30 @@ export const SalvusLeafletMap = ({
             </button>
           )}
         </div>
+      )}
+
+      {/* Floating "Recenter on me" Tactical Button */}
+      {showRecenterBtn && userLocation && typeof userLocation.latitude === 'number' && (
+        <button
+          type="button"
+          onClick={() => {
+            userInteractedRef.current = false
+            if (mapInstanceRef.current && userLocation?.latitude && userLocation?.longitude) {
+              mapInstanceRef.current.flyTo(
+                [userLocation.latitude, userLocation.longitude],
+                Math.max(mapInstanceRef.current.getZoom(), 14),
+                { animate: true, duration: 0.6 }
+              )
+            }
+            if (onRecenter) onRecenter()
+          }}
+          className="absolute bottom-3 right-3 z-[400] bg-[#0B1118]/90 hover:bg-[#131D2A] text-slate-200 hover:text-white border border-slate-700/80 hover:border-sky-500/80 px-2.5 py-1.5 rounded-lg shadow-lg backdrop-blur-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer select-none group"
+          title="Recenter map on your location"
+          aria-label="Recenter on me"
+        >
+          <span className="text-sky-400 group-hover:scale-110 transition-transform">🎯</span>
+          <span className="text-[11px] font-mono">Recenter</span>
+        </button>
       )}
     </div>
   )

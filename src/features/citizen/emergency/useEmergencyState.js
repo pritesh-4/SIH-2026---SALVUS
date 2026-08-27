@@ -13,7 +13,12 @@ import {
   subscribeToEvent,
   onSocketStatusChange,
 } from '../../../lib/realtime/socket'
-import { watchEmergencyLocation, getCurrentLocation } from '../../../lib/location'
+import {
+  watchEmergencyLocation,
+  getCurrentLocation,
+  createLocationModel,
+  formatCoordinates,
+} from '../../../lib/location'
 import { haversineDistanceKm } from '../../../services/routingService'
 
 export const STATE_ORDER = [
@@ -78,7 +83,17 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
   const [locationStatus, setLocationStatus] = useState('ACTIVE') // ACTIVE, ACQUIRING, RETRYING
   const [connectivityStatus, setConnectivityStatus] = useState('CONNECTED') // CONNECTED, LIMITED_CONNECTION, OFFLINE, RECONNECTING
-  const [userLocation, setUserLocation] = useState(emergencyFlowData.incident.userLocation)
+  const [userLocation, setUserLocation] = useState(() =>
+    createLocationModel({
+      latitude: emergencyFlowData.incident.userLocation?.latitude || 22.5726,
+      longitude: emergencyFlowData.incident.userLocation?.longitude || 88.3639,
+      accuracy: 4,
+      source: 'BROWSER',
+      permission: 'GRANTED',
+      address: emergencyFlowData.incident.userLocation?.address || 'Sector 12, Salt Lake, Kolkata',
+      status: 'ACTIVE',
+    })
+  )
 
   const stopLocationWatchRef = useRef(null)
 
@@ -99,10 +114,17 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
         const mappedState = STATUS_TO_STATE_MAP[result.data.status] || 'SOS_ACTIVE'
         setCurrentState(mappedState)
         if (result.data.latitude && result.data.longitude) {
-          setUserLocation((prev) => ({
-            ...prev,
-            coordinates: `${result.data.latitude.toFixed(4)}° N, ${result.data.longitude.toFixed(4)}° E`,
-          }))
+          setUserLocation((prev) =>
+            createLocationModel({
+              ...prev,
+              latitude: result.data.latitude,
+              longitude: result.data.longitude,
+              coordinates: formatCoordinates(result.data.latitude, result.data.longitude),
+              source: 'BROWSER',
+              permission: 'GRANTED',
+              status: 'ACTIVE',
+            })
+          )
         }
 
         // Also check if responder or active assignment exists for this incident
@@ -246,13 +268,8 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
 
     // Start watching position during active emergency
     stopLocationWatchRef.current = watchEmergencyLocation(
-      (loc) => {
-        setUserLocation((prev) => ({
-          ...prev,
-          coordinates: loc.coordinates,
-          accuracy: loc.accuracy,
-          status: 'ACTIVE',
-        }))
+      (locModel) => {
+        setUserLocation(locModel)
         setLocationStatus('ACTIVE')
       },
       (err) => {
@@ -488,14 +505,16 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
   const triggerLiveDemoSos = useCallback(async () => {
     setIsAutoPlaying(false)
     const loc = await getCurrentLocation()
+    const lat = loc.latitude || loc.model?.latitude || 22.5726
+    const lng = loc.longitude || loc.model?.longitude || 88.3639
     const result = await createIncident({
       type: 'flood',
       severity: 'CRITICAL',
       description: 'DEMO SOS Beacon — Realtime Pipeline Test',
       reporter_name: 'Aditi Roy (Demo)',
       reporter_phone: '+91 98301 24890',
-      latitude: loc.latitude,
-      longitude: loc.longitude,
+      latitude: lat,
+      longitude: lng,
       affected_count: 3,
       is_sos: true,
     })
