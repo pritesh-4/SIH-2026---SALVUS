@@ -5,8 +5,12 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
 /**
- * Command Decision Intelligence Assessment Card
- * Part 18: Factual AI decision support, subordinate to operator action.
+ * Incident Decision Intelligence Assessment Card (Master Prompt 3 - Step 9)
+ *
+ * Restrained, explainable decision support:
+ * - Factual classification, severity fit, recommended capability
+ * - Confidence percentage and risk signals
+ * - Operator override & human verification actions
  */
 export const AiTriageAssessmentCard = ({
   incident,
@@ -68,23 +72,23 @@ export const AiTriageAssessmentCard = ({
             </span>
           </div>
           <Badge variant="info" size="sm">
-            Processing
+            Evaluating
           </Badge>
         </div>
         <p className="text-xs text-salvus-text-secondary">
-          Analyzing reported hazard, hydro-models, and spatial priority factors...
+          Analyzing reported hazard conditions, spatial signals, and response priority...
         </p>
       </Card>
     )
   }
 
   return (
-    <Card padding="sm" className="space-y-3">
+    <Card padding="sm" className="space-y-3 shadow-2xs">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-salvus-border pb-2">
         <div className="flex items-center gap-2">
           <Badge variant="neutral" dot={true}>
-            COMMAND ASSESSMENT
+            INCIDENT ASSESSMENT
           </Badge>
         </div>
 
@@ -99,7 +103,7 @@ export const AiTriageAssessmentCard = ({
             </Badge>
           ) : (
             <Badge variant="info" size="sm">
-              {confidencePct}% Match
+              {confidencePct}% Confidence
             </Badge>
           )}
         </div>
@@ -109,29 +113,29 @@ export const AiTriageAssessmentCard = ({
       <div className="grid grid-cols-3 gap-2 bg-salvus-muted/30 p-2.5 rounded-xl border border-salvus-border text-xs">
         <div>
           <span className="text-[10px] text-salvus-text-muted uppercase block">Classification</span>
-          <strong className="text-salvus-text-primary truncate block mt-0.5">
+          <strong className="text-salvus-text-primary truncate block mt-0.5 font-medium">
             {triage?.hazard_type || incident.type || 'Flash Flood'}
           </strong>
         </div>
 
         <div>
           <span className="text-[10px] text-salvus-text-muted uppercase block">Severity Fit</span>
-          <strong className="text-salvus-critical truncate block mt-0.5">
+          <strong className="text-salvus-critical truncate block mt-0.5 font-bold font-mono">
             {triage?.recommended_severity || incident.severity || 'HIGH'}
           </strong>
         </div>
 
         <div>
           <span className="text-[10px] text-salvus-text-muted uppercase block">Required Unit</span>
-          <strong className="text-salvus-info truncate block mt-0.5">
-            {triage?.recommended_capability || 'ZODIAC_BOAT'}
+          <strong className="text-salvus-info truncate block mt-0.5 font-medium">
+            {triage?.recommended_capability || 'Rescue Craft'}
           </strong>
         </div>
       </div>
 
-      {/* Rationale & Explainability */}
+      {/* Rationale */}
       {triage?.summary && (
-        <div className="text-xs text-salvus-text-secondary leading-relaxed bg-salvus-muted/20 p-2.5 rounded-lg border border-salvus-border">
+        <div className="text-xs text-salvus-text-secondary leading-relaxed bg-salvus-muted/20 p-2.5 rounded-lg border border-salvus-border font-medium">
           {triage.summary}
         </div>
       )}
@@ -141,18 +145,18 @@ export const AiTriageAssessmentCard = ({
         <button
           type="button"
           onClick={() => setShowFactors(!showFactors)}
-          className="text-xs text-salvus-info hover:underline flex items-center gap-1 cursor-pointer"
+          className="text-xs text-salvus-info hover:underline flex items-center gap-1 cursor-pointer font-medium"
         >
           {showFactors ? (
             <ChevronUp className="h-3.5 w-3.5" />
           ) : (
             <ChevronDown className="h-3.5 w-3.5" />
           )}
-          <span>{showFactors ? 'Hide Assessment Factors' : 'View Assessment Factors'}</span>
+          <span>{showFactors ? 'Hide Risk Factors' : 'View Risk Factors'}</span>
         </button>
 
         {showFactors && (
-          <div className="mt-2 p-2 bg-salvus-muted/40 rounded-lg border border-salvus-border space-y-1 text-xs text-salvus-text-secondary">
+          <div className="mt-2 p-2 bg-salvus-muted/40 rounded-lg border border-salvus-border space-y-1 text-xs text-salvus-text-secondary animate-fadeIn">
             {triage?.risk_factors?.map((rf, i) => (
               <div key={i} className="flex items-start gap-1.5">
                 <span className="text-salvus-critical font-bold">•</span>
@@ -170,7 +174,7 @@ export const AiTriageAssessmentCard = ({
       {isAdjusting ? (
         <form
           onSubmit={handleAdjustSubmit}
-          className="p-3 bg-salvus-muted/40 rounded-xl border border-salvus-border space-y-3 text-xs"
+          className="p-3 bg-salvus-muted/40 rounded-xl border border-salvus-border space-y-3 text-xs animate-fadeIn"
         >
           <div className="font-bold text-salvus-text-primary">Adjust Incident Assessment</div>
 
@@ -257,7 +261,7 @@ export const AiTriageAssessmentCard = ({
               size="sm"
               onClick={() => setIsAdjusting(true)}
               leftIcon={<Edit3 className="h-3 w-3" />}
-              className="text-xs"
+              className="text-xs text-salvus-text-secondary hover:text-salvus-text-primary"
             >
               Adjust
             </Button>
@@ -267,7 +271,7 @@ export const AiTriageAssessmentCard = ({
               size="sm"
               onClick={onReevaluate}
               leftIcon={<RefreshCw className="h-3 w-3" />}
-              className="text-xs"
+              className="text-xs text-salvus-text-secondary hover:text-salvus-text-primary"
             >
               Re-evaluate
             </Button>

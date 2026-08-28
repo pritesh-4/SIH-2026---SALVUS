@@ -119,14 +119,14 @@ export const ActiveEmergencyBanner = () => {
               ? 'Rescue Complete:'
               : isAssigned
                 ? 'Help is on the way:'
-                : 'Help Request Active:'}
+                : 'Emergency Request Active:'}
           </strong>
           <span className="opacity-90">
             {isResolved
               ? 'Incident safely resolved by response team.'
               : isAssigned
-                ? `${incidentData.assigned_responder?.unit_name || 'Response Unit'} dispatched`
-                : 'Emergency coordinators have your location.'}
+                ? `${incidentData.assigned_responder?.unit_name || 'Rescue Team'} is on the way`
+                : 'Your location is shared with emergency coordinators.'}
           </span>
         </div>
       </div>
@@ -136,7 +136,7 @@ export const ActiveEmergencyBanner = () => {
           #{incidentData.ticket_id || 'SOS-ACTIVE'}
         </Badge>
 
-        <span className="font-semibold text-xs underline">Track Live →</span>
+        <span className="font-semibold text-xs underline">View Live Status →</span>
 
         {isResolved && (
           <button

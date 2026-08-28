@@ -156,6 +156,7 @@ export const CitizenHome = () => {
         isOpen={isConfirmingSos}
         onConfirm={handleConfirmSos}
         onCancel={handleCancelSos}
+        isLoading={isSubmittingSos}
       />
 
       {/* Incident Reporting Modal */}
@@ -231,7 +232,7 @@ export const CitizenHome = () => {
                 title="Refresh nearby hazards and shelters"
               >
                 <span>{isLoadingIntel ? '⏳' : '🔄'}</span>
-                <span>{isLoadingIntel ? 'Updating...' : 'Refresh Intel'}</span>
+                <span>{isLoadingIntel ? 'Updating...' : 'Refresh'}</span>
               </button>
 
               <button
@@ -240,7 +241,7 @@ export const CitizenHome = () => {
                 className="px-3 py-1.5 rounded-xl bg-salvus-surface border border-salvus-border hover:border-salvus-info text-salvus-info text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
               >
                 <span>🗺️</span>
-                <span>Open Tactical Map</span>
+                <span>Open Map</span>
               </button>
             </div>
           )}
@@ -255,11 +256,8 @@ export const CitizenHome = () => {
           <SafetyStatusCard
             level={safetyStatus?.level || (isLocationOff ? 'LOCATION_REQUIRED' : 'SAFE')}
             badgeText={safetyStatus?.badgeText}
-            title={safetyStatus?.headline || "You're in a monitored area."}
-            subtitle={
-              safetyStatus?.description ||
-              'Real-time disaster models and telemetry active for your sector.'
-            }
+            title={safetyStatus?.headline || "You're currently safe."}
+            subtitle={safetyStatus?.description || 'No active hazard warnings near your location.'}
             freshnessLabel={statusFreshness}
             onLocationPrompt={requestLocation}
           />
@@ -298,25 +296,25 @@ export const CitizenHome = () => {
             ) : (
               <ActiveAlertCard
                 variant="safe"
-                badgeText="Environmental Telemetry · Normal"
+                badgeText="All Clear · Normal"
                 headline="No Active Hazard Advisories"
-                description="Regional Doppler weather radar and municipal seismic feeds report calm conditions in your immediate area."
-                source="Open-Meteo & IMD Doppler Feeds · Monitored live"
+                description="Weather and municipal monitoring feeds report calm, normal conditions in your immediate area."
+                source="Live weather & municipal monitoring"
               />
             )}
           </div>
 
           {/* Emergency Assistance (Instant SOS Action) */}
           <EmergencyCard
-            badgeText="Emergency assistance"
-            title="Need urgent emergency help?"
-            description="Transmits an instant distress beacon with your precise coordinates to response teams."
-            buttonText="Send SOS Request"
+            badgeText="EMERGENCY"
+            title="Need immediate help?"
+            description="Shares your current location with response coordinators."
+            buttonText="SEND SOS"
             onSosClick={handleOpenSosModal}
           />
         </div>
 
-        {/* Right Column (5 cols on lg): STEP 4 SAFE PLACE + Community Hazard Reporting + Area Map */}
+        {/* Right Column (5 cols on lg): SAFE PLACE + Community Hazard Reporting + Area Map */}
         <div className="lg:col-span-5 flex flex-col gap-4">
           {/* STEP 4: SAFE PLACE & Community Reporting */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -325,19 +323,22 @@ export const CitizenHome = () => {
                 badgeText={
                   nearestShelter.safety_status === 'HAZARD_PROXIMITY_WARNING'
                     ? '⚠️ Proximity to Hazard'
-                    : 'Recommended Safe Refuge'
+                    : 'RECOMMENDED SAFE PLACE'
                 }
                 name={nearestShelter.name}
                 distance={
-                  nearestShelter.distance_km
-                    ? `${nearestShelter.distance_km} km away · ~${nearestShelter.estimated_walk_min || 4} min walk`
-                    : 'Near You · ~4 min walk'
+                  nearestShelter.distance_km ? `${nearestShelter.distance_km} km away` : '350m away'
                 }
-                capacity={`${nearestShelter.available_beds} beds available (${nearestShelter.occupancy_rate || 'Open'})`}
+                travelTime={
+                  nearestShelter.estimated_walk_min
+                    ? `~${nearestShelter.estimated_walk_min} min walk`
+                    : '~4 min walk'
+                }
+                capacity={`${nearestShelter.available_beds} beds available`}
                 amenities={
                   Array.isArray(nearestShelter.amenities) && nearestShelter.amenities.length > 0
                     ? nearestShelter.amenities.slice(0, 2).join(' · ')
-                    : 'Civil Refuge Intake Active'
+                    : 'Medical Aid · Clean Water · Backup Power'
                 }
                 actionText="Get Safe Route"
                 onActionClick={() =>
@@ -346,9 +347,10 @@ export const CitizenHome = () => {
               />
             ) : (
               <ShelterPreviewCard
-                badgeText="Official Emergency Shelter"
-                name="Salt Lake Stadium Assembly Hub"
-                distance="350m · ~4 min walk"
+                badgeText="RECOMMENDED SAFE PLACE"
+                name="Salt Lake Stadium Emergency Assembly Hub"
+                distance="350m away"
+                travelTime="~4 min walk"
                 capacity="420 beds available"
                 amenities="Medical Aid · Clean Water · Backup Power"
                 actionText="Get Safe Route"
@@ -357,10 +359,10 @@ export const CitizenHome = () => {
             )}
 
             <ReportIncidentCard
-              badgeText="Community report"
-              title="Report a local hazard"
-              subtitle="Submit a photo and GPS coordinates in 30 seconds to alert your community."
-              actionText="Report hazard"
+              badgeText="COMMUNITY SAFETY"
+              title="Report a Local Hazard"
+              subtitle="Alert neighbors and coordinators to flooded roads, downed power lines, or blocked routes."
+              actionText="Report a Hazard"
               onActionClick={() => setIsReportingIncident(true)}
             />
           </div>

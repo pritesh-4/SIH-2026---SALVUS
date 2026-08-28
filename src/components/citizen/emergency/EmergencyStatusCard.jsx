@@ -3,29 +3,40 @@ import { Badge } from '../../ui/Badge'
 import { StatusIndicator } from '../../ui/StatusIndicator'
 
 /**
- * Reassuring Citizen Emergency Status Card
- * Answers Question 1: "Am I safe?" & Question 3: "What should I do?" during active distress.
+ * Reassuring Citizen Emergency Status Card (Master Prompt 2 - Step 5 & 6)
+ *
+ * Focuses the entire experience:
+ * - EMERGENCY ACTIVE indicator
+ * - Location status
+ * - Response status
+ * - What you should do right now
+ * - Calm response progress
  */
 export const EmergencyStatusCard = ({
   statusInfo = {},
   severity = 'CRITICAL',
-  category = 'Flash Flood / Distress Beacon',
+  category = 'Flash Flood Emergency',
 }) => {
   const currentStep = statusInfo.progressStep || 1
-  const totalSteps = 6
-  const progressPercent = Math.min(100, Math.max(15, (currentStep / totalSteps) * 100))
+  const totalSteps = 8
+  const progressPercent = Math.min(100, Math.max(12, (currentStep / totalSteps) * 100))
 
   return (
-    <Card variant="critical" padding="lg" className="transition-all">
+    <Card
+      variant="critical"
+      padding="lg"
+      className="transition-all relative overflow-hidden shadow-lg border-2 border-salvus-critical-border"
+    >
       {/* Top Badges */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <StatusIndicator
             status="critical"
-            label={statusInfo.phaseLabel || 'Help Request Active'}
+            label={statusInfo.phaseLabel || 'EMERGENCY ACTIVE'}
             showDot={true}
             showIcon={true}
             isPulse={true}
+            size="md"
           />
           <Badge variant="critical">{severity}</Badge>
         </div>
@@ -35,46 +46,46 @@ export const EmergencyStatusCard = ({
 
       {/* Hero Title & Reassuring Headline */}
       <h1 className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary tracking-tight leading-snug">
-        {statusInfo.title || 'Help Request Received'}
+        {statusInfo.title || 'Your emergency request was received.'}
       </h1>
 
-      <p className="text-sm sm:text-base text-salvus-text-secondary mt-2 max-w-2xl leading-relaxed">
+      <p className="text-sm sm:text-base text-salvus-text-secondary mt-2 max-w-2xl leading-relaxed font-normal">
         {statusInfo.headline ||
           statusInfo.description ||
-          'Emergency coordinators have been notified of your location.'}
+          'Emergency coordinators have your location and help is on the way.'}
       </p>
 
       {/* 3-Part Calm Clarity Grid */}
       <div className="mt-6 pt-6 border-t border-salvus-border grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-        {/* 1. System Status */}
+        {/* 1. Location Status */}
         <div className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-3.5 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-1.5 text-salvus-info text-xs font-bold mb-1">
-              <span aria-hidden="true">📡</span>
+              <span aria-hidden="true">📍</span>
               <span>LOCATION STATUS</span>
             </div>
-            <p className="text-xs text-salvus-text-secondary leading-relaxed">
+            <p className="text-xs text-salvus-text-secondary leading-relaxed font-normal">
               {statusInfo.systemDoing ||
-                'Your live GPS location is being shared with rescue units.'}
+                'Your location is shared with emergency dispatch coordinators.'}
             </p>
           </div>
         </div>
 
-        {/* 2. Responder Status */}
+        {/* 2. Response Status */}
         <div className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-3.5 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-1.5 text-salvus-warning text-xs font-bold mb-1">
               <span aria-hidden="true">🚤</span>
-              <span>RESPONDER STATUS</span>
+              <span>RESPONSE STATUS</span>
             </div>
-            <p className="text-xs text-salvus-text-secondary leading-relaxed">
+            <p className="text-xs text-salvus-text-secondary leading-relaxed font-normal">
               {statusInfo.responderDoing ||
-                'Coordinating nearest emergency rescue team to your area.'}
+                'Rescue coordinators are dispatching the nearest response team.'}
             </p>
           </div>
         </div>
 
-        {/* 3. User Guidance */}
+        {/* 3. Next Action / User Guidance */}
         <div className="bg-salvus-safe-bg border border-salvus-safe-border rounded-xl p-3.5 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-1.5 text-salvus-safe-text text-xs font-bold mb-1">
@@ -82,7 +93,8 @@ export const EmergencyStatusCard = ({
               <span>WHAT YOU SHOULD DO</span>
             </div>
             <p className="text-xs text-salvus-safe-text font-medium leading-relaxed">
-              {statusInfo.userNext || 'Stay where you are if safe. Keep your phone on and in hand.'}
+              {statusInfo.userNext ||
+                'Stay where you are if it is safe to do so. Keep your phone accessible.'}
             </p>
           </div>
         </div>
@@ -91,7 +103,7 @@ export const EmergencyStatusCard = ({
       {/* Calm Progress Bar */}
       <div className="mt-6 pt-5 border-t border-salvus-border">
         <div className="flex items-center justify-between text-xs text-salvus-text-secondary mb-2">
-          <span>Response Progress</span>
+          <span className="font-medium">Response Progress</span>
           <span className="font-semibold text-salvus-text-primary">
             Step {currentStep} of {totalSteps}
           </span>
@@ -106,3 +118,5 @@ export const EmergencyStatusCard = ({
     </Card>
   )
 }
+
+export default EmergencyStatusCard

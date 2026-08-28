@@ -15,8 +15,13 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
 /**
- * Recommended Response Dispatch Panel
- * Part 9: Plain English response recommendation with prominent [ ASSIGN UNIT ] action.
+ * Recommended Response Dispatch Panel (Master Prompt 3 - Step 8)
+ *
+ * Operational dispatch decision hub:
+ * - Highlights recommended response unit with capability, ETA, distance, crew load, match score
+ * - Plain reason why recommended
+ * - Direct [ VIEW ROUTE ] & [ ASSIGN UNIT ] actions
+ * - Subordinated alternative candidates
  */
 export const DispatchRecommendationPanel = ({
   incident,
@@ -60,7 +65,7 @@ export const DispatchRecommendationPanel = ({
         <div className="flex items-center justify-between border-b border-salvus-warning-border pb-2">
           <div className="flex items-center gap-1.5 text-salvus-warning font-bold text-xs">
             <AlertCircle className="h-3.5 w-3.5" />
-            <span>No Available Unit in Range</span>
+            <span>No Available Units in Sector</span>
           </div>
           <Badge variant="warning" size="sm">
             Standby
@@ -69,7 +74,7 @@ export const DispatchRecommendationPanel = ({
 
         <div className="py-2 text-center space-y-2 text-xs">
           <p className="text-salvus-text-secondary">
-            All fleet rescue units are currently committed or outside the immediate sector.
+            All response units are currently committed or outside the immediate sector.
           </p>
           {onRefreshCandidates && (
             <Button
@@ -77,9 +82,9 @@ export const DispatchRecommendationPanel = ({
               size="sm"
               onClick={onRefreshCandidates}
               leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
-              className="mx-auto"
+              className="mx-auto text-xs"
             >
-              Refresh Fleet Status
+              Refresh Fleet Feeds
             </Button>
           )}
         </div>
@@ -93,7 +98,7 @@ export const DispatchRecommendationPanel = ({
     activeRoute?.label?.includes(topCandidate.unit_name || topCandidate.unitName || '')
 
   return (
-    <Card padding="sm" className="space-y-3">
+    <Card padding="sm" className="space-y-3 shadow-2xs">
       {/* Section Header */}
       <div className="flex items-center justify-between border-b border-salvus-border pb-2">
         <div className="flex items-center gap-1.5">
@@ -103,7 +108,7 @@ export const DispatchRecommendationPanel = ({
         </div>
         <span className="text-xs text-salvus-text-muted">
           Match Score:{' '}
-          <strong className="text-salvus-text-primary">
+          <strong className="text-salvus-text-primary font-mono">
             {topCandidate.match_score ?? topCandidate.matchScore}/100
           </strong>
         </span>
@@ -133,7 +138,7 @@ export const DispatchRecommendationPanel = ({
         <div className="grid grid-cols-4 gap-1.5 p-2 bg-salvus-muted/40 rounded-lg border border-salvus-border text-xs">
           <div>
             <span className="text-[10px] text-salvus-text-muted uppercase block">Distance</span>
-            <div className="flex items-center gap-1 font-bold text-salvus-text-primary">
+            <div className="flex items-center gap-1 font-bold text-salvus-text-primary font-mono">
               <MapPin className="h-3 w-3 text-salvus-info shrink-0" />
               <span>{topCandidate.distance_km ?? topCandidate.distanceKm ?? 1.2} km</span>
             </div>
@@ -141,7 +146,7 @@ export const DispatchRecommendationPanel = ({
 
           <div>
             <span className="text-[10px] text-salvus-text-muted uppercase block">Est. ETA</span>
-            <div className="flex items-center gap-1 font-bold text-salvus-info">
+            <div className="flex items-center gap-1 font-bold text-salvus-info font-mono">
               <Clock className="h-3 w-3 text-salvus-info shrink-0" />
               <span>{topCandidate.eta_formatted || topCandidate.etaFormatted || '5 min'}</span>
             </div>
@@ -149,14 +154,14 @@ export const DispatchRecommendationPanel = ({
 
           <div>
             <span className="text-[10px] text-salvus-text-muted uppercase block">Capacity</span>
-            <span className="font-semibold text-salvus-text-primary truncate block">
-              {topCandidate.max_capacity ?? 6} Persons
+            <span className="font-semibold text-salvus-text-primary truncate block font-mono">
+              {topCandidate.max_capacity ?? 6} Pax
             </span>
           </div>
 
           <div>
             <span className="text-[10px] text-salvus-text-muted uppercase block">Crew Load</span>
-            <div className="flex items-center gap-1 text-salvus-text-secondary">
+            <div className="flex items-center gap-1 text-salvus-text-secondary font-mono">
               <Users className="h-3 w-3 text-salvus-text-muted shrink-0" />
               <span>{topCandidate.current_load ?? 0}</span>
             </div>
@@ -166,11 +171,11 @@ export const DispatchRecommendationPanel = ({
         {/* Why Reason */}
         <div className="p-2.5 bg-salvus-muted/30 rounded-lg border border-salvus-border space-y-1 text-xs">
           <span className="text-[11px] font-bold text-salvus-text-primary block">
-            Why this unit:
+            Why recommended:
           </span>
           <div className="space-y-1">
             {topCandidate.explanation?.positive_factors?.slice(0, 2).map((bullet, idx) => (
-              <div key={idx} className="text-salvus-safe-text flex items-start gap-1.5">
+              <div key={idx} className="text-salvus-safe-text flex items-start gap-1.5 font-medium">
                 <span className="shrink-0 font-bold">✓</span>
                 <span>{bullet.replace(/^[✓\s]+/, '')}</span>
               </div>
@@ -188,7 +193,7 @@ export const DispatchRecommendationPanel = ({
           <button
             type="button"
             onClick={() => setShowFormulaBreakdown((prev) => !prev)}
-            className="w-full flex items-center justify-between text-xs text-salvus-info hover:underline py-1 cursor-pointer"
+            className="w-full flex items-center justify-between text-xs text-salvus-info hover:underline py-1 cursor-pointer font-medium"
           >
             <span className="flex items-center gap-1">
               {showFormulaBreakdown ? (
@@ -196,12 +201,12 @@ export const DispatchRecommendationPanel = ({
               ) : (
                 <ChevronDown className="h-3.5 w-3.5" />
               )}
-              <span>{showFormulaBreakdown ? 'Hide Match Breakdown' : 'View Match Breakdown'}</span>
+              <span>{showFormulaBreakdown ? 'Hide Score Breakdown' : 'View Score Breakdown'}</span>
             </span>
           </button>
 
           {showFormulaBreakdown && (
-            <div className="mt-1.5 p-2 bg-salvus-muted/40 rounded-lg border border-salvus-border text-xs space-y-1 text-salvus-text-secondary">
+            <div className="mt-1.5 p-2 bg-salvus-muted/40 rounded-lg border border-salvus-border text-xs space-y-1 text-salvus-text-secondary font-mono animate-fadeIn">
               <div className="flex justify-between">
                 <span>Capability Match (Max 30):</span>
                 <span className="font-bold text-salvus-text-primary">
@@ -279,7 +284,7 @@ export const DispatchRecommendationPanel = ({
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-bold text-salvus-text-muted">
+                      <span className="text-[10px] font-bold text-salvus-text-muted font-mono">
                         #{idx + 2}
                       </span>
                       <strong className="text-salvus-text-primary truncate">

@@ -50,10 +50,9 @@ export const fetchAreaSafetyStatus = async (lat, lon) => {
       success: true,
       level: 'LOCATION_REQUIRED',
       badgeText: 'Location Access Off',
-      headline: 'Location Access Off · Overview Mode',
-      description:
-        'Enable location to assess local flood corridors, seismic risks, and safe shelters.',
-      recommendedAction: 'Turn on browser location or select a landmark fallback.',
+      headline: 'Location Access Off',
+      description: 'Turn on location to see verified safety conditions and nearby safe places.',
+      recommendedAction: 'Turn on GPS or select a nearby landmark.',
       observedAt: new Date().toISOString(),
       evaluatedAt: new Date().toISOString(),
       dataProvenance: 'FALLBACK',
@@ -72,17 +71,17 @@ export const fetchAreaSafetyStatus = async (lat, lon) => {
         level: d.level,
         badgeText:
           d.level === 'CRITICAL'
-            ? 'Critical Threat'
+            ? 'Critical Hazard Active'
             : d.level === 'WARNING'
-              ? 'Active Warning'
+              ? 'Active Hazard Advisory'
               : d.level === 'WATCH'
-                ? 'Advisory Watch'
+                ? 'Hazard Watch'
                 : d.level === 'SAFE'
                   ? 'No Known Active Hazards'
                   : 'Status Unconfirmed',
-        headline: d.headline,
-        description: d.description,
-        recommendedAction: d.recommended_action,
+        headline: d.headline || (d.level === 'SAFE' ? "You're currently safe." : 'Hazard Advisory'),
+        description: d.description || 'No known active hazards near your location.',
+        recommendedAction: d.recommended_action || 'Continue normal precautions.',
         activeHazardsCount: d.active_hazards_count,
         criticalHazardsCount: d.critical_hazards_count,
         warningHazardsCount: d.warning_hazards_count,
@@ -105,11 +104,11 @@ export const fetchAreaSafetyStatus = async (lat, lon) => {
   return {
     success: false,
     level: 'NO_DATA',
-    badgeText: 'Status Unconfirmed',
-    headline: 'Status Unconfirmed · Telemetry Offline',
+    badgeText: 'Live Data Reconnecting',
+    headline: 'Live alert data is temporarily unavailable.',
     description:
-      'Disaster intelligence feeds are temporarily unreachable. Exercise standard precautions.',
-    recommendedAction: 'Stay on high ground and monitor municipal emergency broadcasts.',
+      'We are reconnecting to monitoring feeds. If you need urgent help, you can still send SOS.',
+    recommendedAction: 'Stay in a safe place. Emergency beacon remains active.',
     observedAt: new Date().toISOString(),
     evaluatedAt: new Date().toISOString(),
     dataProvenance: 'FALLBACK',
@@ -246,9 +245,9 @@ export const loadCitizenLocationContext = async ({ location, force = false }) =>
           safetyStatus = {
             level: 'SAFE',
             badgeText: 'No Known Active Hazards',
-            headline: "You're in a clear area",
+            headline: "You're currently safe.",
             description:
-              'No severe weather, flood surges, or electrical hazards detected within your sector.',
+              'No active hazard warnings near you. Monitored channels report calm, clear conditions.',
             recommendedAction: 'All local emergency monitoring channels report normal conditions.',
             observedAt: new Date().toISOString(),
             evaluatedAt: new Date().toISOString(),
@@ -260,22 +259,22 @@ export const loadCitizenLocationContext = async ({ location, force = false }) =>
         safetyStatus = {
           level: 'SAFE',
           badgeText: 'No Known Active Hazards',
-          headline: 'No Active Threats Detected',
+          headline: "You're currently safe.",
           description:
-            'Environmental feeds confirm all monitored channels are currently clear in your area.',
-          recommendedAction: 'Monitored live via Open-Meteo & USGS feeds.',
+            'No known active hazards near you. Weather and emergency feeds report calm conditions.',
+          recommendedAction: 'Monitored live via weather and civil defense feeds.',
           observedAt: new Date().toISOString(),
           evaluatedAt: new Date().toISOString(),
           dataProvenance: 'LIVE',
         }
       } else {
-        // Feeds completely failed
+        // Feeds failed
         safetyStatus = {
           level: 'NO_DATA',
-          badgeText: 'Status Unconfirmed',
-          headline: 'Status Unconfirmed · Telemetry Offline',
+          badgeText: 'Live Data Reconnecting',
+          headline: 'Live alert data is temporarily unavailable.',
           description:
-            'Unable to connect to live disaster feeds. Exercise caution in low-lying corridors.',
+            'We are reconnecting to monitoring feeds. If you need urgent help, you can still send SOS.',
           recommendedAction: 'Stay alert and monitor local civil defense announcements.',
           observedAt: new Date().toISOString(),
           evaluatedAt: new Date().toISOString(),
@@ -319,9 +318,10 @@ export const loadCitizenLocationContext = async ({ location, force = false }) =>
       shelters: [],
       safetyStatus: {
         level: 'NO_DATA',
-        badgeText: 'Status Unconfirmed',
-        headline: 'Status Unconfirmed · Telemetry Offline',
-        description: 'Unable to connect to live disaster feeds.',
+        badgeText: 'Live Data Reconnecting',
+        headline: 'Live alert data is temporarily unavailable.',
+        description:
+          'Unable to connect to live disaster feeds. Emergency SOS beacon remains active.',
         recommendedAction: 'Stay on elevated ground and monitor local emergency communications.',
         observedAt: new Date().toISOString(),
         evaluatedAt: new Date().toISOString(),

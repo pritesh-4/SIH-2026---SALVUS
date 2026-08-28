@@ -3,7 +3,7 @@ import { Badge } from '../../ui/Badge'
 import { StatusIndicator } from '../../ui/StatusIndicator'
 
 /**
- * Reassuring Emergency Assessment Card
+ * Reassuring Emergency Assessment Card (Master Prompt 2 - Step 5 & 6)
  */
 export const AiTriageCard = ({ currentState = 'TRIAGING', aiTriage = {} }) => {
   const isTriaging = currentState === 'TRIAGING'
@@ -17,10 +17,10 @@ export const AiTriageCard = ({ currentState = 'TRIAGING', aiTriage = {} }) => {
   ].includes(currentState)
 
   const steps = aiTriage.analysisSteps || [
-    { id: 'signal', label: 'Location Verified', status: 'verified' },
+    { id: 'signal', label: 'Location Shared', status: 'verified' },
     { id: 'hazard', label: 'Hazard Assessed', status: 'verified' },
     { id: 'priority', label: 'Priority Assigned', status: 'verified' },
-    { id: 'craft', label: 'Team Allocated', status: 'verified' },
+    { id: 'craft', label: 'Response Team Selected', status: 'verified' },
   ]
 
   return (
@@ -28,9 +28,9 @@ export const AiTriageCard = ({ currentState = 'TRIAGING', aiTriage = {} }) => {
       {/* Top Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-salvus-text-primary uppercase tracking-wider">
+          <h2 className="text-sm font-bold text-salvus-text-primary uppercase tracking-wider">
             Emergency Assessment
-          </span>
+          </h2>
           <Badge variant="neutral" isMono={true}>
             Coordinator Verified
           </Badge>
@@ -83,11 +83,11 @@ export const AiTriageCard = ({ currentState = 'TRIAGING', aiTriage = {} }) => {
           <div>
             <span className="text-salvus-text-muted block text-[11px]">Severity Priority</span>
             <span className="font-bold text-salvus-critical mt-0.5 block">
-              {aiTriage.severityClassification || 'High Priority (Level 1)'}
+              {aiTriage.severityClassification || 'Priority 1 (Urgent)'}
             </span>
           </div>
           <div>
-            <span className="text-salvus-text-muted block text-[11px]">Required Unit</span>
+            <span className="text-salvus-text-muted block text-[11px]">Assigned Craft</span>
             <span className="font-bold text-salvus-info mt-0.5 block">
               {aiTriage.requiredCapability || 'Zodiac Rescue Boat'}
             </span>
@@ -96,12 +96,14 @@ export const AiTriageCard = ({ currentState = 'TRIAGING', aiTriage = {} }) => {
 
         {/* Human Coordinator Note */}
         <p className="text-xs text-salvus-text-secondary leading-relaxed pt-1">
-          <strong className="text-salvus-text-primary">Human Dispatcher: </strong>
+          <strong className="text-salvus-text-primary">Dispatch Coordinator: </strong>
           {aiTriage.humanVerification?.coordinator
-            ? `Authorized by Dispatcher ${aiTriage.humanVerification.coordinator} (${aiTriage.humanVerification.station})`
+            ? `Approved by Dispatcher ${aiTriage.humanVerification.coordinator} (${aiTriage.humanVerification.station})`
             : 'Central Command dispatcher has confirmed and dispatched nearest rescue units.'}
         </p>
       </div>
     </Card>
   )
 }
+
+export default AiTriageCard

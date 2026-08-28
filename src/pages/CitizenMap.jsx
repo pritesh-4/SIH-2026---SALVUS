@@ -13,10 +13,10 @@ import { Button } from '../components/ui/Button'
 import { StatusIndicator } from '../components/ui/StatusIndicator'
 
 const CATEGORY_FILTERS = [
-  { id: 'all', label: 'All Places', icon: '📍' },
-  { id: 'shelter', label: 'Safe Shelters', icon: '🏠' },
+  { id: 'all', label: 'All Layers', icon: '🗺️' },
+  { id: 'shelter', label: 'Safe Places', icon: '🏠' },
   { id: 'hazards', label: 'Active Hazards', icon: '⚠️' },
-  { id: 'hospital', label: 'Hospitals & Clinics', icon: '🏥' },
+  { id: 'hospital', label: 'Hospitals', icon: '🏥' },
   { id: 'pharmacy', label: 'Pharmacies', icon: '💊' },
   { id: 'police', label: 'Police', icon: '🛡️' },
   { id: 'fire_station', label: 'Fire & Rescue', icon: '🚒' },

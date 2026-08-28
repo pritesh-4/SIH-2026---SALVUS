@@ -2,8 +2,12 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
 /**
- * Secondary Fleet Resource Management Panel
- * Part 11: Organized secondary resource list.
+ * Secondary Fleet Resource Management Panel (Master Prompt 3 - Step 13)
+ *
+ * Organized secondary resource inspection:
+ * - Capability & status filters
+ * - Unit details with radio channel, coordinates, crew load
+ * - Quick status transitions & route plotting to active incident
  */
 export const ResponderPanel = ({
   filteredFleet = [],
@@ -69,12 +73,13 @@ export const ResponderPanel = ({
 
         {/* Fleet List */}
         {isLoadingFleet ? (
-          <div className="py-16 text-center text-xs text-salvus-text-muted">
-            Updating fleet list...
+          <div className="py-16 text-center text-xs text-salvus-text-muted space-y-2">
+            <span className="inline-block animate-spin">⏳</span>
+            <p>Updating fleet list...</p>
           </div>
         ) : filteredFleet.length === 0 ? (
           <div className="py-16 text-center text-xs text-salvus-text-muted">
-            No response units match filter.
+            No response units currently match filter.
           </div>
         ) : (
           filteredFleet.map((resp) => {
@@ -85,12 +90,12 @@ export const ResponderPanel = ({
                 onClick={() => onSelectResponderDetail?.(resp)}
                 className={`bg-salvus-muted/30 border p-3 rounded-xl text-xs space-y-1.5 cursor-pointer transition-all ${
                   isSelected
-                    ? 'border-salvus-info bg-salvus-info-bg/30 ring-1 ring-salvus-info'
+                    ? 'border-salvus-info bg-salvus-info-bg/30 ring-1 ring-salvus-info shadow-xs'
                     : 'border-salvus-border hover:border-salvus-border-strong hover:bg-salvus-surface-hover'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <strong className="text-salvus-text-primary text-xs truncate max-w-[160px]">
+                  <strong className="text-salvus-text-primary text-xs truncate max-w-[160px] font-bold">
                     {resp.unit_name}
                   </strong>
                   <Badge variant={getStatusVariant(resp.status)} size="sm">
@@ -98,11 +103,11 @@ export const ResponderPanel = ({
                   </Badge>
                 </div>
 
-                <p className="text-xs text-salvus-text-secondary">
+                <p className="text-xs text-salvus-text-secondary font-medium">
                   {resp.team_lead} · {resp.vehicle_type}
                 </p>
 
-                <div className="flex items-center justify-between text-xs text-salvus-text-muted pt-1 border-t border-salvus-border">
+                <div className="flex items-center justify-between text-xs text-salvus-text-muted pt-1 border-t border-salvus-border font-mono">
                   <span>VHF: {resp.radio_channel}</span>
                   <span>
                     Load: {resp.current_load} / {resp.max_capacity}
@@ -116,9 +121,9 @@ export const ResponderPanel = ({
 
       {/* Selected Responder Detail Sheet */}
       {selectedResponderDetail && (
-        <div className="bg-salvus-surface-elevated border border-salvus-border p-3.5 rounded-xl text-xs space-y-2.5 mt-2">
+        <div className="bg-salvus-surface-elevated border border-salvus-border p-3.5 rounded-xl text-xs space-y-2.5 mt-2 animate-fadeIn shadow-xs">
           <div className="flex items-center justify-between border-b border-salvus-border pb-1.5">
-            <strong className="text-salvus-text-primary text-xs">
+            <strong className="text-salvus-text-primary text-xs font-bold">
               {selectedResponderDetail.unit_name}
             </strong>
             <button
@@ -132,19 +137,23 @@ export const ResponderPanel = ({
 
           <div className="grid grid-cols-2 gap-2 text-xs text-salvus-text-secondary">
             <div>
-              <span className="text-salvus-text-muted block text-[10px] uppercase">Capability</span>
+              <span className="text-salvus-text-muted block text-[10px] uppercase font-semibold">
+                Capability
+              </span>
               <span className="text-salvus-text-primary font-medium">
                 {selectedResponderDetail.capability}
               </span>
             </div>
             <div>
-              <span className="text-salvus-text-muted block text-[10px] uppercase">Radio</span>
-              <span className="text-salvus-text-primary font-medium">
+              <span className="text-salvus-text-muted block text-[10px] uppercase font-semibold">
+                Radio Channel
+              </span>
+              <span className="text-salvus-text-primary font-medium font-mono">
                 {selectedResponderDetail.radio_channel}
               </span>
             </div>
             <div>
-              <span className="text-salvus-text-muted block text-[10px] uppercase">
+              <span className="text-salvus-text-muted block text-[10px] uppercase font-semibold">
                 Coordinates
               </span>
               <span className="font-mono text-salvus-text-primary text-[11px]">
@@ -153,8 +162,10 @@ export const ResponderPanel = ({
               </span>
             </div>
             <div>
-              <span className="text-salvus-text-muted block text-[10px] uppercase">Crew Load</span>
-              <span className="text-salvus-text-primary font-medium">
+              <span className="text-salvus-text-muted block text-[10px] uppercase font-semibold">
+                Crew Load
+              </span>
+              <span className="text-salvus-text-primary font-medium font-mono">
                 {selectedResponderDetail.current_load} / {selectedResponderDetail.max_capacity}
               </span>
             </div>
@@ -172,7 +183,7 @@ export const ResponderPanel = ({
               size="sm"
               fullWidth={true}
               onClick={() => onSelectCandidateRoute?.(selectedResponderDetail)}
-              className="text-xs"
+              className="text-xs font-semibold"
             >
               📍 Plot Route to Selected Incident
             </Button>

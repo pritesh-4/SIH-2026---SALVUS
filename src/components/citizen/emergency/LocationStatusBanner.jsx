@@ -4,7 +4,7 @@ import { Badge } from '../../ui/Badge'
 import { StatusIndicator } from '../../ui/StatusIndicator'
 
 /**
- * Reassuring Emergency Location & Status Banner
+ * Reassuring Emergency Location & Status Banner (Master Prompt 2 - Step 6 & 15)
  */
 export const LocationStatusBanner = ({
   location = {
@@ -27,7 +27,7 @@ export const LocationStatusBanner = ({
       case 'ACTIVE':
         return {
           status: 'safe',
-          label: isLandmark ? 'Approximate Location Shared' : 'Location Shared Live',
+          label: isLandmark ? 'Approximate Location' : 'Location Shared Live',
         }
       case 'ACQUIRING':
         return { status: 'warning', label: 'Acquiring GPS...' }
@@ -45,7 +45,7 @@ export const LocationStatusBanner = ({
       case 'LIMITED_CONNECTION':
         return { status: 'warning', label: 'Limited Signal' }
       case 'OFFLINE':
-        return { status: 'warning', label: 'Offline Backup' }
+        return { status: 'warning', label: 'Offline Mode' }
       case 'RECONNECTING':
         return { status: 'info', label: 'Reconnecting...' }
       default:
@@ -69,12 +69,12 @@ export const LocationStatusBanner = ({
         className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
       >
         {/* Left: Location Information */}
-        <div className="flex items-start sm:items-center gap-3.5">
+        <div className="flex items-start sm:items-center gap-3.5 flex-1 min-w-0">
           <div className="h-10 w-10 rounded-xl bg-salvus-info-bg border border-salvus-info-border flex items-center justify-center text-salvus-info shrink-0 text-base">
             📍
           </div>
           <div>
-            <div className="flex items-center gap-2 mb-0.5">
+            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
               <span className="text-xs font-bold text-salvus-text-primary">
                 Your Shared Location
               </span>
@@ -91,18 +91,18 @@ export const LocationStatusBanner = ({
               {location.address || (isLandmark ? location.landmarkName : 'Detected Location')}
             </p>
             <div className="flex items-center gap-2 text-xs text-salvus-text-muted mt-0.5">
-              <span>Shared with emergency response grid</span>
+              <span>Shared with emergency coordinators</span>
               <span>·</span>
               <button
                 type="button"
                 onClick={() => setShowCoordinates(!showCoordinates)}
-                className="text-salvus-info hover:underline cursor-pointer"
+                className="text-salvus-info hover:underline cursor-pointer font-medium"
               >
                 {showCoordinates ? 'Hide coordinates' : 'View coordinates'}
               </button>
             </div>
             {showCoordinates && (
-              <p className="text-[11px] font-mono text-salvus-text-secondary mt-1">
+              <p className="text-[11px] font-mono text-salvus-text-secondary mt-1 bg-salvus-muted/60 px-2 py-1 rounded border border-salvus-border">
                 {location.coordinates || 'Coordinates unavailable'}{' '}
                 {location.accuracy ? `(${location.accuracyLabel || `±${location.accuracy}m`})` : ''}
               </p>
@@ -123,7 +123,7 @@ export const LocationStatusBanner = ({
           <div className="flex items-center gap-2">
             <span aria-hidden="true">⚠️</span>
             <span>
-              <strong>Live updates are temporarily reconnecting.</strong> Your emergency beacon
+              <strong>Live updates are temporarily unavailable.</strong> Your emergency request
               remains active.
             </span>
           </div>

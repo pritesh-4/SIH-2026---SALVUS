@@ -4,7 +4,12 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
 /**
- * Dispatch Assignment Confirmation Safeguard Modal
+ * Dispatch Assignment Confirmation Safeguard Modal (Master Prompt 3 - Step 8)
+ *
+ * Prevents accidental dispatch with clear structured confirmation:
+ * - Unit name, capability, distance, ETA
+ * - Target incident ID and ticket
+ * - Keyboard accessible with Escape & Enter handling
  */
 export const AssignmentConfirmModal = ({
   isOpen,
@@ -83,7 +88,12 @@ export const AssignmentConfirmModal = ({
         {/* Content Body */}
         <div className="p-5 space-y-4 text-xs">
           <div>
-            <h4 className="text-base font-bold text-salvus-text-primary">Dispatch {unitName}?</h4>
+            <h3
+              id="assignment-modal-title"
+              className="text-base font-bold text-salvus-text-primary"
+            >
+              Dispatch {unitName}?
+            </h3>
             <p className="text-xs text-salvus-text-secondary mt-0.5">
               Confirm authoritative deployment to incident #
               {incident.ticket_id || incident.id?.slice(-4)}.
@@ -91,17 +101,17 @@ export const AssignmentConfirmModal = ({
           </div>
 
           {/* Structured Assignment Details */}
-          <div className="p-3.5 bg-salvus-muted/40 border border-salvus-border rounded-xl space-y-2 text-xs">
+          <div className="p-3.5 bg-salvus-muted/40 border border-salvus-border rounded-xl space-y-2 text-xs font-medium">
             <div className="flex items-center justify-between border-b border-salvus-border pb-1.5">
               <span className="text-salvus-text-muted">Target Incident:</span>
-              <strong className="text-salvus-text-primary font-mono">
+              <strong className="text-salvus-text-primary font-mono font-bold">
                 #{incident.ticket_id || incident.id?.slice(-4)}
               </strong>
             </div>
 
             <div className="flex items-center justify-between border-b border-salvus-border pb-1.5">
               <span className="text-salvus-text-muted">Estimated Arrival:</span>
-              <strong className="text-salvus-info">{etaFormatted}</strong>
+              <strong className="text-salvus-info font-mono font-bold">{etaFormatted}</strong>
             </div>
 
             <div className="flex items-center justify-between border-b border-salvus-border pb-1.5">
@@ -111,12 +121,12 @@ export const AssignmentConfirmModal = ({
 
             <div className="flex items-center justify-between">
               <span className="text-salvus-text-muted">Distance:</span>
-              <strong className="text-salvus-text-primary">{distanceKm} km</strong>
+              <strong className="text-salvus-text-primary font-mono">{distanceKm} km</strong>
             </div>
           </div>
 
           {/* Operational Notice */}
-          <div className="p-2.5 bg-salvus-warning-bg border border-salvus-warning-border rounded-lg flex items-start gap-2 text-xs text-salvus-warning-text">
+          <div className="p-2.5 bg-salvus-warning-bg border border-salvus-warning-border rounded-lg flex items-start gap-2 text-xs text-salvus-warning-text font-medium">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <p>
               Transitions incident status to <strong>ASSIGNED</strong>. Response telemetry will
@@ -127,7 +137,13 @@ export const AssignmentConfirmModal = ({
 
         {/* Footer Actions */}
         <div className="px-5 py-3.5 bg-salvus-surface-elevated border-t border-salvus-border flex items-center justify-end gap-2.5">
-          <Button variant="quiet" size="md" disabled={isAssigning} onClick={onClose}>
+          <Button
+            variant="quiet"
+            size="md"
+            disabled={isAssigning}
+            onClick={onClose}
+            className="text-xs"
+          >
             Cancel
           </Button>
 
@@ -138,7 +154,7 @@ export const AssignmentConfirmModal = ({
             loading={isAssigning}
             onClick={() => onConfirm(candidate.id)}
             leftIcon={<Send className="h-3.5 w-3.5" />}
-            className="font-bold text-xs"
+            className="font-bold text-xs shadow-xs"
           >
             Confirm Assignment
           </Button>

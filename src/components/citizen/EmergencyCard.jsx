@@ -1,29 +1,29 @@
-import { useState } from 'react'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Badge } from '../ui/Badge'
 
 /**
- * Unmistakable Emergency SOS Card
- * Answers Question 5: "How do I get help?" with one clear, prominent action.
+ * Unmistakable Emergency SOS Card (Master Prompt 2 - Step 3)
+ *
+ * Structure:
+ * EMERGENCY
+ * Need immediate help?
+ * Shares your current location with response coordinators.
+ * [ SEND SOS ]
  */
 export const EmergencyCard = ({
-  badgeText = 'Emergency',
+  badgeText = 'EMERGENCY',
   title = 'Need immediate help?',
-  description = 'Shares your location with emergency coordinators and requests nearest rescue units.',
+  description = 'Shares your current location with response coordinators.',
   buttonText = 'SEND SOS',
   onSosClick,
 }) => {
-  const [isConnecting, setIsConnecting] = useState(false)
-
-  const handleSos = () => {
-    setIsConnecting(true)
-    setTimeout(() => setIsConnecting(false), 800)
-    onSosClick?.()
-  }
-
   return (
-    <Card variant="critical" padding="md" className="transition-all">
+    <Card
+      variant="critical"
+      padding="lg"
+      className="transition-all relative overflow-hidden focus-within:ring-2 focus-within:ring-salvus-critical"
+    >
       <div className="flex items-center gap-2 mb-2">
         <Badge variant="critical" dot={true}>
           {badgeText}
@@ -34,7 +34,7 @@ export const EmergencyCard = ({
         {title}
       </h2>
 
-      <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1.5 max-w-2xl leading-relaxed font-normal">
+      <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1.5 max-w-xl leading-relaxed font-normal">
         {description}
       </p>
 
@@ -42,19 +42,22 @@ export const EmergencyCard = ({
         <Button
           variant="critical"
           size="lg"
-          onClick={handleSos}
-          loading={isConnecting}
+          onClick={onSosClick}
           leftIcon={
-            <span className="text-lg" aria-hidden="true">
+            <span className="text-xl" aria-hidden="true">
               🚨
             </span>
           }
-          className="font-bold tracking-wide min-w-[200px]"
+          className="font-extrabold tracking-wider text-sm sm:text-base py-3.5 px-8 min-h-[52px] w-full sm:w-auto shadow-md active:scale-[0.98] transition-transform cursor-pointer"
         >
-          {isConnecting ? 'Connecting...' : buttonText}
+          {buttonText}
         </Button>
-        <span className="text-xs text-salvus-text-muted">Press to request urgent assistance</span>
+        <span className="text-xs text-salvus-text-muted">
+          Press to alert emergency response coordinators
+        </span>
       </div>
     </Card>
   )
 }
+
+export default EmergencyCard

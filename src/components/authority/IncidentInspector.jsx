@@ -6,8 +6,15 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
 /**
- * Focused Incident Inspector
- * Part 8: Complete view of selected incident, dispatch, assessment & required action.
+ * Focused Incident Inspector (Master Prompt 3 - Steps 7 & 14)
+ *
+ * The selected incident becomes the focal operational narrative:
+ * - What happened & people affected
+ * - Location & raw coordinates
+ * - AI decision support assessment
+ * - Recommended response unit or active dispatched unit controls
+ * - Nearby evacuation shelter availability
+ * - Next action decision toolbar
  */
 export const IncidentInspector = ({
   selectedIncident = null,
@@ -39,13 +46,16 @@ export const IncidentInspector = ({
 }) => {
   if (!selectedIncident) {
     return (
-      <div className="py-20 text-center text-xs text-salvus-text-muted space-y-2">
-        <span className="text-2xl block" aria-hidden="true">
+      <div className="py-24 text-center text-xs text-salvus-text-muted space-y-2">
+        <span className="text-3xl block" aria-hidden="true">
           📍
         </span>
-        <p className="font-semibold text-salvus-text-primary">Select an incident to inspect</p>
+        <p className="font-semibold text-salvus-text-primary text-sm">
+          Select an incident to inspect
+        </p>
         <p className="max-w-xs mx-auto text-salvus-text-secondary leading-relaxed">
-          Choose an item from the incident queue or click a marker on the tactical map.
+          Choose an item from the incident queue or click a marker on the tactical map to begin
+          dispatch operations.
         </p>
       </div>
     )
@@ -60,8 +70,10 @@ export const IncidentInspector = ({
         {/* Header */}
         <div className="flex items-center justify-between pb-2 border-b border-salvus-border">
           <div>
-            <span className="text-[10px] text-salvus-text-muted uppercase block">Incident ID</span>
-            <span className="text-sm font-bold text-salvus-text-primary font-mono">
+            <span className="text-[10px] text-salvus-text-muted uppercase block font-semibold">
+              Incident Ticket
+            </span>
+            <span className="text-base font-extrabold text-salvus-text-primary font-mono tracking-tight">
               #{selectedIncident.ticket_id || selectedIncident.id}
             </span>
           </div>
@@ -78,7 +90,7 @@ export const IncidentInspector = ({
 
         {/* Summary */}
         <div className="bg-salvus-muted/40 border border-salvus-border p-3 rounded-xl space-y-1">
-          <span className="text-[10px] font-bold text-salvus-text-muted uppercase block">
+          <span className="text-[10px] font-bold text-salvus-text-muted uppercase tracking-wider block">
             What Happened
           </span>
           <p className="text-salvus-text-primary leading-relaxed text-xs font-medium">
@@ -89,8 +101,10 @@ export const IncidentInspector = ({
         {/* Location & Affected Count */}
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="bg-salvus-muted/30 border border-salvus-border p-2.5 rounded-xl">
-            <span className="text-[10px] text-salvus-text-muted uppercase block">Location</span>
-            <strong className="text-salvus-text-primary truncate block mt-0.5">
+            <span className="text-[10px] text-salvus-text-muted uppercase font-semibold block">
+              Location
+            </span>
+            <strong className="text-salvus-text-primary truncate block mt-0.5 font-semibold">
               {selectedIncident.location_name || 'Sector 12, Kolkata'}
             </strong>
             <span className="text-salvus-text-muted text-[11px] block mt-0.5 font-mono">
@@ -99,13 +113,13 @@ export const IncidentInspector = ({
           </div>
 
           <div className="bg-salvus-muted/30 border border-salvus-border p-2.5 rounded-xl">
-            <span className="text-[10px] text-salvus-text-muted uppercase block">
+            <span className="text-[10px] text-salvus-text-muted uppercase font-semibold block">
               People Affected
             </span>
-            <strong className="text-salvus-text-primary text-sm block mt-0.5">
+            <strong className="text-salvus-text-primary text-sm block mt-0.5 font-mono font-bold">
               {selectedIncident.affected_count || 1} Persons
             </strong>
-            <span className="text-salvus-text-muted text-[11px] block mt-0.5">
+            <span className="text-salvus-text-muted text-[11px] block mt-0.5 truncate">
               Reporter: {selectedIncident.reporter_name || 'Citizen'}
             </span>
           </div>
@@ -123,30 +137,30 @@ export const IncidentInspector = ({
 
         {/* Tactical Pathway Indicator */}
         {activeRoute && activeTargetResponder && (
-          <div className="bg-salvus-info-bg border border-salvus-info-border p-2.5 rounded-xl space-y-1.5 text-xs text-salvus-info-text">
+          <div className="bg-salvus-info-bg border border-salvus-info-border p-2.5 rounded-xl space-y-1.5 text-xs text-salvus-info-text animate-fadeIn">
             <div className="flex items-center justify-between pb-1 border-b border-salvus-info-border/50">
               <span className="font-bold text-[11px] flex items-center gap-1.5">
                 <span>📍</span>
-                <span>Tactical Route Corridor</span>
+                <span>Tactical Route Corridor Active</span>
               </span>
               <button
                 type="button"
                 onClick={onClearRoute}
-                className="text-salvus-info-text/80 hover:text-salvus-info-text text-xs cursor-pointer underline"
+                className="text-salvus-info-text hover:underline text-xs cursor-pointer font-semibold"
               >
                 Clear
               </button>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between font-medium">
               <span>
                 Unit:{' '}
                 <strong>{activeTargetResponder.unit_name || activeTargetResponder.unitName}</strong>
               </span>
-              <span>
-                Distance: <strong>{activeRoute.distanceKm} km</strong>
+              <span className="font-mono">
+                Dist: <strong>{activeRoute.distanceKm} km</strong>
               </span>
-              <span>
+              <span className="font-mono">
                 ETA: <strong>{activeRoute.etaFormatted}</strong>
               </span>
             </div>
@@ -156,7 +170,7 @@ export const IncidentInspector = ({
         {/* Assigned Unit OR Recommended Unit */}
         {currentlyAssignedResponder ? (
           /* Active Dispatched Unit View */
-          <Card variant="info" padding="sm" className="space-y-2.5">
+          <Card variant="info" padding="sm" className="space-y-2.5 shadow-2xs">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase text-salvus-info flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-salvus-info animate-ping"></span>
@@ -169,10 +183,10 @@ export const IncidentInspector = ({
 
             <div className="bg-salvus-surface p-2.5 rounded-lg border border-salvus-border space-y-1">
               <div className="flex items-center justify-between">
-                <strong className="text-salvus-text-primary text-xs">
+                <strong className="text-salvus-text-primary text-xs font-bold">
                   {currentlyAssignedResponder.unit_name}
                 </strong>
-                <span className="text-xs text-salvus-text-muted">
+                <span className="text-xs text-salvus-text-muted font-mono font-medium">
                   VHF: {currentlyAssignedResponder.radio_channel || 'Ch. 04'}
                 </span>
               </div>
@@ -180,16 +194,16 @@ export const IncidentInspector = ({
                 Lead: {currentlyAssignedResponder.team_lead} · Craft:{' '}
                 {currentlyAssignedResponder.vehicle_type}
               </p>
-              <div className="flex items-center justify-between text-xs text-salvus-info pt-1 border-t border-salvus-border font-semibold">
+              <div className="flex items-center justify-between text-xs text-salvus-info pt-1 border-t border-salvus-border font-semibold font-mono">
                 <span>Distance: {activeRoute?.distanceKm || '1.2'} km</span>
                 <span>ETA: {activeRoute?.etaFormatted || '4 min'}</span>
               </div>
             </div>
 
-            {/* Lifecycle Buttons */}
+            {/* Lifecycle Transition Buttons */}
             <div className="space-y-1.5 pt-1">
               <span className="text-[11px] text-salvus-text-muted block font-semibold uppercase">
-                Advance Unit Status
+                Advance Unit Lifecycle
               </span>
               <div className="grid grid-cols-4 gap-1 text-xs">
                 <button
@@ -197,7 +211,7 @@ export const IncidentInspector = ({
                   onClick={() => onAdvanceLifecycle?.('EN_ROUTE')}
                   className={`py-1.5 rounded-lg border transition-colors cursor-pointer text-xs font-semibold ${
                     currentlyAssignedResponder.status === 'EN_ROUTE'
-                      ? 'bg-salvus-info text-white border-transparent'
+                      ? 'bg-salvus-info text-white border-transparent shadow-xs'
                       : 'bg-salvus-surface border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
                   }`}
                 >
@@ -208,7 +222,7 @@ export const IncidentInspector = ({
                   onClick={() => onAdvanceLifecycle?.('NEARBY')}
                   className={`py-1.5 rounded-lg border transition-colors cursor-pointer text-xs font-semibold ${
                     currentlyAssignedResponder.status === 'NEARBY'
-                      ? 'bg-salvus-warning text-salvus-bg border-transparent'
+                      ? 'bg-salvus-warning text-salvus-bg border-transparent shadow-xs'
                       : 'bg-salvus-surface border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
                   }`}
                 >
@@ -219,7 +233,7 @@ export const IncidentInspector = ({
                   onClick={() => onAdvanceLifecycle?.('ON_SCENE')}
                   className={`py-1.5 rounded-lg border transition-colors cursor-pointer text-xs font-semibold ${
                     currentlyAssignedResponder.status === 'ON_SCENE'
-                      ? 'bg-salvus-safe text-white border-transparent'
+                      ? 'bg-salvus-safe text-white border-transparent shadow-xs'
                       : 'bg-salvus-surface border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
                   }`}
                 >
@@ -228,7 +242,7 @@ export const IncidentInspector = ({
                 <button
                   type="button"
                   onClick={() => onAdvanceLifecycle?.('AVAILABLE')}
-                  className="py-1.5 rounded-lg bg-salvus-safe hover:opacity-90 text-white font-bold transition-colors cursor-pointer text-xs"
+                  className="py-1.5 rounded-lg bg-salvus-safe hover:opacity-90 text-white font-bold transition-colors cursor-pointer text-xs shadow-xs"
                 >
                   Resolve
                 </button>
@@ -241,6 +255,7 @@ export const IncidentInspector = ({
                     variant={isSimulatingMovement ? 'critical' : 'secondary'}
                     size="sm"
                     onClick={onToggleMovementSimulation}
+                    className="text-xs font-medium"
                   >
                     {isSimulatingMovement ? '⏸ Pause GPS' : '▶ Simulate GPS'}
                   </Button>
@@ -253,10 +268,10 @@ export const IncidentInspector = ({
                       key={speed}
                       type="button"
                       onClick={() => onSetSimulationSpeed?.(speed)}
-                      className={`px-1.5 py-0.5 rounded text-xs font-bold cursor-pointer ${
+                      className={`px-1.5 py-0.5 rounded text-xs font-bold cursor-pointer transition-colors ${
                         simulationSpeedMultiplier === speed
                           ? 'bg-salvus-text-primary text-salvus-bg'
-                          : 'bg-salvus-muted text-salvus-text-muted'
+                          : 'bg-salvus-muted text-salvus-text-muted hover:text-salvus-text-primary'
                       }`}
                     >
                       {speed}x
@@ -284,7 +299,7 @@ export const IncidentInspector = ({
         {/* Candidate Shelters */}
         <div className="bg-salvus-muted/30 border border-salvus-border p-2.5 rounded-xl space-y-1.5">
           <span className="text-[11px] font-bold text-salvus-text-primary uppercase tracking-wider block">
-            Evacuation Shelters Nearby
+            Nearby Evacuation Shelters
           </span>
           <div className="space-y-1.5">
             {candidateShelters.slice(0, 2).map((shl) => (
@@ -293,7 +308,7 @@ export const IncidentInspector = ({
                 className="bg-salvus-surface border border-salvus-border p-2 rounded-lg flex items-center justify-between text-xs"
               >
                 <div>
-                  <strong className="text-salvus-text-primary block truncate max-w-[180px]">
+                  <strong className="text-salvus-text-primary block truncate max-w-[180px] font-medium">
                     {shl.name}
                   </strong>
                   <span className="text-[11px] text-salvus-text-muted block">
@@ -326,7 +341,7 @@ export const IncidentInspector = ({
             fullWidth={true}
             disabled={isUpdatingStatus}
             onClick={() => onTransitionStatus?.('TRIAGE_PENDING', 'Pending AI Triage')}
-            className="font-bold text-xs"
+            className="font-bold text-xs shadow-xs"
           >
             {isUpdatingStatus ? 'Processing...' : '▶ Initiate Triage Queue'}
           </Button>
@@ -339,9 +354,9 @@ export const IncidentInspector = ({
             fullWidth={true}
             disabled={isUpdatingStatus}
             onClick={() => onTransitionStatus?.('VERIFIED', 'Verified Distress')}
-            className="font-bold text-xs"
+            className="font-bold text-xs shadow-xs"
           >
-            {isUpdatingStatus ? 'Processing...' : '✓ Verify Distress'}
+            {isUpdatingStatus ? 'Processing...' : '✓ Verify Distress Call'}
           </Button>
         )}
 
@@ -352,7 +367,7 @@ export const IncidentInspector = ({
             fullWidth={true}
             disabled={isUpdatingStatus}
             onClick={() => onTransitionStatus?.('RESOLVED', 'Safe Rescue & Resolved')}
-            className="font-bold text-xs"
+            className="font-bold text-xs shadow-xs"
           >
             {isUpdatingStatus ? 'Processing...' : '✓ Confirm Rescue & Resolve'}
           </Button>
@@ -365,7 +380,7 @@ export const IncidentInspector = ({
             fullWidth={true}
             disabled={isUpdatingStatus}
             onClick={() => onTransitionStatus?.('CANCELLED', 'Cancellation')}
-            className="text-xs text-salvus-text-muted hover:text-salvus-critical"
+            className="text-xs text-salvus-text-muted hover:text-salvus-critical font-medium"
           >
             Stand Down / Cancel Incident
           </Button>

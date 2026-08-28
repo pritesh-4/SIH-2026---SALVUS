@@ -632,11 +632,11 @@ export const CitizenAlerts = () => {
               📡
             </span>
             <h2 className="text-lg font-bold text-salvus-text-primary">
-              LIVE ALERT DATA TEMPORARILY UNAVAILABLE
+              Live alert data is temporarily unavailable.
             </h2>
             <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1.5 max-w-md leading-relaxed">
-              Unable to establish connection to upstream emergency telemetry feeds. No fabricated
-              incidents will be displayed.
+              Unable to establish connection to emergency feeds. No unverified incidents are
+              displayed.
             </p>
             <Button variant="secondary" size="sm" onClick={() => loadAlerts(true)} className="mt-4">
               Retry Connection
@@ -655,7 +655,7 @@ export const CitizenAlerts = () => {
               No active alerts in your area.
             </h2>
             <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1.5 max-w-md leading-relaxed">
-              Monitored disaster feeds confirm clear parameters within your sector.
+              Monitored disaster and weather feeds report calm, normal conditions in your area.
             </p>
 
             <div className="mt-5 pt-4 border-t border-salvus-border w-full max-w-md flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-salvus-text-muted">

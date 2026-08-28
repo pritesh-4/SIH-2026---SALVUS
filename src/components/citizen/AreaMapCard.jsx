@@ -2,11 +2,13 @@ import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 
 /**
- * Area Overview Map Card
- * Visual orientation of You, Safe Places, and Hazard alerts.
+ * Area Overview Map Card (Master Prompt 2 - Step 7)
+ *
+ * Visual orientation: YOU, SAFE PLACES, HAZARD ALERTS.
+ * Plain language, no raw coordinates as primary text.
  */
 export const AreaMapCard = ({
-  badgeText = 'Area Map',
+  badgeText = 'AREA MAP',
   location = 'Sector 12 · Salt Lake, Kolkata',
   userLocation = null,
   legend = [
@@ -19,7 +21,10 @@ export const AreaMapCard = ({
   const isBrowserGps = userLocation?.source === 'BROWSER'
 
   return (
-    <Card padding="md" className="transition-all">
+    <Card
+      padding="md"
+      className="transition-all hover:border-salvus-border-strong focus-within:ring-2 focus-within:ring-salvus-info"
+    >
       <div className="flex items-center justify-between gap-2 mb-3">
         <div>
           <div className="flex items-center gap-1.5 mb-1">
@@ -27,11 +32,11 @@ export const AreaMapCard = ({
               {badgeText}
             </Badge>
           </div>
-          <h3 className="text-sm font-semibold text-salvus-text-primary truncate max-w-[280px]">
+          <h2 className="text-sm sm:text-base font-bold text-salvus-text-primary truncate max-w-[280px]">
             {location}
-          </h3>
+          </h2>
         </div>
-        <span className="text-xs text-salvus-info font-semibold">Open map →</span>
+        <span className="text-xs text-salvus-info font-semibold shrink-0">Open tactical map →</span>
       </div>
 
       {/* Map Radar Canvas */}
@@ -53,8 +58,9 @@ export const AreaMapCard = ({
             height: '64px',
             transform: 'translate(-50%, -50%)',
           }}
+          title="Monitored Hazard Zone"
         >
-          <span className="h-2 w-2 rounded-full bg-salvus-critical" />
+          <span className="h-2.5 w-2.5 rounded-full bg-salvus-critical" />
         </div>
 
         {/* You Indicator */}
@@ -73,12 +79,12 @@ export const AreaMapCard = ({
                 : 'Sector location'
           }
         >
-          <span className="relative flex h-3.5 w-3.5">
+          <span className="relative flex h-4 w-4">
             {isBrowserGps && (
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-salvus-info opacity-75"></span>
             )}
             <span
-              className={`relative inline-flex rounded-full h-3.5 w-3.5 ${
+              className={`relative inline-flex rounded-full h-4 w-4 ${
                 isLandmark ? 'bg-amber-400' : 'bg-salvus-info'
               } ring-2 ring-salvus-surface shadow-xs`}
             ></span>
@@ -95,11 +101,11 @@ export const AreaMapCard = ({
           }}
           title="Safe Shelter"
         >
-          <span className="h-3.5 w-3.5 rounded-full bg-salvus-safe ring-2 ring-salvus-surface shadow-xs"></span>
+          <span className="h-4 w-4 rounded-full bg-salvus-safe ring-2 ring-salvus-surface shadow-xs"></span>
         </div>
 
         {/* Legend Footer */}
-        <div className="mt-auto z-10 pt-2 flex items-center gap-3 text-xs text-salvus-text-secondary flex-wrap">
+        <div className="mt-auto z-10 pt-2 flex items-center gap-3 text-xs text-salvus-text-secondary flex-wrap bg-salvus-surface/80 backdrop-blur-xs px-2 py-1 rounded-lg border border-salvus-border/50">
           {legend.map((item, idx) => (
             <div key={item.label} className="flex items-center gap-1.5 font-medium">
               <span
@@ -122,3 +128,5 @@ export const AreaMapCard = ({
     </Card>
   )
 }
+
+export default AreaMapCard

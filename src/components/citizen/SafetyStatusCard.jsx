@@ -2,23 +2,17 @@ import { Card } from '../ui/Card'
 import { StatusIndicator } from '../ui/StatusIndicator'
 
 /**
- * High-Clarity Citizen Safety Status Card (Build 03)
+ * Citizen Safety Status Card (Master Prompt 2 - Step 1 & 2)
  *
- * Answers Question 1: "Am I safe?" in under 1 second.
- * Supports distinct states:
- * - SAFE (No known active hazards detected)
- * - WATCH (Environmental advisory active in basin)
- * - WARNING (Hazard warning in sector)
- * - CRITICAL (Severe threat in immediate area)
- * - NO_DATA (Status unconfirmed / telemetry offline)
- * - LOCATION_REQUIRED (Location access off)
+ * Primary question answered in under 1 second: "AM I SAFE?"
+ * Plain, reassuring language without operational jargon.
  */
 export const SafetyStatusCard = ({
   level = 'SAFE',
   status = null,
   badgeText = null,
   title = "You're currently safe.",
-  subtitle = 'No active threats detected in your immediate sector · Monitored live',
+  subtitle = 'No known active hazards near you.',
   freshnessLabel = 'Updated just now',
   onLocationPrompt = null,
 }) => {
@@ -31,19 +25,19 @@ export const SafetyStatusCard = ({
   if (normLevel === 'CRITICAL') {
     cardVariant = 'critical'
     indicatorStatus = 'critical'
-    defaultBadge = 'Critical Threat'
+    defaultBadge = 'Critical Hazard Active'
   } else if (normLevel === 'WARNING') {
     cardVariant = 'warning'
     indicatorStatus = 'warning'
-    defaultBadge = 'Active Warning'
+    defaultBadge = 'Active Hazard Advisory'
   } else if (normLevel === 'WATCH') {
     cardVariant = 'warning'
     indicatorStatus = 'warning'
-    defaultBadge = 'Advisory Watch'
+    defaultBadge = 'Hazard Watch'
   } else if (normLevel === 'NO_DATA') {
     cardVariant = 'neutral'
     indicatorStatus = 'neutral'
-    defaultBadge = 'Status Unconfirmed'
+    defaultBadge = 'Live Data Reconnecting'
   } else if (normLevel === 'LOCATION_REQUIRED') {
     cardVariant = 'neutral'
     indicatorStatus = 'neutral'
@@ -53,36 +47,37 @@ export const SafetyStatusCard = ({
   const finalBadge = badgeText || defaultBadge
 
   return (
-    <Card variant={cardVariant} padding="md" className="transition-all relative overflow-hidden">
-      <div className="flex items-center justify-between gap-3 mb-2.5 flex-wrap">
+    <Card variant={cardVariant} padding="lg" className="transition-all relative overflow-hidden">
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <StatusIndicator
           status={indicatorStatus}
           label={finalBadge}
           showDot={true}
           showIcon={true}
+          size="md"
         />
         <span className="text-[11px] text-salvus-text-muted font-mono">{freshnessLabel}</span>
       </div>
 
-      <h2 className="text-xl sm:text-2xl font-bold text-salvus-text-primary tracking-tight leading-snug">
+      <h1 className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary tracking-tight leading-snug">
         {title}
-      </h2>
+      </h1>
 
-      <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 font-normal leading-relaxed">
+      <p className="text-sm sm:text-base text-salvus-text-secondary mt-1.5 font-normal leading-relaxed max-w-2xl">
         {subtitle}
       </p>
 
       {normLevel === 'LOCATION_REQUIRED' && onLocationPrompt && (
-        <div className="mt-3 pt-2.5 border-t border-salvus-border flex items-center justify-between">
+        <div className="mt-4 pt-3 border-t border-salvus-border flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <span className="text-xs text-salvus-text-muted">
-            Enable GPS or select a sector landmark
+            Turn on location to verify conditions for your area.
           </span>
           <button
             type="button"
             onClick={onLocationPrompt}
-            className="text-xs font-bold text-salvus-info hover:underline cursor-pointer"
+            className="text-xs font-bold text-salvus-info hover:underline cursor-pointer inline-flex items-center gap-1 self-start sm:self-auto min-h-[36px]"
           >
-            Detect Location →
+            <span>📍 Detect GPS Location →</span>
           </button>
         </div>
       )}

@@ -12,8 +12,12 @@ const INCIDENT_FILTERS = [
 ]
 
 /**
- * Action-Oriented Operational Incident Queue
- * Part 6: Sorts by urgency and groups by operational phase.
+ * Action-Oriented Operational Incident Queue (Master Prompt 3 - Step 5)
+ *
+ * Prioritizes operational urgency:
+ * - SOS & Critical threats highlighted prominently
+ * - Grouped & filterable by operational phase
+ * - Clear sans-serif labels with monospace IDs
  */
 export const IncidentQueue = ({
   incidents = [],
@@ -29,17 +33,17 @@ export const IncidentQueue = ({
   // Sort by operational urgency
   const sortedIncidents = useMemo(() => {
     return [...filteredIncidents].sort((a, b) => {
-      // 1. Severity weight
+      // 1. SOS Beacon active
+      if (a.is_sos && !b.is_sos) return -1
+      if (!a.is_sos && b.is_sos) return 1
+
+      // 2. Severity weight
       const sevWeight = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 }
       const aSev = sevWeight[a.severity] || 0
       const bSev = sevWeight[b.severity] || 0
       if (aSev !== bSev) return bSev - aSev
 
-      // 2. Unassigned / SOS priority
-      if (a.is_sos && !b.is_sos) return -1
-      if (!a.is_sos && b.is_sos) return 1
-
-      // 3. Status priority
+      // 3. Status urgency
       const statusWeight = {
         NEW: 4,
         TRIAGE_PENDING: 3,
@@ -98,22 +102,24 @@ export const IncidentQueue = ({
 
       {/* Content Feed */}
       {isLoading ? (
-        <div className="py-16 text-center text-xs text-salvus-text-muted">
-          Updating incident feed...
+        <div className="py-16 text-center text-xs text-salvus-text-muted space-y-2">
+          <span className="inline-block animate-spin">⏳</span>
+          <p>Updating incident feed...</p>
         </div>
       ) : error && incidents.length === 0 ? (
         <div className="py-6 text-center text-xs text-salvus-warning bg-salvus-warning-bg border border-salvus-warning-border rounded-xl p-3">
-          ⚠️ {error}
+          <span>⚠️ {error}</span>
         </div>
       ) : sortedIncidents.length === 0 ? (
         <div className="py-16 text-center text-xs text-salvus-text-muted">
-          No incidents matching filter.
+          No active incidents in this filter.
         </div>
       ) : (
         <div className="space-y-2 max-h-[540px] overflow-y-auto pr-1">
           {sortedIncidents.map((inc) => {
             const isSelected = selectedIncident?.id === inc.id
             const isNew = newlyArrivedId === inc.id
+            const isSos = Boolean(inc.is_sos)
             const sev = getSeverityBadge(inc.severity)
             const stat = getStatusBadge(inc.status)
 
@@ -124,13 +130,22 @@ export const IncidentQueue = ({
                 className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                   isSelected
                     ? 'bg-salvus-surface-elevated border-salvus-text-primary ring-1 ring-salvus-text-primary shadow-xs'
-                    : 'bg-salvus-muted/30 border-salvus-border hover:border-salvus-border-strong hover:bg-salvus-surface-hover'
-                } ${isNew ? 'ring-2 ring-salvus-critical' : ''}`}
+                    : isSos
+                      ? 'bg-salvus-critical-bg/40 border-salvus-critical-border hover:border-salvus-critical'
+                      : 'bg-salvus-muted/30 border-salvus-border hover:border-salvus-border-strong hover:bg-salvus-surface-hover'
+                } ${isNew ? 'ring-2 ring-salvus-critical animate-pulse' : ''}`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-bold text-salvus-text-primary text-xs font-mono">
-                    #{inc.ticket_id || `SV-${(inc.id || '').slice(-4)}`}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-salvus-text-primary text-xs font-mono">
+                      #{inc.ticket_id || `SV-${(inc.id || '').slice(-4)}`}
+                    </span>
+                    {isSos && (
+                      <Badge variant="critical" size="sm" dot={true}>
+                        SOS
+                      </Badge>
+                    )}
+                  </div>
 
                   <div className="flex items-center gap-1.5">
                     <Badge variant={sev.variant} dot={sev.dot} size="sm">
@@ -142,7 +157,7 @@ export const IncidentQueue = ({
                   </div>
                 </div>
 
-                <p className="text-xs text-salvus-text-secondary line-clamp-1 mt-1 font-medium">
+                <p className="text-xs text-salvus-text-primary line-clamp-1 mt-1 font-medium">
                   {inc.description}
                 </p>
 
