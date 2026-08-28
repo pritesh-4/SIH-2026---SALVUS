@@ -3,39 +3,92 @@ import { Badge } from '../ui/Badge'
 
 /**
  * 3-Part Active Warning Card
- * Answers Question 2: "What is happening?" & Question 3: "What should I do?"
+ * Structure:
+ * 1. Severity Badge & Provenance
+ * 2. What Happened (headline)
+ * 3. Why It Matters (description)
+ * 4. What To Do (optional actionable preview)
+ * 5. Official Source & Freshness
  */
 export const ActiveAlertCard = ({
+  variant = 'warning',
   badgeText = 'Weather Warning · Heavy Rain',
   headline = 'Localized waterlogging expected in low-lying areas',
   description = 'Move electrical appliances and essential supplies to elevated levels if water accumulates.',
+  whatToDo = null,
   source = 'Official advisory · Meteorological Dept',
+  distance = null,
+  provenance = null,
 }) => {
+  const badgeVariant =
+    variant === 'critical'
+      ? 'critical'
+      : variant === 'warning'
+        ? 'warning'
+        : variant === 'safe'
+          ? 'safe'
+          : 'info'
+
   return (
-    <Card variant="warning" padding="md" className="transition-all">
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <Badge variant="warning" dot={true}>
-          {badgeText}
-        </Badge>
-        <span className="text-[11px] text-salvus-text-muted hidden sm:inline">
-          Tap to view advisories
-        </span>
+    <Card variant={variant} padding="md" className="transition-all">
+      {/* Header: Badge, Provenance & Proximity */}
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Badge variant={badgeVariant} dot={true}>
+            {badgeText}
+          </Badge>
+          {provenance && (
+            <span
+              className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase border ${
+                provenance === 'LIVE'
+                  ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40'
+                  : provenance === 'SIMULATED'
+                    ? 'bg-amber-950/70 text-amber-300 border-amber-500/40'
+                    : 'bg-slate-900 text-slate-400 border-slate-700'
+              }`}
+            >
+              {provenance}
+            </span>
+          )}
+        </div>
+
+        {distance && (
+          <span className="text-[11px] text-salvus-text-muted flex items-center gap-1">
+            <span>📍</span>
+            <span>{distance}</span>
+          </span>
+        )}
       </div>
 
+      {/* 1. WHAT HAPPENED */}
       <h3 className="text-base sm:text-lg font-bold text-salvus-text-primary tracking-tight">
         {headline}
       </h3>
 
+      {/* 2. WHY IT MATTERS */}
       <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 leading-relaxed">
         {description}
       </p>
 
+      {/* 3. WHAT TO DO (if present) */}
+      {whatToDo && (
+        <div className="mt-2.5 bg-salvus-muted/40 border border-salvus-border/70 rounded-lg p-2.5">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-salvus-text-muted block mb-0.5">
+            WHAT TO DO
+          </span>
+          <p className="text-xs text-salvus-text-primary font-medium leading-relaxed">{whatToDo}</p>
+        </div>
+      )}
+
+      {/* Footer: Source & Link */}
       <div className="mt-3 pt-2.5 border-t border-salvus-border flex items-center justify-between text-xs text-salvus-text-muted">
-        <span className="truncate">{source}</span>
+        <span className="truncate max-w-[240px] sm:max-w-sm">{source}</span>
         <span className="text-salvus-info font-semibold text-xs shrink-0 ml-2">
-          Read advisory →
+          View all alerts →
         </span>
       </div>
     </Card>
   )
 }
+
+export default ActiveAlertCard

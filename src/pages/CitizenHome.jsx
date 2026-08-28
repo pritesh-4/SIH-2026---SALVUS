@@ -272,9 +272,24 @@ export const CitizenHome = () => {
           >
             {activeAdvisory ? (
               <ActiveAlertCard
-                badgeText={`${activeAdvisory.hazard_type || 'HAZARD'} Advisory · ${activeAdvisory.severity}`}
+                variant={
+                  activeAdvisory.severity === 'CRITICAL'
+                    ? 'critical'
+                    : activeAdvisory.severity === 'WARNING'
+                      ? 'warning'
+                      : 'info'
+                }
+                badgeText={`${activeAdvisory.hazard_type || 'HAZARD'} · ${activeAdvisory.severity}`}
                 headline={activeAdvisory.title}
                 description={activeAdvisory.why_it_matters || activeAdvisory.description}
+                whatToDo={activeAdvisory.recommended_action}
+                distance={
+                  activeAdvisory.distance_formatted ||
+                  (activeAdvisory.distance_km != null
+                    ? `${activeAdvisory.distance_km.toFixed(1)} km away`
+                    : null)
+                }
+                provenance={activeAdvisory.provenance || activeAdvisory.data_provenance}
                 source={`${activeAdvisory.source} · ${formatRelativeFreshness(
                   activeAdvisory.observed_at,
                   'Observed'
@@ -282,10 +297,11 @@ export const CitizenHome = () => {
               />
             ) : (
               <ActiveAlertCard
+                variant="safe"
                 badgeText="Environmental Telemetry · Normal"
                 headline="No Active Hazard Advisories"
                 description="Regional Doppler weather radar and municipal seismic feeds report calm conditions in your immediate area."
-                source="Open-Meteo & IMD Doppler Feeds · Updated live"
+                source="Open-Meteo & IMD Doppler Feeds · Monitored live"
               />
             )}
           </div>
