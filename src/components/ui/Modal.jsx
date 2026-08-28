@@ -117,7 +117,7 @@ export const Modal = ({
         {/* Header */}
         {(title || showCloseButton) && (
           <div className="flex items-start justify-between gap-4 pb-4 border-b border-salvus-border">
-            <div>
+            <div className="flex-1 min-w-0">
               {title && (
                 <h3
                   id={titleId}

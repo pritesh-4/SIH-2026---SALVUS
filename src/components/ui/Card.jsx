@@ -31,6 +31,7 @@ export const Card = forwardRef(
 
     const variantStyles = {
       default: 'bg-salvus-surface border border-salvus-border',
+      neutral: 'bg-salvus-surface border border-salvus-border',
       elevated: 'bg-salvus-surface-elevated border border-salvus-border shadow-xs',
       subtle: 'bg-salvus-muted/40 border border-salvus-border/70',
       interactive:

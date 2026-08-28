@@ -13,7 +13,7 @@ export const SectionHeader = ({
 }) => {
   return (
     <div className={`flex items-start justify-between gap-4 ${className}`}>
-      <div className="min-w-0">
+      <div className="flex-1 min-w-0">
         <Component className="text-h2 font-bold text-salvus-text-primary tracking-tight leading-snug">
           {title}
         </Component>

@@ -121,7 +121,7 @@ export const CitizenEmergency = () => {
         {isResolved ? (
           <div className="space-y-6 animate-fadeIn">
             <div className="bg-salvus-safe-bg border border-salvus-safe-border rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-md text-salvus-safe-text">
-              <div className="flex items-start gap-4">
+              <div className="flex items-start gap-4 flex-1 min-w-0">
                 <div className="h-14 w-14 rounded-2xl bg-salvus-safe/20 border border-salvus-safe/40 flex items-center justify-center text-3xl shrink-0">
                   ✅
                 </div>

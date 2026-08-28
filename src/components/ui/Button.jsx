@@ -48,6 +48,8 @@ export const Button = forwardRef(
         'bg-transparent border border-salvus-border text-salvus-text-primary hover:bg-salvus-surface-hover hover:border-salvus-border-strong',
       critical:
         'bg-salvus-critical text-white hover:opacity-90 active:scale-[0.99] shadow-xs focus-visible:ring-salvus-critical',
+      danger:
+        'bg-salvus-critical text-white hover:opacity-90 active:scale-[0.99] shadow-xs focus-visible:ring-salvus-critical',
       safe: 'bg-salvus-safe text-white hover:opacity-90 active:scale-[0.99] shadow-xs focus-visible:ring-salvus-safe',
       warning:
         'bg-salvus-warning text-white hover:opacity-90 active:scale-[0.99] shadow-xs focus-visible:ring-salvus-warning',

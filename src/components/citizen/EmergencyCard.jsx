@@ -34,7 +34,7 @@ export const EmergencyCard = ({
         {title}
       </h2>
 
-      <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1.5 max-w-lg leading-relaxed font-normal">
+      <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1.5 max-w-2xl leading-relaxed font-normal">
         {description}
       </p>
 

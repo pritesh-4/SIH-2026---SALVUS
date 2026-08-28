@@ -283,7 +283,7 @@ export const CitizenMap = () => {
         isLocationUnavailable ||
         (!location.latitude && !isLandmarkFallback)) && (
         <div className="mb-5 bg-salvus-surface border border-salvus-border rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-fadeIn">
-          <div className="flex items-start gap-3.5">
+          <div className="flex items-start gap-3.5 flex-1 min-w-0">
             <div className="h-10 w-10 rounded-xl bg-salvus-muted border border-salvus-border flex items-center justify-center text-salvus-text-secondary shrink-0 text-base">
               📍
             </div>

@@ -36,6 +36,7 @@ export const Badge = forwardRef(
       safe: 'bg-salvus-safe-bg text-salvus-safe-text border-salvus-safe-border',
       warning: 'bg-salvus-warning-bg text-salvus-warning-text border-salvus-warning-border',
       critical: 'bg-salvus-critical-bg text-salvus-critical-text border-salvus-critical-border',
+      danger: 'bg-salvus-critical-bg text-salvus-critical-text border-salvus-critical-border',
       info: 'bg-salvus-info-bg text-salvus-info-text border-salvus-info-border',
     }
 
@@ -44,6 +45,7 @@ export const Badge = forwardRef(
       safe: 'bg-salvus-safe',
       warning: 'bg-salvus-warning',
       critical: 'bg-salvus-critical',
+      danger: 'bg-salvus-critical',
       info: 'bg-salvus-info',
     }
 
