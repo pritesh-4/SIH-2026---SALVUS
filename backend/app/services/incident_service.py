@@ -14,6 +14,7 @@ import aiosqlite
 
 from app.models import (
     AITriageAssessment,
+    IncidentAttachmentResponse,
     IncidentCreate,
     IncidentEventResponse,
     IncidentResponse,
@@ -80,6 +81,7 @@ def _row_to_incident(
     row: aiosqlite.Row,
     events: list[dict] | None = None,
     ai_triage: AITriageAssessment | None = None,
+    attachments: list[IncidentAttachmentResponse] | None = None,
 ) -> IncidentResponse:
     """Convert a database row to an IncidentResponse."""
     row_keys = row.keys() if hasattr(row, "keys") else []
@@ -108,9 +110,46 @@ def _row_to_incident(
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         events=[IncidentEventResponse(**e) for e in (events or [])],
+        attachments=attachments or [],
         ai_triage=ai_triage,
         image_data=image_data,
     )
+
+
+async def _get_attachments_for_incident(
+    db: aiosqlite.Connection, incident_id: str
+) -> list[IncidentAttachmentResponse]:
+    """Fetch all active attachments for an incident."""
+    cursor = await db.execute(
+        """
+        SELECT id, incident_id, storage_key, secure_url, thumbnail_url, original_filename,
+               mime_type, size_bytes, width, height, checksum,
+               uploaded_at, uploaded_by, status
+        FROM incident_attachments
+        WHERE incident_id = ? AND status = 'AVAILABLE'
+        ORDER BY uploaded_at ASC
+        """,
+        (incident_id,),
+    )
+    rows = await cursor.fetchall()
+    return [
+        IncidentAttachmentResponse(
+            id=r["id"],
+            incident_id=r["incident_id"],
+            url=r["secure_url"],
+            thumbnail_url=r["thumbnail_url"] if "thumbnail_url" in r.keys() else None,
+            original_filename=r["original_filename"],
+            mime_type=r["mime_type"],
+            size_bytes=r["size_bytes"],
+            width=r["width"],
+            height=r["height"],
+            checksum=r["checksum"],
+            uploaded_at=r["uploaded_at"],
+            uploaded_by=r["uploaded_by"],
+            status=r["status"],
+        )
+        for r in rows
+    ]
 
 
 async def _get_events_for_incident(db: aiosqlite.Connection, incident_id: str) -> list[dict]:
@@ -245,7 +284,7 @@ async def create_incident(
 
 
 async def get_all_incidents(db: aiosqlite.Connection) -> list[IncidentResponse]:
-    """Return all incidents ordered by creation time (newest first), with events & triage."""
+    """Return all incidents ordered by creation time with events, triage & attachments."""
     cursor = await db.execute("SELECT * FROM incidents ORDER BY created_at DESC")
     rows = await cursor.fetchall()
 
@@ -253,12 +292,13 @@ async def get_all_incidents(db: aiosqlite.Connection) -> list[IncidentResponse]:
     for row in rows:
         events = await _get_events_for_incident(db, row["id"])
         triage = await _get_latest_triage(db, row["id"])
-        results.append(_row_to_incident(row, events, triage))
+        attachments = await _get_attachments_for_incident(db, row["id"])
+        results.append(_row_to_incident(row, events, triage, attachments))
     return results
 
 
 async def get_incident_by_id(db: aiosqlite.Connection, incident_id: str) -> IncidentResponse | None:
-    """Return a single incident with its event timeline and latest AI triage, or None."""
+    """Return single incident with event timeline, latest AI triage, and attachments."""
     cursor = await db.execute("SELECT * FROM incidents WHERE id = ?", (incident_id,))
     row = await cursor.fetchone()
     if not row:
@@ -266,7 +306,8 @@ async def get_incident_by_id(db: aiosqlite.Connection, incident_id: str) -> Inci
 
     events = await _get_events_for_incident(db, incident_id)
     triage = await _get_latest_triage(db, incident_id)
-    return _row_to_incident(row, events, triage)
+    attachments = await _get_attachments_for_incident(db, incident_id)
+    return _row_to_incident(row, events, triage, attachments)
 
 
 async def update_incident_status(

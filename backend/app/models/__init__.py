@@ -41,6 +41,13 @@ class IncidentStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class AttachmentStatus(StrEnum):
+    AVAILABLE = "AVAILABLE"
+    PENDING = "PENDING"
+    FAILED = "FAILED"
+    DELETED = "DELETED"
+
+
 class ResponderStatus(StrEnum):
     AVAILABLE = "AVAILABLE"
     ASSIGNED = "ASSIGNED"
@@ -223,8 +230,43 @@ class AITriageSingleResponse(BaseModel):
     data: AITriageAssessment
 
 
+class IncidentAttachmentResponse(BaseModel):
+    """Domain model representing an evidence photo attachment for an incident."""
+
+    id: str
+    incident_id: str
+    url: str = Field(description="Secure accessible URL or provider reference")
+    thumbnail_url: str | None = Field(
+        default=None, description="Transformed thumbnail derivative URL for responsive display"
+    )
+    original_filename: str
+    mime_type: str
+    size_bytes: int
+    width: int | None = None
+    height: int | None = None
+    checksum: str = Field(description="SHA-256 hex digest for integrity and deduplication")
+    uploaded_at: str
+    uploaded_by: str = "citizen"
+    status: str = AttachmentStatus.AVAILABLE.value
+
+
+class AttachmentSingleResponse(BaseModel):
+    """Response envelope for a single incident attachment."""
+
+    success: bool = True
+    data: IncidentAttachmentResponse
+
+
+class AttachmentListResponse(BaseModel):
+    """Response envelope for listing incident attachments."""
+
+    success: bool = True
+    data: list[IncidentAttachmentResponse] = Field(default_factory=list)
+    count: int = 0
+
+
 class IncidentResponse(BaseModel):
-    """Full incident response with event history and optional AI decision support."""
+    """Full incident response with event history, evidence, and optional AI triage."""
 
     id: str
     ticket_id: str
@@ -244,6 +286,7 @@ class IncidentResponse(BaseModel):
     created_at: str
     updated_at: str
     events: list[IncidentEventResponse] = []
+    attachments: list[IncidentAttachmentResponse] = Field(default_factory=list)
     ai_triage: AITriageAssessment | None = None
     image_data: str | None = None
     access_token: str | None = None

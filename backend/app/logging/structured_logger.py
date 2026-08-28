@@ -92,3 +92,43 @@ def log_ai_telemetry(
 
     level = logging.INFO if success else logging.WARNING
     logger.log(level, f"AI_TELEMETRY: {json.dumps(entry)}")
+
+
+def log_attachment_telemetry(
+    incident_id: str,
+    action: str,
+    provider: str,
+    duration_ms: float,
+    success: bool,
+    attachment_id: str | None = None,
+    size_bytes: int | None = None,
+    mime_type: str | None = None,
+    client_ip: str | None = None,
+    actor: str | None = None,
+    error_type: str | None = None,
+) -> None:
+    """Emit structured audit telemetry for incident evidence storage operations."""
+    entry: dict[str, Any] = {
+        "type": "attachment_telemetry",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "incident_id": incident_id,
+        "action": action,
+        "provider": provider,
+        "duration_ms": round(duration_ms, 2),
+        "success": success,
+    }
+    if attachment_id:
+        entry["attachment_id"] = attachment_id
+    if size_bytes is not None:
+        entry["size_bytes"] = size_bytes
+    if mime_type:
+        entry["mime_type"] = mime_type
+    if client_ip:
+        entry["client_ip"] = client_ip
+    if actor:
+        entry["actor"] = actor
+    if error_type:
+        entry["error_type"] = error_type
+
+    level = logging.INFO if success else logging.WARNING
+    logger.log(level, f"ATTACHMENT_AUDIT: {json.dumps(entry)}")

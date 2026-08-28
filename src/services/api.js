@@ -180,6 +180,90 @@ export const updateIncidentStatus = async (incidentId, status, actor = 'authorit
   }
 }
 
+/**
+ * Upload an evidence photo attachment to an incident report via multipart/form-data.
+ */
+export const uploadIncidentAttachment = async (incidentId, file) => {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await apiClient.post(`/api/incidents/${incidentId}/attachments`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to upload incident attachment'
+    const code = error.response?.data?.detail?.error?.code || error.code || 'UPLOAD_ERROR'
+    return {
+      success: false,
+      error: { message, code },
+      data: null,
+    }
+  }
+}
+
+/**
+ * Fetch all evidence photo attachments for an incident.
+ */
+export const fetchIncidentAttachments = async (incidentId) => {
+  try {
+    const response = await apiClient.get(`/api/incidents/${incidentId}/attachments`)
+    return {
+      success: true,
+      data: response.data.data || [],
+      count: response.data.count || 0,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to fetch incident attachments'
+    return {
+      success: false,
+      error: { message, code: error.code || 'FETCH_ERROR' },
+      data: [],
+      count: 0,
+    }
+  }
+}
+
+/**
+ * Delete an evidence photo attachment from an incident.
+ */
+export const deleteIncidentAttachment = async (incidentId, attachmentId) => {
+  try {
+    const response = await apiClient.delete(
+      `/api/incidents/${incidentId}/attachments/${attachmentId}`
+    )
+    return {
+      success: true,
+      data: response.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to delete incident attachment'
+    return {
+      success: false,
+      error: { message, code: error.code || 'DELETE_ERROR' },
+      data: null,
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // AI Incident Triage API Calls
 // ---------------------------------------------------------------------------

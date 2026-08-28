@@ -157,6 +157,32 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
     except Exception:
         pass  # Column already exists
 
+    # 7. Incident Attachments Table (Evidence Photos)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS incident_attachments (
+            id TEXT PRIMARY KEY,
+            incident_id TEXT NOT NULL,
+            storage_key TEXT NOT NULL,
+            secure_url TEXT NOT NULL,
+            thumbnail_url TEXT,
+            original_filename TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            width INTEGER,
+            height INTEGER,
+            checksum TEXT NOT NULL,
+            uploaded_at TEXT NOT NULL,
+            uploaded_by TEXT NOT NULL DEFAULT 'citizen',
+            status TEXT NOT NULL DEFAULT 'AVAILABLE',
+            FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
+        )
+    """)
+
+    try:
+        await db.execute("ALTER TABLE incident_attachments ADD COLUMN thumbnail_url TEXT")
+    except Exception:
+        pass  # Column already exists
+
     # Indexes for high-performance spatial & status queries
     await db.execute("CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)")
     await db.execute(
@@ -183,6 +209,14 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_assignments_responder ON assignments(responder_id)"
     )
     await db.execute("CREATE INDEX IF NOT EXISTS idx_assignments_status ON assignments(status)")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_incident_attachments_incident_id "
+        "ON incident_attachments(incident_id)"
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_incident_attachments_checksum "
+        "ON incident_attachments(checksum)"
+    )
 
     await db.commit()
-    print("[DB] Migrations complete with triage audit and assignment tables.")
+    print("[DB] Migrations complete with triage audit, assignments, and attachment tables.")

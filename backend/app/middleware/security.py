@@ -8,8 +8,9 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-# Maximum permitted payload size for incoming JSON / POST bodies (5MB)
-MAX_CONTENT_LENGTH_BYTES = 5 * 1024 * 1024
+# Maximum permitted payload size for incoming JSON bodies (5MB) and photo attachments (15MB)
+DEFAULT_JSON_MAX_BYTES = 5 * 1024 * 1024
+DEFAULT_ATTACHMENT_MAX_BYTES = 15 * 1024 * 1024
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -53,7 +54,11 @@ class PayloadLimitMiddleware(BaseHTTPMiddleware):
         if content_length:
             try:
                 length = int(content_length)
-                if length > MAX_CONTENT_LENGTH_BYTES:
+                is_attachment_route = "/attachments" in request.url.path
+                max_bytes = (
+                    DEFAULT_ATTACHMENT_MAX_BYTES if is_attachment_route else DEFAULT_JSON_MAX_BYTES
+                )
+                if length > max_bytes:
                     return JSONResponse(
                         status_code=413,
                         content={
@@ -62,7 +67,7 @@ class PayloadLimitMiddleware(BaseHTTPMiddleware):
                                 "code": "PAYLOAD_TOO_LARGE",
                                 "message": (
                                     f"Request entity exceeds maximum permitted limit "
-                                    f"({MAX_CONTENT_LENGTH_BYTES // (1024 * 1024)}MB)."
+                                    f"({max_bytes // (1024 * 1024)}MB)."
                                 ),
                             },
                         },
