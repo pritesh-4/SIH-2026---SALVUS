@@ -338,16 +338,19 @@ export const getCurrentLocation = async (options = {}) => {
         let errorMessage
 
         switch (error.code) {
+          case 1:
           case error.PERMISSION_DENIED:
             permission = 'DENIED'
             status = 'DENIED'
             errorMessage = 'Location access is off.'
             break
+          case 2:
           case error.POSITION_UNAVAILABLE:
             permission = 'UNAVAILABLE'
             status = 'UNAVAILABLE'
             errorMessage = 'Your browser cannot provide location right now.'
             break
+          case 3:
           case error.TIMEOUT:
             permission = 'PROMPT'
             status = 'TIMEOUT'

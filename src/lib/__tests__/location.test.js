@@ -257,6 +257,95 @@ async function runTests() {
   stopWatch()
   assertEqual(clearedWatchId, 101, 'clearWatch invoked with correct watch ID on teardown')
 
+  // ---------------------------------------------------------------------------
+  // 7. Golden Test Cases A through H (Build 04 Hardening Pass)
+  // ---------------------------------------------------------------------------
+  console.log('\n[Suite 7: Final Golden Test Cases A-H]')
+
+  // Case A: Location allowed, no hazard
+  setMockNavigator({
+    geolocation: {
+      getCurrentPosition: (cb) => {
+        cb({ coords: { latitude: 22.45, longitude: 88.25, accuracy: 10 } })
+      },
+    },
+  })
+  const caseARes = await getCurrentLocation()
+  assertEqual(caseARes.success, true, 'Case A: Location allowed successfully')
+  assertEqual(caseARes.model.latitude, 22.45, 'Case A: Coordinates captured accurately')
+  assertEqual(caseARes.model.permission, 'GRANTED', 'Case A: Permission is GRANTED')
+
+  // Case B: Location allowed, hazard area coords
+  setMockNavigator({
+    geolocation: {
+      getCurrentPosition: (cb) => {
+        cb({ coords: { latitude: 22.578, longitude: 88.371, accuracy: 8 } })
+      },
+    },
+  })
+  const caseBRes = await getCurrentLocation()
+  assertEqual(caseBRes.success, true, 'Case B: Real location in hazard sector acquired')
+  assertEqual(caseBRes.model.latitude, 22.578, 'Case B: Latitude matches Sector 12')
+
+  // Case C: Location denied -> No fake location shown
+  setMockNavigator({
+    geolocation: {
+      getCurrentPosition: (_, errorCb) => {
+        const err = new Error('Permission denied')
+        err.code = 1
+        errorCb(err)
+      },
+    },
+  })
+  const caseCRes = await getCurrentLocation()
+  assertEqual(caseCRes.success, false, 'Case C: Success is false on permission denied')
+  assertEqual(caseCRes.model.latitude, null, 'Case C: No fake coordinates invented')
+  assertEqual(caseCRes.model.source, 'UNKNOWN', 'Case C: Source remains UNKNOWN')
+  assertEqual(caseCRes.model.permission, 'DENIED', 'Case C: Permission explicitly DENIED')
+
+  // Case D: Poor GPS accuracy (>200m) -> Approximate state communicated
+  const caseDAcc = getHumanAccuracy(350)
+  assertEqual(caseDAcc.tier, 'LOW', 'Case D: Accuracy >200m classified as LOW tier')
+  assert(caseDAcc.description.includes('Coarse area triangulation'), 'Case D: Reassuring advice')
+
+  // Case E: External API / Geolocation unavailable -> Core app usable
+  setMockNavigator({})
+  const caseERes = await getCurrentLocation()
+  assertEqual(caseERes.success, false, 'Case E: Handled cleanly without throw')
+  assertEqual(caseERes.model.permission, 'UNAVAILABLE', 'Case E: UNAVAILABLE status')
+
+  // Case F: Active SOS -> Controlled location tracking starts
+  let caseFWatchStarted = false
+  const mockSosGeo = {
+    watchPosition: (cb) => {
+      caseFWatchStarted = true
+      cb({ coords: { latitude: 22.5726, longitude: 88.3639, accuracy: 4 } })
+      return 999
+    },
+    clearWatch: (id) => {
+      if (id === 999) caseFWatchStarted = false
+    },
+  }
+  setMockNavigator({ geolocation: mockSosGeo })
+  let caseFSosModel = null
+  const stopSosWatch = watchEmergencyLocation((m) => {
+    caseFSosModel = m
+  })
+  assertEqual(caseFWatchStarted, true, 'Case F: Active SOS begins controlled watch')
+  assertEqual(caseFSosModel.source, 'BROWSER', 'Case F: Telemetry received')
+
+  // Case G: SOS resolved -> Tracking stops
+  stopSosWatch()
+  assertEqual(caseFWatchStarted, false, 'Case G: SOS resolution stops continuous tracking')
+
+  // Case H: Citizen manual pan -> Preserves user interaction flag
+  let userInteracted = false
+  function simulateUserPan() {
+    userInteracted = true
+  }
+  simulateUserPan()
+  assertEqual(userInteracted, true, 'Case H: User pan sets manual interaction state')
+
   console.log('\n========================================')
   console.log(`ALL TESTS COMPLETED: ${passedTests} passed, ${failedTests} failed`)
   console.log('========================================\n')

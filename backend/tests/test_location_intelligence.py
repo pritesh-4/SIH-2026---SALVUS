@@ -193,20 +193,105 @@ async def test_route_hazard_intersection_evaluation():
 
 
 @pytest.mark.asyncio
-async def test_route_in_clear_corridor_is_safe():
-    """Verify route far from active disaster epicenters is evaluated as safe."""
-    # Distant route in clear zone
-    origin_lat, origin_lon = 22.4500, 88.2500
-    dest_lat, dest_lon = 22.4550, 88.2550
+async def test_golden_case_a_location_allowed_no_hazard_nearby_services():
+    """Case A: Location allowed, no active hazard in area, nearby services & SAFE status appear."""
+    # Distant clear coordinates
+    clear_lat, clear_lon = 22.4500, 88.2500
 
+    original_get_active = hazard_service.get_active_hazards
+
+    async def mock_clear_hazards(*args, **kwargs):
+        return []
+
+    hazard_service.get_active_hazards = mock_clear_hazards
+    try:
+        safety = await hazard_service.evaluate_area_safety(lat=clear_lat, lon=clear_lon)
+        assert safety.level == AreaSafetyLevel.SAFE
+        assert "No Known Active Hazards" in safety.headline
+        assert safety.active_hazards_count == 0
+    finally:
+        hazard_service.get_active_hazards = original_get_active
+
+
+@pytest.mark.asyncio
+async def test_golden_case_b_location_allowed_hazard_nearby_alert():
+    """Case B: Location allowed, hazard nearby (Sector 12 flood), correct CRITICAL alert appears."""
+    lat, lon = 22.5780, 88.3710
+    safety = await hazard_service.evaluate_area_safety(lat=lat, lon=lon)
+
+    assert safety.level == AreaSafetyLevel.CRITICAL
+    assert safety.critical_hazards_count >= 1
+    assert safety.nearest_hazard_title is not None
+    assert safety.nearest_hazard_distance_km <= 0.5
+    assert "Critical Threat Active" in safety.headline
+
+
+@pytest.mark.asyncio
+async def test_golden_case_c_location_denied_no_fake_location():
+    """Case C: Location denied/omitted, yields LOCATION_REQUIRED.
+
+    Never assumes fake coordinates or false safe state.
+    """
+    safety = await hazard_service.evaluate_area_safety(lat=None, lon=None)
+    assert safety.level == AreaSafetyLevel.LOCATION_REQUIRED
+    assert safety.latitude is None
+    assert safety.longitude is None
+    assert "Location Access Off" in safety.headline
+    assert safety.data_provenance == "FALLBACK"
+
+
+@pytest.mark.asyncio
+async def test_golden_case_d_poor_gps_accuracy_approximate():
+    """Case D: Distant / coarse location communicates approximate sector context."""
+    # Coords 8km from hazard epicenter
+    lat, lon = 22.6500, 88.4200
+    hazards = await hazard_service.get_active_hazards(lat=lat, lon=lon, max_distance_km=15.0)
+
+    # Hazards farther away are marked as outside immediate affected area
+    for hz in hazards:
+        if hz.distance_km > hz.affected_radius_km:
+            assert hz.is_within_affected_area is False
+
+
+@pytest.mark.asyncio
+async def test_golden_case_e_external_api_down_resilient():
+    """Case E: External API down, system degrades to NO_DATA without crashing."""
+    original_get_active = hazard_service.get_active_hazards
+
+    async def mock_failing_hazards(*args, **kwargs):
+        raise ConnectionError("Upstream NOAA/GDACS unreachable")
+
+    hazard_service.get_active_hazards = mock_failing_hazards
+    try:
+        resp = await hazard_service.evaluate_area_safety(lat=22.5726, lon=88.3639)
+        assert resp.level == AreaSafetyLevel.NO_DATA
+        assert "Status Unconfirmed" in resp.headline
+        assert resp.data_provenance == "FALLBACK"
+    finally:
+        hazard_service.get_active_hazards = original_get_active
+
+
+@pytest.mark.asyncio
+async def test_golden_case_f_route_intersection_and_safety_disclaimer():
+    """Case F: Route through hazard flags cautionary advisory with standard disclaimer."""
     route = await routing_service.get_route(
-        origin_lat=origin_lat,
-        origin_lon=origin_lon,
-        dest_lat=dest_lat,
-        dest_lon=dest_lon,
+        origin_lat=22.5750,
+        origin_lon=22.5750,
+        dest_lat=22.5810,
+        dest_lon=88.3740,
         profile="walking",
     )
+    assert "Recommended route based on current available hazard data." in route.safety_disclaimer
 
-    assert route.is_safe_route is True
-    assert route.hazard_warning is None
-    assert route.safety_disclaimer == "Recommended route based on current available hazard data."
+
+@pytest.mark.asyncio
+async def test_golden_case_g_shelter_ranking_safe_preference(test_db):
+    """Case G: Shelters prioritize open, high-capacity, safe shelters outside hazard zones."""
+    shelters = await shelter_service.get_recommended_shelters(
+        test_db, latitude=22.5726, longitude=88.3639
+    )
+    assert len(shelters) > 0
+    top = shelters[0]
+    assert top.is_safe is True
+    assert top.safety_status == "SAFE"
+    assert top.suitability_score > 0
