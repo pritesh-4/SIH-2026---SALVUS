@@ -849,6 +849,7 @@ export const fetchNearbyPlaces = async ({
   radius = 2000,
   categories = null,
   includeVerified = true,
+  safePlacesOnly = false,
 }) => {
   try {
     const params = {
@@ -856,6 +857,7 @@ export const fetchNearbyPlaces = async ({
       lng,
       radius,
       include_verified: includeVerified,
+      safe_places_only: safePlacesOnly,
     }
     if (categories && categories.length > 0) {
       params.categories = Array.isArray(categories) ? categories.join(',') : categories
@@ -867,8 +869,12 @@ export const fetchNearbyPlaces = async ({
       data: response.data.data || [],
       count: response.data.count || 0,
       cached: response.data.cached || false,
+      freshness: response.data.freshness || 'FRESH',
+      status: response.data.status || 'OK',
       queryCenter: response.data.query_center,
       radiusMeters: response.data.radius_meters,
+      searchedRadiusKm: response.data.searched_radius_km,
+      fetchedAt: response.data.fetched_at,
     }
   } catch (error) {
     const message =
@@ -881,6 +887,44 @@ export const fetchNearbyPlaces = async ({
       error: { message, code: error.code || 'PLACES_UNAVAILABLE' },
       data: [],
       count: 0,
+      freshness: 'UNAVAILABLE',
+    }
+  }
+}
+
+/**
+ * Calculate on-demand turn-by-turn route to a specific selected place.
+ */
+export const fetchPlaceRoute = async ({
+  placeId,
+  originLat,
+  originLon,
+  profile = 'walking',
+  radius = 5000,
+}) => {
+  try {
+    const response = await apiClient.get(`/api/places/${encodeURIComponent(placeId)}/route`, {
+      params: {
+        origin_lat: originLat,
+        origin_lon: originLon,
+        profile,
+        radius,
+      },
+    })
+    return {
+      success: true,
+      data: response.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Route calculation temporarily unavailable.'
+    return {
+      success: false,
+      error: { message, code: error.code || 'ROUTE_UNAVAILABLE' },
+      data: null,
     }
   }
 }
