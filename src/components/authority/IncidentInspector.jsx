@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { AiTriageAssessmentCard } from './AiTriageAssessmentCard'
 import { DispatchRecommendationPanel } from './DispatchRecommendationPanel'
+import { EvidenceLightboxModal } from './EvidenceLightboxModal'
 import { getSeverityBadge, getStatusBadge } from '../../features/authority/incidents/incidentUtils'
+import { formatFileSize } from '../../lib/attachmentUtils'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -44,6 +47,9 @@ export const IncidentInspector = ({
   onReevaluateTriage,
   onTransitionStatus,
 }) => {
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0)
+
   if (!selectedIncident) {
     return (
       <div className="py-24 text-center text-xs text-salvus-text-muted space-y-2">
@@ -63,6 +69,11 @@ export const IncidentInspector = ({
 
   const sev = getSeverityBadge(selectedIncident.severity)
   const stat = getStatusBadge(selectedIncident.status)
+
+  const handleOpenPhoto = (index) => {
+    setSelectedPhotoIndex(index)
+    setIsLightboxOpen(true)
+  }
 
   return (
     <div className="space-y-3 flex-1 flex flex-col justify-between">
@@ -124,6 +135,47 @@ export const IncidentInspector = ({
             </span>
           </div>
         </div>
+
+        {/* Incident Evidence Photos (If Available) */}
+        {selectedIncident.attachments && selectedIncident.attachments.length > 0 && (
+          <div className="bg-salvus-muted/40 border border-salvus-border p-3 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-salvus-text-muted uppercase tracking-wider block flex items-center gap-1.5">
+                <span aria-hidden="true">📷</span>
+                <span>Photo Evidence ({selectedIncident.attachments.length})</span>
+              </span>
+              <Badge variant="warning" size="sm">
+                Citizen-provided
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {selectedIncident.attachments.map((att, idx) => (
+                <button
+                  key={att.id}
+                  type="button"
+                  onClick={() => handleOpenPhoto(idx)}
+                  className="group bg-salvus-surface border border-salvus-border hover:border-salvus-text-primary p-2 rounded-lg flex items-center gap-2.5 transition-all text-xs cursor-pointer overflow-hidden shadow-2xs text-left w-full"
+                  title={`Inspect full evidence photo: ${att.original_filename}`}
+                >
+                  <img
+                    src={att.thumbnail_url || att.url}
+                    alt={att.original_filename}
+                    className="w-10 h-10 rounded-md object-cover border border-salvus-border shrink-0 group-hover:scale-105 transition-transform"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <strong className="text-salvus-text-primary font-semibold block truncate group-hover:text-salvus-info transition-colors text-[11px]">
+                      {att.original_filename}
+                    </strong>
+                    <span className="text-salvus-text-muted text-[10px] block font-mono">
+                      {formatFileSize(att.size_bytes)} · Click to inspect
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* AI Triage & Assessment Card */}
         <AiTriageAssessmentCard
@@ -398,6 +450,15 @@ export const IncidentInspector = ({
           </div>
         )}
       </div>
+
+      {/* Operational Evidence Lightbox & Review Modal */}
+      <EvidenceLightboxModal
+        isOpen={isLightboxOpen}
+        onClose={() => setIsLightboxOpen(false)}
+        incident={selectedIncident}
+        attachments={selectedIncident.attachments || []}
+        initialIndex={selectedPhotoIndex}
+      />
     </div>
   )
 }

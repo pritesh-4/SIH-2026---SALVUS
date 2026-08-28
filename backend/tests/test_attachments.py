@@ -8,8 +8,10 @@ import pytest
 
 from app.auth.jwt_handler import UserRole, create_access_token
 from app.db import get_database
+from app.models import AIVisionAssessment, AIVisionObservation
 from app.security.rate_limiter import AttachmentRateLimiter
 from app.services import attachment_service
+from app.services.vision_service import VisionService
 from app.storage.cloudinary import CloudinaryStorageProvider
 
 # Minimal 1x1 pixel test binary image fixtures
@@ -840,3 +842,61 @@ class TestCloudinaryProvider:
             "https://res.cloudinary.com/salvus-cloud/image/upload/"
             "c_fill,g_auto,w_400,h_300,q_auto,f_auto/evidence_key"
         )
+
+
+# ---------------------------------------------------------------------------
+# 13. AI-Vision Readiness Contract & Invariants
+# ---------------------------------------------------------------------------
+
+
+class TestAIVisionReadiness:
+    """Test normalized AI-Vision schema, disclaimer assertions, and decision support guarantees."""
+
+    def test_ai_vision_assessment_model_defaults(self):
+        assessment = AIVisionAssessment(
+            hazard_type="flood",
+            observations=[
+                AIVisionObservation(
+                    category="water_depth",
+                    description="Water submerged road up to vehicle tire line",
+                    confidence=0.85,
+                )
+            ],
+            water_depth_estimate="0.4m - 0.7m",
+            damage_severity_hint="HIGH",
+            confidence=0.88,
+        )
+
+        assert assessment.hazard_detected is True
+        assert assessment.hazard_type == "flood"
+        assert len(assessment.observations) == 1
+        assert assessment.disclaimer == "AI ESTIMATE — UNVERIFIED DECISION SUPPORT ONLY"
+        assert assessment.confidence == 0.88
+
+    def test_vision_service_unverified_assessment_factory(self):
+        assessment = VisionService.create_unverified_assessment(
+            hazard_type="fire",
+            observations=[
+                {"category": "smoke", "description": "Dark plumes visible", "confidence": 0.9}
+            ],
+            confidence=0.92,
+            uncertainty_flags=["HIGH_SMOKE_OCCLUSION"],
+        )
+
+        assert assessment.hazard_type == "fire"
+        assert assessment.confidence == 0.92
+        assert "HIGH_SMOKE_OCCLUSION" in assessment.uncertainty_flags
+        assert "UNVERIFIED" in assessment.disclaimer
+        assert assessment.analyzed_at is not None
+
+    @pytest.mark.asyncio
+    async def test_vision_service_contract_consumption(self):
+        assessment = await VisionService.analyze_incident_attachment_contract(
+            attachment_id="att-test-123",
+            storage_key="salvus_incidents/test_key.jpg",
+            incident_type="structural",
+        )
+
+        assert assessment.hazard_type == "structural"
+        assert "AWAITING_HUMAN_TRIAGE" in assessment.uncertainty_flags
+        assert assessment.disclaimer == "AI ESTIMATE — UNVERIFIED DECISION SUPPORT ONLY"

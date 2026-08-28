@@ -248,6 +248,73 @@ class IncidentAttachmentResponse(BaseModel):
     uploaded_at: str
     uploaded_by: str = "citizen"
     status: str = AttachmentStatus.AVAILABLE.value
+    vision_assessment: AIVisionAssessment | None = Field(
+        default=None,
+        description="Future multimodal AI vision decision support assessment (unverified)",
+    )
+
+
+class AIVisionObservation(BaseModel):
+    """Specific visual observation extracted from incident evidence."""
+
+    category: str = Field(
+        description="Observation classification (e.g. water_level, debris, structural, flame)"
+    )
+    description: str = Field(description="Descriptive explanation of the observed visual feature")
+    confidence: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Confidence score from 0.0 to 1.0"
+    )
+
+
+class AIVisionAssessment(BaseModel):
+    """Normalized AI Vision inference contract for multimodal evidence evaluation.
+
+    STRICT GUARANTEE: This model represents unverified visual decision support.
+    It must NEVER directly trigger autonomous responder dispatch, status changes,
+    or incident resolution.
+    """
+
+    hazard_detected: bool = Field(
+        default=True, description="Whether hazardous conditions were identified"
+    )
+    hazard_type: str = Field(
+        description="Primary detected hazard classification (e.g. flood, fire, structural)"
+    )
+    observations: list[AIVisionObservation] = Field(
+        default_factory=list, description="Granular visual observations extracted from photo"
+    )
+    water_depth_estimate: str | None = Field(
+        default=None,
+        description="Human-calibrated depth estimate (e.g., '0.5m - 1.0m (approx knee-depth)')",
+    )
+    damage_severity_hint: str | None = Field(
+        default=None, description="Heuristic damage severity hint (e.g., 'MODERATE', 'SEVERE')"
+    )
+    confidence: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Overall confidence level of visual assessment"
+    )
+    uncertainty_flags: list[str] = Field(
+        default_factory=list,
+        description="Flags indicating low resolution, occlusions, glare, or ambiguities",
+    )
+    analyzed_at: str | None = Field(
+        default=None, description="ISO timestamp when image was processed"
+    )
+    model_version: str | None = Field(
+        default=None, description="Vision model identifier (e.g., gemini-1.5-flash)"
+    )
+    disclaimer: str = Field(
+        default="AI ESTIMATE — UNVERIFIED DECISION SUPPORT ONLY",
+        description="Mandatory disclaimer affirming this is non-authoritative decision support",
+    )
+
+
+class AIVisionResponse(BaseModel):
+    """API envelope for future vision analysis results."""
+
+    success: bool = True
+    attachment_id: str
+    data: AIVisionAssessment
 
 
 class AttachmentSingleResponse(BaseModel):

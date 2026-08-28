@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { createIncident } from '../../services/api'
+import { createIncident, uploadIncidentAttachment } from '../../services/api'
 import { useLocation } from '../../hooks/useLocation'
 import { getCurrentLocation, createLandmarkLocation, LANDMARKS } from '../../lib/location'
+import { validateAttachmentFile, formatFileSize, revokePreviewUrl } from '../../lib/attachmentUtils'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Input, Textarea, FormField } from '../ui/Input'
@@ -29,8 +30,15 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
   const [reporterName, setReporterName] = useState(() => draft?.reporterName || '')
   const [reporterPhone, setReporterPhone] = useState(() => draft?.reporterPhone || '')
   const [affectedCount, setAffectedCount] = useState(() => draft?.affectedCount || 1)
-  const [photoAttached, setPhotoAttached] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Normalized photo attachment state
+  const [selectedPhoto, setSelectedPhoto] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
+  const [photoValidationError, setPhotoValidationError] = useState(null)
+  const [photoUploadError, setPhotoUploadError] = useState(null)
+  const [submissionPhase, setSubmissionPhase] = useState('IDLE')
+  // 'IDLE' | 'CREATING_REPORT' | 'UPLOADING_PHOTO' | 'FINALIZING' | 'SUCCESS' | 'PHOTO_FAILED' | 'ERROR'
+
   const [submissionError, setSubmissionError] = useState(null)
   const [createdIncident, setCreatedIncident] = useState(null)
 
@@ -44,15 +52,30 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
   const [isAcquiringLocation, setIsAcquiringLocation] = useState(false)
   const [selectedLandmarkName, setSelectedLandmarkName] = useState(LANDMARKS[0].name)
   const reportModalRef = useRef(null)
+  const fileInputRef = useRef(null)
+
+  // Revoke preview URL on unmount or URL replacement
+  useEffect(() => {
+    return () => {
+      revokePreviewUrl(previewUrl)
+    }
+  }, [previewUrl])
 
   const handleResetAndClose = useCallback(() => {
+    revokePreviewUrl(previewUrl)
+    setPreviewUrl(null)
+    setSelectedPhoto(null)
+    setPhotoValidationError(null)
+    setPhotoUploadError(null)
     setStep(1)
-    setPhotoAttached(false)
-    setIsSubmitting(false)
+    setSubmissionPhase('IDLE')
     setSubmissionError(null)
     setCreatedIncident(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
     onClose?.()
-  }, [onClose])
+  }, [onClose, previewUrl])
 
   // Escape key & body scroll lock
   useEffect(() => {
@@ -74,6 +97,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     }
   }, [isOpen, handleResetAndClose])
 
+  // Save safe textual draft only (never persist image binaries in sessionStorage)
   useEffect(() => {
     if (step < 3) {
       try {
@@ -132,43 +156,155 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     }
   }
 
+  // Handle Photo selection from native file / camera picker
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const validation = validateAttachmentFile(file)
+    if (!validation.valid) {
+      setPhotoValidationError(validation.error)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    setPhotoValidationError(null)
+    setPhotoUploadError(null)
+
+    // Revoke previous object URL if any
+    revokePreviewUrl(previewUrl)
+
+    const objectUrl = URL.createObjectURL(file)
+    setPreviewUrl(objectUrl)
+    setSelectedPhoto(file)
+  }
+
+  // Remove photo selection
+  const handleRemovePhoto = () => {
+    revokePreviewUrl(previewUrl)
+    setPreviewUrl(null)
+    setSelectedPhoto(null)
+    setPhotoValidationError(null)
+    setPhotoUploadError(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   const categories = [
-    { id: 'flood', label: 'Flash Flood / Deep Water', icon: '🌊', type: 'flood' },
-    { id: 'hazard', label: 'Blocked Road / Debris', icon: '🚧', type: 'hazard' },
-    { id: 'power_line', label: 'Downed Power Lines', icon: '⚡', type: 'power_line' },
-    { id: 'structural', label: 'Structural Hazard', icon: '🏚️', type: 'structural' },
-    { id: 'medical', label: 'Medical Assistance', icon: '🚑', type: 'medical' },
+    {
+      id: 'flood',
+      label: 'Flash Flood / Deep Water',
+      icon: '🌊',
+      type: 'flood',
+    },
+    {
+      id: 'hazard',
+      label: 'Blocked Road / Debris',
+      icon: '🚧',
+      type: 'hazard',
+    },
+    {
+      id: 'power_line',
+      label: 'Downed Power Lines',
+      icon: '⚡',
+      type: 'power_line',
+    },
+    {
+      id: 'structural',
+      label: 'Structural Hazard',
+      icon: '🏚️',
+      type: 'structural',
+    },
+    {
+      id: 'medical',
+      label: 'Medical Assistance',
+      icon: '🚑',
+      type: 'medical',
+    },
     { id: 'fire', label: 'Fire / Chemical Hazard', icon: '🔥', type: 'fire' },
   ]
 
+  // Submit hazard report and orchestrate evidence photo upload
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (isSubmitting) return
+    if (submissionPhase === 'CREATING_REPORT' || submissionPhase === 'UPLOADING_PHOTO') {
+      return
+    }
 
-    setIsSubmitting(true)
     setSubmissionError(null)
+    setPhotoUploadError(null)
 
     const selectedCat = categories.find((c) => c.id === category)
     const incidentType = selectedCat?.type || 'flood'
 
-    const result = await createIncident({
-      type: incidentType,
-      severity: severity.toUpperCase(),
-      description:
-        description.trim() ||
-        `${selectedCat?.label || 'Hazard'} reported at ${locationData.address || locationData.coordinates}`,
-      reporter_name: reporterName.trim() || 'Community Member',
-      reporter_phone: reporterPhone.trim() || null,
-      latitude: locationData.latitude,
-      longitude: locationData.longitude,
-      affected_count: Math.max(1, Number(affectedCount) || 1),
-      is_sos: false,
-    })
+    // Step 1: Create incident record
+    let incident = createdIncident
+    if (!incident) {
+      setSubmissionPhase('CREATING_REPORT')
+      const result = await createIncident({
+        type: incidentType,
+        severity: severity.toUpperCase(),
+        description:
+          description.trim() ||
+          `${selectedCat?.label || 'Hazard'} reported at ${locationData.address || locationData.coordinates}`,
+        reporter_name: reporterName.trim() || 'Community Member',
+        reporter_phone: reporterPhone.trim() || null,
+        latitude: locationData.latitude,
+        longitude: locationData.longitude,
+        affected_count: Math.max(1, Number(affectedCount) || 1),
+        is_sos: false,
+      })
 
-    setIsSubmitting(false)
+      if (!result.success || !result.data) {
+        setSubmissionPhase('ERROR')
+        setSubmissionError(
+          result.error?.message ||
+            'Unable to submit hazard report. Please check connection and try again.'
+        )
+        return
+      }
 
-    if (result.success && result.data) {
-      setCreatedIncident(result.data)
+      incident = result.data
+      setCreatedIncident(incident)
+    }
+
+    // Step 2: If a photo is attached, upload it
+    if (selectedPhoto) {
+      setSubmissionPhase('UPLOADING_PHOTO')
+      const uploadResult = await uploadIncidentAttachment(incident.id, selectedPhoto)
+
+      if (!uploadResult.success) {
+        setSubmissionPhase('PHOTO_FAILED')
+        setPhotoUploadError(
+          uploadResult.error?.message ||
+            'Photo could not be uploaded due to a storage or network error.'
+        )
+        return
+      }
+    }
+
+    // Step 3: Complete report submission
+    setSubmissionPhase('SUCCESS')
+    setStep(3)
+    try {
+      sessionStorage.removeItem(DRAFT_STORAGE_KEY)
+    } catch {
+      // Ignore storage error
+    }
+  }
+
+  // Retry photo upload after partial failure
+  const handleRetryPhotoUpload = async () => {
+    if (!createdIncident || !selectedPhoto) return
+
+    setSubmissionPhase('UPLOADING_PHOTO')
+    setPhotoUploadError(null)
+
+    const uploadResult = await uploadIncidentAttachment(createdIncident.id, selectedPhoto)
+
+    if (uploadResult.success) {
+      setSubmissionPhase('SUCCESS')
       setStep(3)
       try {
         sessionStorage.removeItem(DRAFT_STORAGE_KEY)
@@ -176,14 +312,29 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
         // Ignore storage error
       }
     } else {
-      setSubmissionError(
-        result.error?.message ||
-          'Unable to submit hazard report. Please check connection and try again.'
+      setSubmissionPhase('PHOTO_FAILED')
+      setPhotoUploadError(
+        uploadResult.error?.message ||
+          'Photo could not be uploaded due to a storage or network error.'
       )
     }
   }
 
+  // Proceed to success if user chooses not to retry photo upload
+  const handleContinueWithoutPhoto = () => {
+    setSubmissionPhase('SUCCESS')
+    setStep(3)
+    try {
+      sessionStorage.removeItem(DRAFT_STORAGE_KEY)
+    } catch {
+      // Ignore storage error
+    }
+  }
+
   if (!isOpen) return null
+
+  const isSubmitting =
+    submissionPhase === 'CREATING_REPORT' || submissionPhase === 'UPLOADING_PHOTO'
 
   return (
     <div
@@ -192,7 +343,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
       aria-labelledby="report-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn"
       onClick={(e) => {
-        if (e.target === e.currentTarget) {
+        if (e.target === e.currentTarget && !isSubmitting) {
           handleResetAndClose()
         }
       }}
@@ -206,7 +357,8 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
         <button
           type="button"
           onClick={handleResetAndClose}
-          className="absolute top-5 right-5 text-salvus-text-muted hover:text-salvus-text-primary text-base font-bold p-1 cursor-pointer select-none"
+          disabled={isSubmitting}
+          className="absolute top-5 right-5 text-salvus-text-muted hover:text-salvus-text-primary text-base font-bold p-1 cursor-pointer select-none disabled:opacity-50"
           aria-label="Close modal"
         >
           ✕
@@ -265,6 +417,17 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
 
         {step === 2 && (
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Hidden native camera / file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              className="hidden"
+              aria-label="Select or capture incident evidence photo"
+              onChange={handleFileSelect}
+            />
+
             <div className="flex items-center gap-2 mb-1">
               <Badge variant="neutral">Step 2 of 2</Badge>
             </div>
@@ -275,12 +438,48 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
               Hazard Details & Location
             </h2>
 
+            {/* General Submission Error */}
             {submissionError && (
-              <div className="bg-salvus-critical-bg border border-salvus-critical-border rounded-xl p-3 text-xs text-salvus-critical flex items-center justify-between">
+              <div className="bg-salvus-critical-bg border border-salvus-critical-border rounded-xl p-3 text-xs text-salvus-critical flex items-center justify-between gap-2">
                 <span>{submissionError}</span>
-                <Button variant="critical" size="sm" onClick={handleSubmit}>
+                <Button variant="critical" size="sm" onClick={handleSubmit} type="button">
                   Retry
                 </Button>
+              </div>
+            )}
+
+            {/* Partial Failure: Incident created, but photo upload failed */}
+            {submissionPhase === 'PHOTO_FAILED' && (
+              <div className="bg-salvus-warning-bg border border-salvus-warning-border rounded-xl p-3.5 space-y-2 text-xs text-salvus-warning-text animate-fadeIn">
+                <div className="font-bold flex items-center gap-1.5">
+                  <span>⚠️</span>
+                  <span>Report submitted, but photo upload failed</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-salvus-text-secondary">
+                  Your incident report{' '}
+                  <strong className="text-salvus-text-primary font-mono">
+                    #{createdIncident?.ticket_id || 'SV-1001'}
+                  </strong>{' '}
+                  has been saved, but the photo could not be attached: {photoUploadError}
+                </p>
+                <div className="flex items-center gap-2 pt-1">
+                  <Button
+                    variant="warning"
+                    size="sm"
+                    type="button"
+                    onClick={handleRetryPhotoUpload}
+                  >
+                    ↻ Retry Photo Upload
+                  </Button>
+                  <Button
+                    variant="quiet"
+                    size="sm"
+                    type="button"
+                    onClick={handleContinueWithoutPhoto}
+                  >
+                    Continue without photo →
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -328,6 +527,82 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
               />
             </FormField>
 
+            {/* Photo Attachment Section */}
+            <div className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-3.5 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-salvus-text-primary flex items-center gap-1.5">
+                  <span aria-hidden="true">📷</span>
+                  <span>Photo Evidence (Optional)</span>
+                </span>
+                {selectedPhoto && (
+                  <Badge variant="safe" size="sm">
+                    Photo Attached
+                  </Badge>
+                )}
+              </div>
+
+              {/* Inline Photo Validation Error */}
+              {photoValidationError && (
+                <div className="bg-salvus-critical-bg border border-salvus-critical-border rounded-lg p-2 text-[11px] text-salvus-critical flex items-center justify-between gap-2 animate-fadeIn">
+                  <span>{photoValidationError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoValidationError(null)}
+                    className="text-salvus-critical font-bold text-xs p-1 cursor-pointer"
+                    aria-label="Dismiss error"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Photo Preview Card OR Add Photo Trigger */}
+              {selectedPhoto && previewUrl ? (
+                <div className="bg-salvus-surface border border-salvus-border p-2 rounded-lg flex items-center justify-between gap-3 animate-fadeIn">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <img
+                      src={previewUrl}
+                      alt="Incident evidence preview"
+                      className="w-12 h-12 rounded-lg object-cover border border-salvus-border shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <span className="text-salvus-text-primary font-semibold text-xs block truncate">
+                        {selectedPhoto.name}
+                      </span>
+                      <span className="text-salvus-text-muted text-[11px] block font-mono">
+                        {formatFileSize(selectedPhoto.size)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    disabled={isSubmitting}
+                    className="text-salvus-critical hover:underline text-xs font-semibold px-2 py-1 cursor-pointer shrink-0 disabled:opacity-50"
+                    aria-label="Remove attached photo"
+                  >
+                    ✕ Remove
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isSubmitting}
+                    className="w-full py-2.5 px-3 rounded-lg border border-dashed border-salvus-border-strong hover:border-salvus-text-primary bg-salvus-surface/80 hover:bg-salvus-surface text-salvus-text-secondary hover:text-salvus-text-primary transition-all cursor-pointer flex items-center justify-center gap-2 text-xs font-semibold disabled:opacity-50"
+                  >
+                    <span aria-hidden="true">📸</span>
+                    <span>Add photo or take picture</span>
+                  </button>
+                  <span className="text-[10px] text-salvus-text-muted mt-1 block text-center">
+                    Accepts JPEG, PNG, or WebP up to 5 MB
+                  </span>
+                </div>
+              )}
+            </div>
+
             {/* Reporter info */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <FormField id="reporter-name" label="Your Name (Optional)">
@@ -366,7 +641,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
             <div className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-3.5 space-y-3 text-xs">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-salvus-text-primary flex items-center gap-1.5">
-                  <span>📍</span>
+                  <span aria-hidden="true">📍</span>
                   <span>
                     {locationData.source === 'LANDMARK' || locationData.isFallback
                       ? 'Landmark Fallback'
@@ -427,21 +702,6 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
                   ))}
                 </select>
               </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-salvus-border">
-                <span className="text-salvus-text-secondary">Attach Photo:</span>
-                <button
-                  type="button"
-                  onClick={() => setPhotoAttached((prev) => !prev)}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                    photoAttached
-                      ? 'bg-salvus-safe-bg text-salvus-safe-text border border-salvus-safe-border'
-                      : 'bg-salvus-surface border border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
-                  }`}
-                >
-                  {photoAttached ? '✓ Photo Attached' : '📷 Add Photo'}
-                </button>
-              </div>
             </div>
 
             {/* Actions */}
@@ -449,8 +709,18 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
               <Button variant="quiet" size="md" onClick={() => setStep(1)} disabled={isSubmitting}>
                 ← Back
               </Button>
-              <Button variant="primary" size="md" type="submit" loading={isSubmitting}>
-                {isSubmitting ? 'Submitting Report...' : 'Submit Hazard Report'}
+              <Button
+                variant="primary"
+                size="md"
+                type="submit"
+                loading={isSubmitting}
+                disabled={isSubmitting}
+              >
+                {submissionPhase === 'CREATING_REPORT'
+                  ? 'Submitting Report...'
+                  : submissionPhase === 'UPLOADING_PHOTO'
+                    ? 'Uploading Photo...'
+                    : 'Submit Hazard Report'}
               </Button>
             </div>
           </form>
@@ -466,7 +736,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
             </h2>
             <p className="text-xs sm:text-sm text-salvus-text-secondary max-w-sm mx-auto leading-relaxed">
               Report ticket{' '}
-              <strong className="text-salvus-text-primary">
+              <strong className="text-salvus-text-primary font-mono">
                 #{createdIncident?.ticket_id || 'SV-1001'}
               </strong>{' '}
               has been shared with coordinators and added to the local safety map. Thank you for
@@ -484,6 +754,12 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
                 <span>Severity:</span>
                 <span className="text-salvus-critical font-bold">
                   {createdIncident?.severity || severity}
+                </span>
+              </div>
+              <div className="flex justify-between text-salvus-text-secondary">
+                <span>Photo Evidence:</span>
+                <span className="text-salvus-text-primary font-semibold">
+                  {selectedPhoto && submissionPhase === 'SUCCESS' ? '✓ Attached' : 'None provided'}
                 </span>
               </div>
               <div className="flex justify-between text-salvus-text-secondary">
