@@ -46,7 +46,7 @@ async def list_hazards(
     return HazardListResponse(
         data=hazards,
         count=len(hazards),
-        source_summary="Open-Meteo Weather Service, USGS Earthquake Hazards Program",
+        source_summary=("SACHET NDMA, GDACS, USGS Earthquakes, Open-Meteo Weather Service"),
         sources=hazard_service.get_source_statuses(),
         sources_health=hazard_service.get_source_health_reports(),
     )

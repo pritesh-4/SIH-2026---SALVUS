@@ -318,7 +318,11 @@ async def test_expired_alerts_excluded_from_active_query():
 
     _hazard_grid_cache[grid_key] = ([expired_alert, active_alert], now + timedelta(minutes=5))
 
-    active_results = await get_active_hazards(lat=22.57, lon=88.36)
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(200, json={"features": [], "alerts": []})
+    )
+    async with httpx.AsyncClient(transport=transport) as client:
+        active_results = await get_active_hazards(lat=22.57, lon=88.36, client=client)
     assert len(active_results) == 1
     assert active_results[0].id == "alt-active-1"
 
@@ -332,7 +336,12 @@ async def test_no_fictional_baseline_alerts_in_production():
         # None of the old hardcoded fake IDs must exist
         assert hz.id not in ("hz-kol-flood-01", "hz-kol-power-02", "hz-kol-cyclone-03")
         # Every alert must originate from an authentic integration
-        assert hz.source in ("Open-Meteo Weather Service", "USGS Earthquake Hazards Program")
+        assert hz.source in (
+            "Open-Meteo Weather Service",
+            "USGS Earthquake Hazards Program",
+            "SACHET / NDMA India",
+            "GDACS (UN / EU)",
+        )
         assert hz.provenance in (AlertProvenance.LIVE, AlertProvenance.CACHED)
 
 

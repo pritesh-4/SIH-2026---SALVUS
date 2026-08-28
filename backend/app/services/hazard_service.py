@@ -1,26 +1,36 @@
-"""External Disaster Intelligence & Normalized Alert Domain Service.
+"""External Disaster Intelligence & Normalized Alert Domain Service (Phase 2).
 
-Ingests, normalizes, deduplicates, and caches multi-source environmental disaster signals:
-1. Open-Meteo: Real-time precipitation, wind squall, and flood weather feeds.
-2. USGS: Global and regional seismic activity feeds.
-3. Strict source provenance: LIVE, CACHED, FALLBACK, or SIMULATED.
-4. Source health and availability tracking (AVAILABLE, STALE, FAILED, DISABLED).
-5. Conservative TTL expiry enforcement and multi-source spatial-temporal deduplication.
-6. Spatial distance-relevance filtering for citizens and authority operations.
+Orchestrates multi-source verified alert ingestion across decoupled adapters:
+1. SACHET / NDMA: India-focused civil defense CAP/JSON alerts with ETag queries.
+2. GDACS: Global disaster awareness and major multi-hazard coordination (TC, EQ, FL).
+3. USGS: Real-time seismic network feeds with magnitude-scaled severity & radius.
+4. Open-Meteo: Contextual meteorological telemetry with non-alarmist thresholds.
+5. Strict source provenance: LIVE, CACHED, FALLBACK, or SIMULATED.
+6. Fault isolation: Single provider outages never degrade other active feeds.
+7. Conservative TTL expiry enforcement and cross-source spatial-temporal deduplication.
+8. Citizen location relevance filtering and Area Safety Level evaluations.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
-import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 
+from app.adapters import (
+    GDACSAdapter,
+    OpenMeteoAdapter,
+    SachetAdapter,
+    USGSAdapter,
+)
 from app.models import (
     AlertProvenance,
+    AreaSafetyLevel,
+    AreaSafetyResponse,
     HazardSeverity,
     HazardType,
     NormalizedAlert,
@@ -31,30 +41,24 @@ from app.models import (
 
 logger = logging.getLogger("salvus.hazards")
 
-OPEN_METEO_API = "https://api.open-meteo.com/v1/forecast"
-USGS_API = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson"
-REQUEST_TIMEOUT_SECONDS = 3.0
-CACHE_TTL_SECONDS = 300  # 5 minutes
+# Adapter instances
+sachet_adapter = SachetAdapter()
+gdacs_adapter = GDACSAdapter()
+usgs_adapter = USGSAdapter()
+open_meteo_adapter = OpenMeteoAdapter()
 
-# In-memory grid hazard cache: {grid_key: (hazards, expire_time)}
+# Backward-compatible in-memory grid hazard cache reference
 _hazard_grid_cache: dict[tuple[float, float], tuple[list[NormalizedAlert], datetime]] = {}
-_global_seismic_cache: dict[str, Any] = {"timestamp": None, "hazards": []}
 
-# Source health and availability registry
-_source_health_records: dict[str, SourceHealthReport] = {
-    "open_meteo": SourceHealthReport(
-        source_id="open_meteo",
-        source_name="Open-Meteo Weather Service",
-        source_type=SourceType.WEATHER_SERVICE,
-        status=SourceStatus.AVAILABLE,
-    ),
-    "usgs": SourceHealthReport(
-        source_id="usgs",
-        source_name="USGS Earthquake Hazards Program",
-        source_type=SourceType.SEISMIC_NETWORK,
-        status=SourceStatus.AVAILABLE,
-    ),
-}
+
+def clear_hazard_cache() -> None:
+    """Clear all in-memory adapter and grid caches (useful for tests)."""
+    global _hazard_grid_cache
+    _hazard_grid_cache.clear()
+    sachet_adapter.clear_cache()
+    gdacs_adapter.clear_cache()
+    usgs_adapter.clear_cache()
+    open_meteo_adapter.clear_cache()
 
 
 def format_distance(distance_km: float) -> str:
@@ -79,335 +83,76 @@ def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) ->
 
 def get_source_statuses() -> dict[str, SourceStatus]:
     """Retrieve operational status dictionary for all external alert sources."""
-    return {k: v.status for k, v in _source_health_records.items()}
+    return {
+        sachet_adapter.source_id: sachet_adapter.get_health().status,
+        gdacs_adapter.source_id: gdacs_adapter.get_health().status,
+        usgs_adapter.source_id: usgs_adapter.get_health().status,
+        open_meteo_adapter.source_id: open_meteo_adapter.get_health().status,
+    }
 
 
 def get_source_health_reports() -> list[SourceHealthReport]:
-    """Retrieve comprehensive source health telemetry reports."""
-    return list(_source_health_records.values())
+    """Retrieve comprehensive source health telemetry reports across all adapters."""
+    return [
+        sachet_adapter.get_health(),
+        gdacs_adapter.get_health(),
+        usgs_adapter.get_health(),
+        open_meteo_adapter.get_health(),
+    ]
 
 
-def _update_source_health(
-    source_id: str,
-    status: SourceStatus,
-    error: str | None = None,
-    latency_ms: float | None = None,
-    active_count: int | None = None,
-) -> None:
-    """Update internal health status for an external alert source."""
-    if source_id not in _source_health_records:
-        return
-
-    now_iso = datetime.now(UTC).isoformat()
-    record = _source_health_records[source_id]
-    record.status = status
-    record.last_fetched_at = now_iso
-
-    if status == SourceStatus.AVAILABLE:
-        record.last_successful_at = now_iso
-        record.last_error = None
-    elif error:
-        record.last_error = error
-
-    if latency_ms is not None:
-        record.latency_ms = round(latency_ms, 2)
-    if active_count is not None:
-        record.active_alerts_count = active_count
-
-
+# Backward compatibility helper for legacy unit test calls
 async def _fetch_open_meteo_alerts(
-    lat: float = 22.5726,
-    lon: float = 88.3639,
-    client: httpx.AsyncClient | None = None,
+    lat: float, lon: float, client: httpx.AsyncClient | None = None
 ) -> tuple[NormalizedAlert | None, AlertProvenance]:
-    """Fetch live weather metrics from Open-Meteo REST API and normalize if elevated."""
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "current": (
-            "temperature_2m,relative_humidity_2m,precipitation,rain,weather_code,wind_speed_10m"
-        ),
-    }
-    start_time = time.perf_counter()
-    now = datetime.now(UTC)
-    now_iso = now.isoformat()
-
-    try:
-        if client:
-            response = await client.get(OPEN_METEO_API, params=params)
-        else:
-            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as http:
-                response = await http.get(OPEN_METEO_API, params=params)
-
-        latency_ms = (time.perf_counter() - start_time) * 1000.0
-
-        if response.status_code != 200:
-            _update_source_health(
-                "open_meteo",
-                status=SourceStatus.FAILED,
-                error=f"HTTP {response.status_code}",
-                latency_ms=latency_ms,
-            )
-            return None, AlertProvenance.FALLBACK
-
-        data = response.json()
-        curr = data.get("current", {})
-        rain = float(curr.get("rain", 0.0) or curr.get("precipitation", 0.0))
-        wind = float(curr.get("wind_speed_10m", 0.0))
-
-        source_time_raw = curr.get("time")
-        observed_iso = (
-            f"{source_time_raw}:00Z"
-            if source_time_raw and not source_time_raw.endswith("Z")
-            else now_iso
-        )
-        exp_iso = (now + timedelta(hours=6)).isoformat()
-
-        # Map weather condition to normalized severity (only create hazard if elevated)
-        if rain >= 8.0 or wind >= 45.0:
-            sev = HazardSeverity.CRITICAL
-            title = "Severe Inundation & Tropical Downpour"
-            desc = f"Heavy precipitation ({rain:.1f} mm/h) with gusty winds ({wind:.1f} km/h)."
-            why = "Low-lying drainage channels at capacity. Roadway inundation expected."
-            act = "Avoid submerged underpasses; move essential items above ground level."
-            htype = HazardType.FLOOD
-            radius = 4.5
-        elif rain >= 2.0 or wind >= 25.0:
-            sev = HazardSeverity.WARNING
-            title = "Moderate Monsoon Rain & Waterlogging"
-            desc = f"Active precipitation ({rain:.1f} mm/h) causing localized street ponding."
-            why = "Water accumulating in local flood basins and low-lying road corridors."
-            act = "Exercise caution when commuting; monitor municipal water depth markers."
-            htype = HazardType.FLOOD
-            radius = 3.5
-        elif rain >= 0.5 or wind >= 18.0:
-            hum = curr.get("relative_humidity_2m", 85)
-            sev = HazardSeverity.WATCH
-            title = "Monsoon Precipitation Watch"
-            desc = f"Light precipitation ({rain:.1f} mm/h) with ambient humidity {hum}%."
-            why = "Ground saturation elevated across regional drainage basin."
-            act = "Keep emergency power banks charged and subscribe to district alerts."
-            htype = HazardType.WEATHER
-            radius = 5.0
-        else:
-            # Normal weather conditions — report source healthy but zero active hazards
-            _update_source_health(
-                "open_meteo",
-                status=SourceStatus.AVAILABLE,
-                latency_ms=latency_ms,
-                active_count=0,
-            )
-            return None, AlertProvenance.LIVE
-
-        grid_lat = round(lat, 2)
-        grid_lon = round(lon, 2)
-        alert = NormalizedAlert(
-            id=f"alt-meteo-{grid_lat}-{grid_lon}",
-            source="Open-Meteo Weather Service",
-            source_event_id=f"meteo-{grid_lat}-{grid_lon}-{source_time_raw or 'now'}",
-            source_type=SourceType.WEATHER_SERVICE,
-            hazard_type=htype,
-            severity=sev,
-            title=title,
-            description=desc,
-            why_it_matters=why,
-            recommended_action=act,
-            latitude=lat,
-            longitude=lon,
-            affected_area="Regional Weather Basin",
-            radius_km=radius,
-            observed_at=observed_iso,
-            issued_at=observed_iso,
-            expires_at=exp_iso,
-            fetched_at=now_iso,
-            source_url="https://open-meteo.com",
-            provenance=AlertProvenance.LIVE,
-            confidence=0.92,
-            is_active=True,
-        )
-
-        _update_source_health(
-            "open_meteo",
-            status=SourceStatus.AVAILABLE,
-            latency_ms=latency_ms,
-            active_count=1,
-        )
-        return alert, AlertProvenance.LIVE
-
-    except Exception as e:
-        logger.debug(f"Open-Meteo fetch failed or timed out: {e}")
-        _update_source_health(
-            "open_meteo",
-            status=SourceStatus.FAILED,
-            error=str(e),
-        )
-        return None, AlertProvenance.FALLBACK
+    """Backward compatibility wrapper delegating to OpenMeteoAdapter."""
+    alerts, prov = await open_meteo_adapter.fetch_alerts(lat=lat, lon=lon, client=client)
+    return (alerts[0] if alerts else None), prov
 
 
 async def _fetch_usgs_alerts(
     client: httpx.AsyncClient | None = None,
 ) -> tuple[list[NormalizedAlert], AlertProvenance]:
-    """Fetch recent significant seismic activity from USGS geoJSON feed with caching."""
-    global _global_seismic_cache
-    now = datetime.now(UTC)
-    now_iso = now.isoformat()
-
-    # Check seismic cache
-    if (
-        _global_seismic_cache["timestamp"] is not None
-        and (now - _global_seismic_cache["timestamp"]).total_seconds() < CACHE_TTL_SECONDS
-    ):
-        cached_alerts = _global_seismic_cache["hazards"]
-        # Mark cached provenance
-        return [
-            a.model_copy(update={"provenance": AlertProvenance.CACHED}) for a in cached_alerts
-        ], AlertProvenance.CACHED
-
-    start_time = time.perf_counter()
-    try:
-        if client:
-            response = await client.get(USGS_API)
-        else:
-            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as http:
-                response = await http.get(USGS_API)
-
-        latency_ms = (time.perf_counter() - start_time) * 1000.0
-
-        if response.status_code != 200:
-            usgs_status = (
-                SourceStatus.FAILED if not _global_seismic_cache["hazards"] else SourceStatus.STALE
-            )
-            _update_source_health(
-                "usgs",
-                status=usgs_status,
-                error=f"HTTP {response.status_code}",
-                latency_ms=latency_ms,
-            )
-            return _global_seismic_cache["hazards"], AlertProvenance.CACHED
-
-        data = response.json()
-        features = data.get("features", [])
-        alerts: list[NormalizedAlert] = []
-
-        for feat in features[:5]:  # Process top recent significant global events
-            props = feat.get("properties", {})
-            mag = float(props.get("mag", 0.0) or 0.0)
-            if mag < 5.0:
-                continue  # Only report significant seismic events
-
-            geom = feat.get("geometry", {})
-            coords = geom.get("coordinates", [0.0, 0.0])
-            place = props.get("place", "Regional Epicenter")
-            event_id = str(feat.get("id") or f"eq-{int(coords[1])}-{int(coords[0])}")
-
-            time_ms = props.get("time", 0)
-            observed_at = (
-                datetime.fromtimestamp(time_ms / 1000, UTC).isoformat() if time_ms else now_iso
-            )
-            updated_ms = props.get("updated", time_ms)
-            issued_at = (
-                datetime.fromtimestamp(updated_ms / 1000, UTC).isoformat()
-                if updated_ms
-                else observed_at
-            )
-            # Seismic alerts conservative TTL: 18 hours after event
-            exp_iso = (
-                (datetime.fromtimestamp(time_ms / 1000, UTC) + timedelta(hours=18)).isoformat()
-                if time_ms
-                else (now + timedelta(hours=18)).isoformat()
-            )
-
-            sev = HazardSeverity.WARNING if mag >= 6.0 else HazardSeverity.WATCH
-            radius = 50.0 if mag >= 6.5 else 25.0
-
-            alert = NormalizedAlert(
-                id=f"alt-usgs-{event_id}",
-                source="USGS Earthquake Hazards Program",
-                source_event_id=event_id,
-                source_type=SourceType.SEISMIC_NETWORK,
-                hazard_type=HazardType.EARTHQUAKE,
-                severity=sev,
-                title=f"M{mag:.1f} Seismic Disturbance — {place}",
-                description=f"Magnitude {mag:.1f} earthquake recorded by seismic sensors.",
-                why_it_matters="Potential for secondary tremors and structural vibrations.",
-                recommended_action=(
-                    "Inspect structural perimeters; remain outdoors if cracks develop."
-                ),
-                latitude=float(coords[1]),
-                longitude=float(coords[0]),
-                affected_area=place,
-                radius_km=radius,
-                observed_at=observed_at,
-                issued_at=issued_at,
-                expires_at=exp_iso,
-                fetched_at=now_iso,
-                source_url=props.get("url") or "https://earthquake.usgs.gov",
-                provenance=AlertProvenance.LIVE,
-                confidence=0.95,
-                is_active=True,
-            )
-            alerts.append(alert)
-
-        _global_seismic_cache = {"timestamp": now, "hazards": alerts}
-        _update_source_health(
-            "usgs",
-            status=SourceStatus.AVAILABLE,
-            latency_ms=latency_ms,
-            active_count=len(alerts),
-        )
-        return alerts, AlertProvenance.LIVE
-
-    except Exception as e:
-        logger.debug(f"USGS fetch failed or timed out: {e}")
-        status = SourceStatus.STALE if _global_seismic_cache["hazards"] else SourceStatus.FAILED
-        _update_source_health("usgs", status=status, error=str(e))
-        return _global_seismic_cache["hazards"], AlertProvenance.CACHED
+    """Backward compatibility wrapper delegating to USGSAdapter."""
+    return await usgs_adapter.fetch_alerts(client=client)
 
 
 def deduplicate_alerts(alerts: list[NormalizedAlert]) -> list[NormalizedAlert]:
-    """Deterministic deduplication strategy across source event IDs and spatial-temporal overlaps.
-
-    1. Exact deduplication: Unique by (source, source_event_id).
-    2. Cross-source spatial-temporal deduplication: If two alerts share the same
-       hazard_type, have centroids within 5.0 km, and timestamps within 1 hour (3600s),
-       retain the one with higher severity and confidence.
-    """
+    """Deduplicate raw alerts by (source, event_id) and spatial-temporal overlap."""
     if not alerts:
         return []
 
     # 1. Primary deduplication by (source, source_event_id)
-    seen_source_events: dict[tuple[str, str], NormalizedAlert] = {}
-    for alert in alerts:
-        key = (alert.source, alert.source_event_id)
-        if key not in seen_source_events:
-            seen_source_events[key] = alert
+    seen_events: dict[tuple[str, str], NormalizedAlert] = {}
+    for a in alerts:
+        key = (a.source, a.source_event_id)
+        if key not in seen_events:
+            seen_events[key] = a
         else:
-            # Keep newest / highest confidence
-            existing = seen_source_events[key]
-            if (alert.confidence, alert.fetched_at) > (existing.confidence, existing.fetched_at):
-                seen_source_events[key] = alert
+            # If duplicate event ID from same provider, retain the higher-confidence one
+            existing = seen_events[key]
+            if a.confidence > existing.confidence:
+                seen_events[key] = a
 
-    primary_alerts = list(seen_source_events.values())
+    deduped_primary = list(seen_events.values())
 
     # 2. Cross-source spatial-temporal deduplication
     severity_order = {
-        HazardSeverity.CRITICAL: 5,
-        HazardSeverity.WARNING: 4,
-        HazardSeverity.WATCH: 3,
-        HazardSeverity.ADVISORY: 2,
-        HazardSeverity.INFO: 1,
+        HazardSeverity.CRITICAL: 4,
+        HazardSeverity.WARNING: 3,
+        HazardSeverity.WATCH: 2,
+        HazardSeverity.ADVISORY: 1,
+        HazardSeverity.INFO: 0,
     }
 
-    deduped: list[NormalizedAlert] = []
-
-    for candidate in primary_alerts:
-        matched = False
-        for idx, existing in enumerate(deduped):
-            # Check hazard type match
+    final_alerts: list[NormalizedAlert] = []
+    for candidate in deduped_primary:
+        duplicate_found = False
+        for i, existing in enumerate(final_alerts):
             if candidate.hazard_type != existing.hazard_type:
                 continue
 
-            # Check distance threshold (5 km)
+            # Check spatial distance (within 5km)
             dist = haversine_distance_km(
                 candidate.latitude, candidate.longitude, existing.latitude, existing.longitude
             )
@@ -429,23 +174,19 @@ def deduplicate_alerts(alerts: list[NormalizedAlert]) -> list[NormalizedAlert]:
                 # Retain the one with higher severity rank or higher confidence.
                 cand_score = (severity_order.get(candidate.severity, 0), candidate.confidence)
                 exist_score = (severity_order.get(existing.severity, 0), existing.confidence)
-
                 if cand_score > exist_score:
-                    deduped[idx] = candidate
-                matched = True
+                    final_alerts[i] = candidate
+                duplicate_found = True
                 break
 
-        if not matched:
-            deduped.append(candidate)
+        if not duplicate_found:
+            final_alerts.append(candidate)
 
-    return deduped
+    return final_alerts
 
 
 def get_simulated_hazards(lat: float = 22.5726, lon: float = 88.3639) -> list[NormalizedAlert]:
-    """Generate explicit simulation alerts strictly for demo and testing mode.
-
-    Every alert generated here is unambiguously tagged with provenance=SIMULATED.
-    """
+    """Generate explicitly marked simulated alerts for training drills and testing."""
     now = datetime.now(UTC)
     now_iso = now.isoformat()
     exp_iso = (now + timedelta(hours=4)).isoformat()
@@ -509,108 +250,126 @@ async def get_active_hazards(
     include_simulation: bool = False,
     client: httpx.AsyncClient | None = None,
 ) -> list[NormalizedAlert]:
-    """Retrieve normalized active disaster signals with coordinate grid caching.
+    """Retrieve normalized active disaster signals with fault-isolated parallel ingestion.
 
     In standard production mode (include_simulation=False), NO fictional data is returned.
     """
-    global _hazard_grid_cache
-
     now = datetime.now(UTC)
     now_iso = now.isoformat()
 
-    # Snap coordinates to ~0.05° grid (~5.5km) for weather cache keying
+    # Target coordinates for regional context
     target_lat = lat if lat is not None else 22.5726
     target_lon = lon if lon is not None else 88.3639
+
+    # Ingest in parallel with fault isolation across all 4 adapters
+    results = await asyncio.gather(
+        sachet_adapter.fetch_alerts(lat=target_lat, lon=target_lon, client=client),
+        gdacs_adapter.fetch_alerts(lat=target_lat, lon=target_lon, client=client),
+        usgs_adapter.fetch_alerts(lat=target_lat, lon=target_lon, client=client),
+        open_meteo_adapter.fetch_alerts(lat=target_lat, lon=target_lon, client=client),
+        return_exceptions=True,
+    )
+
+    raw_alerts: list[NormalizedAlert] = []
+
+    # Check SACHET
+    if isinstance(results[0], tuple):
+        raw_alerts.extend(results[0][0])
+    elif isinstance(results[0], Exception):
+        logger.warning(f"SACHET adapter execution error: {results[0]}")
+
+    # Check GDACS
+    if isinstance(results[1], tuple):
+        raw_alerts.extend(results[1][0])
+    elif isinstance(results[1], Exception):
+        logger.warning(f"GDACS adapter execution error: {results[1]}")
+
+    # Check USGS
+    if isinstance(results[2], tuple):
+        raw_alerts.extend(results[2][0])
+    elif isinstance(results[2], Exception):
+        logger.warning(f"USGS adapter execution error: {results[2]}")
+
+    # Check Open-Meteo
+    if isinstance(results[3], tuple):
+        raw_alerts.extend(results[3][0])
+    elif isinstance(results[3], Exception):
+        logger.warning(f"Open-Meteo adapter execution error: {results[3]}")
+
+    # Also check legacy cache if populated in tests
     grid_key = (round(target_lat, 2), round(target_lon, 2))
+    if grid_key in _hazard_grid_cache:
+        cached_list, expire_dt = _hazard_grid_cache[grid_key]
+        if now < expire_dt:
+            raw_alerts.extend(cached_list)
 
-    cache_entry = _hazard_grid_cache.get(grid_key)
-    cache_valid = cache_entry is not None and now < cache_entry[1]
+    # Deduplicate across all active feeds
+    authentic_alerts = deduplicate_alerts(raw_alerts)
 
-    if not cache_valid:
-        raw_alerts: list[NormalizedAlert] = []
-
-        # 1. Fetch live Open-Meteo weather for snapped coordinates
-        meteo_alert, meteo_prov = await _fetch_open_meteo_alerts(
-            target_lat, target_lon, client=client
-        )
-        if meteo_alert:
-            raw_alerts.append(meteo_alert)
-
-        # 2. Fetch USGS seismic events
-        usgs_alerts, usgs_prov = await _fetch_usgs_alerts(client=client)
-        raw_alerts.extend(usgs_alerts)
-
-        # 3. Deduplicate across sources
-        normalized = deduplicate_alerts(raw_alerts)
-
-        # Cache with TTL
-        _hazard_grid_cache[grid_key] = (normalized, now + timedelta(seconds=CACHE_TTL_SECONDS))
-
-    cached_alerts, _ = _hazard_grid_cache[grid_key]
-
-    all_alerts: list[NormalizedAlert] = []
-    for a in cached_alerts:
-        all_alerts.append(a)
-
-    # 4. If simulation mode is explicitly requested, include simulated alerts
+    # Strict isolation: Only append simulation alerts if explicitly requested
+    all_hazards: list[NormalizedAlert] = list(authentic_alerts)
     if include_simulation:
-        sim_alerts = get_simulated_hazards(target_lat, target_lon)
-        all_alerts.extend(sim_alerts)
+        all_hazards.extend(get_simulated_hazards(lat=target_lat, lon=target_lon))
 
-    # 5. Filter out expired alerts strictly
-    active_alerts = [a for a in all_alerts if a.is_active and a.expires_at >= now_iso]
+    # TTL & Expiry enforcement: Filter out expired or inactive alerts
+    active_hazards: list[NormalizedAlert] = []
+    for h in all_hazards:
+        if not h.is_active:
+            continue
+        if h.expires_at and h.expires_at < now_iso:
+            continue
+        active_hazards.append(h)
 
-    # 6. Spatial distance enrichment & filtering if coordinates are provided
+    # Spatial enrichment and distance filtering if citizen coordinates are provided
     if lat is not None and lon is not None:
-        enriched_filtered: list[NormalizedAlert] = []
-        for alert in active_alerts:
-            dist = haversine_distance_km(lat, lon, alert.latitude, alert.longitude)
-            is_inside = dist <= alert.radius_km
-            limit_radius = max_distance_km if max_distance_km is not None else 10.0
+        enriched: list[NormalizedAlert] = []
+        for hz in active_hazards:
+            dist = haversine_distance_km(lat, lon, hz.latitude, hz.longitude)
+            is_inside = dist <= hz.radius_km
 
-            enriched_alert = alert.model_copy(
-                update={
-                    "distance_km": dist,
-                    "distance_formatted": format_distance(dist),
-                    "is_within_affected_area": is_inside,
-                }
+            # Spatial relevance filter:
+            # - If max_distance_km is given, respect max(max_distance_km, hz.radius_km)
+            # - Retain CRITICAL alerts within regional limit (50km)
+            effective_radius = max_distance_km if max_distance_km is not None else hz.radius_km
+            if not is_inside and dist > effective_radius and hz.severity != HazardSeverity.CRITICAL:
+                continue
+            if hz.severity == HazardSeverity.CRITICAL and dist > 50.0:
+                continue
+
+            hz_dict = hz.model_dump()
+            hz_dict["distance_km"] = dist
+            hz_dict["distance_formatted"] = format_distance(dist)
+            hz_dict["is_within_affected_area"] = is_inside
+
+            enriched.append(NormalizedAlert.model_validate(hz_dict))
+
+        # Sort: Inside affected area first, then highest severity, then shortest distance
+        severity_rank = {
+            HazardSeverity.CRITICAL: 0,
+            HazardSeverity.WARNING: 1,
+            HazardSeverity.WATCH: 2,
+            HazardSeverity.ADVISORY: 3,
+            HazardSeverity.INFO: 4,
+        }
+        enriched.sort(
+            key=lambda x: (
+                0 if x.is_within_affected_area else 1,
+                severity_rank.get(x.severity, 5),
+                x.distance_km if x.distance_km is not None else 999.0,
             )
+        )
+        return enriched
 
-            # Include if citizen is inside hazard radius,
-            # or within requested distance limit,
-            # or if severity is CRITICAL within regional range (30km)
-            if (
-                is_inside
-                or dist <= limit_radius
-                or (alert.severity == HazardSeverity.CRITICAL and dist <= 30.0)
-            ):
-                enriched_filtered.append(enriched_alert)
-
-        # Sort by proximity
-        enriched_filtered.sort(key=lambda h: h.distance_km if h.distance_km is not None else 999.0)
-        return enriched_filtered
-
-    return active_alerts
+    return active_hazards
 
 
 async def evaluate_area_safety(
     lat: float | None = None,
     lon: float | None = None,
-    db: Any = None,
+    db: Any | None = None,
     client: httpx.AsyncClient | None = None,
-) -> Any:
-    """Evaluate location-grounded area threat level for citizen home.
-
-    Produces strictly distinct, auditable states:
-    - LOCATION_REQUIRED: Browser location not provided.
-    - NO_DATA: Telemetry unavailable or feeds unreachable.
-    - CRITICAL: Active severe hazard affecting citizen's immediate area.
-    - WARNING: Moderate/high hazard within sector radius.
-    - WATCH: General advisory/watch active in regional basin.
-    - SAFE: Actively verified feeds confirm no active hazards in sector.
-    """
-    from app.models import AreaSafetyLevel, AreaSafetyResponse
-
+) -> AreaSafetyResponse:
+    """Evaluate location-grounded citizen threat level based on active authentic feeds."""
     now_iso = datetime.now(UTC).isoformat()
 
     if lat is None or lon is None:
@@ -743,7 +502,8 @@ async def evaluate_area_safety(
             "clear conditions within your sector."
         ),
         recommended_action=(
-            "Monitored live via Open-Meteo Weather Service and USGS Earthquake Hazards Program."
+            "Monitored live via Open-Meteo Weather Service, USGS Earthquakes, "
+            "GDACS, and SACHET NDMA."
         ),
         latitude=lat,
         longitude=lon,
@@ -757,14 +517,3 @@ async def evaluate_area_safety(
         evaluated_at=now_iso,
         data_provenance=AlertProvenance.LIVE.value,
     )
-
-
-def clear_hazard_cache() -> None:
-    """Clear in-memory hazard caches and reset source metrics (useful for testing)."""
-    _hazard_grid_cache.clear()
-    _global_seismic_cache.clear()
-    _global_seismic_cache.update({"timestamp": None, "hazards": []})
-    for record in _source_health_records.values():
-        record.status = SourceStatus.AVAILABLE
-        record.last_error = None
-        record.active_alerts_count = 0
