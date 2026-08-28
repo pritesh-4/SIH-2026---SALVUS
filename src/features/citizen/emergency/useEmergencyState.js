@@ -96,6 +96,11 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
   )
 
   const stopLocationWatchRef = useRef(null)
+  const assignedResponderRef = useRef(assignedResponder)
+
+  useEffect(() => {
+    assignedResponderRef.current = assignedResponder
+  }, [assignedResponder])
 
   // -------------------------------------------------------------------------
   // 1. Initial Load & Realtime Sync for Live Incident
@@ -206,7 +211,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
       if (!isMounted) return
       if (
         payload.assigned_incident_id === effectiveIncidentId ||
-        assignedResponder?.id === payload.id
+        assignedResponderRef.current?.id === payload.id
       ) {
         setAssignedResponder((prev) => (prev ? { ...prev, ...payload } : payload))
       }
@@ -216,7 +221,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
       if (!isMounted) return
       if (
         payload.assigned_incident_id === effectiveIncidentId ||
-        assignedResponder?.id === payload.id
+        assignedResponderRef.current?.id === payload.id
       ) {
         setAssignedResponder((prev) => (prev ? { ...prev, ...payload } : payload))
         if (STATUS_TO_STATE_MAP[payload.status]) {
@@ -252,7 +257,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
       unsub5()
       unsubscribeConn()
     }
-  }, [effectiveIncidentId, assignedResponder?.id])
+  }, [effectiveIncidentId])
 
   // -------------------------------------------------------------------------
   // 2. Emergency Mode Geolocation Watcher (Privacy-compliant)
