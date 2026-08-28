@@ -15,11 +15,11 @@ export const AuthorityLayout = () => {
           {/* Brand & Sector Identity */}
           <div className="flex items-center gap-3">
             <Link to="/authority" className="flex items-center gap-2 group">
-              <span className="text-salvus-text-primary font-bold text-base tracking-wider group-hover:text-salvus-info transition-colors font-mono">
+              <span className="text-salvus-text-primary font-bold text-base tracking-wide group-hover:text-salvus-info transition-colors">
                 SALVUS
               </span>
-              <span className="text-[10px] font-semibold bg-salvus-muted border border-salvus-border text-salvus-text-secondary px-2 py-0.5 rounded uppercase tracking-widest font-mono">
-                OPS COMMAND
+              <span className="text-[10px] font-semibold bg-salvus-muted border border-salvus-border text-salvus-text-secondary px-2 py-0.5 rounded uppercase tracking-wide">
+                Ops Command
               </span>
             </Link>
 
@@ -28,27 +28,27 @@ export const AuthorityLayout = () => {
             {/* Operational Grid Status */}
             <div className="hidden lg:flex items-center gap-2 text-xs text-salvus-text-secondary">
               <span className="inline-flex h-2 w-2 rounded-full bg-salvus-safe"></span>
-              <span className="font-mono text-salvus-text-primary font-medium">GRID ONLINE</span>
+              <span className="text-salvus-text-primary font-medium">Grid Online</span>
               <span className="text-salvus-text-muted">·</span>
-              <span className="text-salvus-text-secondary font-mono text-[11px]">
+              <span className="text-salvus-text-secondary text-[11px]">
                 Kolkata Central Hub — Sector 12
               </span>
             </div>
           </div>
 
           {/* Center Situation Status Banner */}
-          <div className="hidden md:flex items-center gap-2 bg-salvus-warning-bg border border-salvus-warning-border px-3 py-1 rounded-md text-xs text-salvus-warning-text font-mono">
+          <div className="hidden md:flex items-center gap-2 bg-salvus-warning-bg border border-salvus-warning-border px-3 py-1 rounded-md text-xs text-salvus-warning-text">
             <span className="h-2 w-2 rounded-full bg-salvus-warning"></span>
-            <span className="font-bold">LEVEL 3</span>
+            <span className="font-bold font-mono">LEVEL 3</span>
             <span className="opacity-50">·</span>
-            <span className="font-medium">FLASH FLOOD SURGE IN PROGRESS</span>
+            <span className="font-medium">Flash Flood Surge in Progress</span>
           </div>
 
           {/* Right Action: Clock, Theme Switcher & Citizen Portal Switcher */}
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1.5 font-mono text-xs text-salvus-text-secondary bg-salvus-surface-elevated border border-salvus-border px-2.5 py-1 rounded">
-              <span className="text-salvus-text-muted">SYS:</span>
-              <span className="text-salvus-text-primary font-medium">23:45 IST</span>
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-salvus-text-secondary bg-salvus-surface-elevated border border-salvus-border px-2.5 py-1 rounded">
+              <span className="text-salvus-text-muted">Sys:</span>
+              <span className="text-salvus-text-primary font-medium font-mono">23:45 IST</span>
             </div>
 
             {/* Quiet Theme Toggle */}

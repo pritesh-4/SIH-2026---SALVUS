@@ -65,7 +65,9 @@ export const AuthorityThemeToggle = ({ className = '' }) => {
       className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-salvus-surface border border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary hover:bg-salvus-surface-hover text-xs transition-colors cursor-pointer select-none ${className}`}
     >
       <span aria-hidden="true">{isDark ? '🌙' : '☀️'}</span>
-      <span className="font-mono text-[11px] hidden md:inline">{isDark ? 'DARK' : 'LIGHT'}</span>
+      <span className="text-[11px] font-semibold hidden md:inline">
+        {isDark ? 'Dark' : 'Light'}
+      </span>
     </button>
   )
 }

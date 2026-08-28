@@ -39,12 +39,12 @@ export const ActiveAlertCard = ({
           </Badge>
           {provenance && (
             <span
-              className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase border ${
+              className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase border ${
                 provenance === 'LIVE'
-                  ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40'
+                  ? 'bg-salvus-safe-bg text-salvus-safe-text border-salvus-safe-border'
                   : provenance === 'SIMULATED'
-                    ? 'bg-amber-950/70 text-amber-300 border-amber-500/40'
-                    : 'bg-slate-900 text-slate-400 border-slate-700'
+                    ? 'bg-salvus-warning-bg text-salvus-warning-text border-salvus-warning-border'
+                    : 'bg-salvus-muted text-salvus-text-secondary border-salvus-border'
               }`}
             >
               {provenance}
@@ -73,7 +73,7 @@ export const ActiveAlertCard = ({
       {/* 3. WHAT TO DO (if present) */}
       {whatToDo && (
         <div className="mt-2.5 bg-salvus-muted/40 border border-salvus-border/70 rounded-lg p-2.5">
-          <span className="text-[9px] font-bold uppercase tracking-wider text-salvus-text-muted block mb-0.5">
+          <span className="text-[10px] font-semibold text-salvus-text-muted block mb-0.5">
             WHAT TO DO
           </span>
           <p className="text-xs text-salvus-text-primary font-medium leading-relaxed">{whatToDo}</p>
