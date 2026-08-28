@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -707,38 +708,194 @@ class AreaSafetyLevel(StrEnum):
     LOCATION_REQUIRED = "LOCATION_REQUIRED"
 
 
-class NormalizedHazard(BaseModel):
-    """Canonical disaster intelligence hazard signal normalized from external feeds."""
+class AlertProvenance(StrEnum):
+    """Verifiable data provenance classification for disaster alerts."""
 
-    hazard_id: str
-    source: str = Field(description="Open-Meteo, USGS, GDACS, or Regional Sensor Network")
+    LIVE = "LIVE"
+    CACHED = "CACHED"
+    FALLBACK = "FALLBACK"
+    SIMULATED = "SIMULATED"
+
+
+class SourceStatus(StrEnum):
+    """Operational status of external disaster intelligence feeds."""
+
+    AVAILABLE = "AVAILABLE"
+    STALE = "STALE"
+    FAILED = "FAILED"
+    DISABLED = "DISABLED"
+
+
+class SourceType(StrEnum):
+    """Classification of upstream alert feed source."""
+
+    WEATHER_SERVICE = "WEATHER_SERVICE"
+    SEISMIC_NETWORK = "SEISMIC_NETWORK"
+    CIVIL_DEFENSE = "CIVIL_DEFENSE"
+    MUNICIPAL_TELEMETRY = "MUNICIPAL_TELEMETRY"
+    SIMULATION_ENGINE = "SIMULATION_ENGINE"
+    FALLBACK_MODEL = "FALLBACK_MODEL"
+
+
+class SourceHealthReport(BaseModel):
+    """Health, latency, and freshness telemetry for an external or simulated alert source."""
+
+    source_id: str
+    source_name: str
+    source_type: SourceType
+    status: SourceStatus
+    last_fetched_at: str | None = None
+    last_successful_at: str | None = None
+    last_error: str | None = None
+    latency_ms: float | None = None
+    active_alerts_count: int = 0
+
+
+class NormalizedAlert(BaseModel):
+    """Canonical disaster intelligence alert normalized across genuine sources."""
+
+    id: str = Field(description="Unique normalized alert ID")
+    source: str = Field(description="Authentic source provider name")
+    source_event_id: str = Field(
+        default="generic-evt", description="Upstream raw source event or sensor ID"
+    )
+    source_type: SourceType = Field(default=SourceType.WEATHER_SERVICE)
     hazard_type: HazardType
     severity: HazardSeverity
     title: str
     description: str
-    why_it_matters: str
+    why_it_matters: str | None = None
     recommended_action: str
-    latitude: float
-    longitude: float
-    affected_radius_km: float
+    latitude: float = Field(ge=-90.0, le=90.0)
+    longitude: float = Field(ge=-180.0, le=180.0)
+    affected_area: str | None = None
+    radius_km: float = Field(default=2.5, gt=0.0)
     observed_at: str
+    issued_at: str
     expires_at: str
-    confidence: float = Field(ge=0.0, le=1.0)
+    fetched_at: str
+    source_url: str | None = None
+    provenance: AlertProvenance = AlertProvenance.LIVE
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     is_active: bool = True
-    source_timestamp: str
-    data_provenance: str = Field(default="LIVE", description="LIVE | CACHED | FALLBACK")
+
+    # Spatial enrichment fields
     distance_km: float | None = None
     distance_formatted: str | None = None
     is_within_affected_area: bool = False
 
+    # Backward compatibility aliases for existing domain consumers
+    hazard_id: str | None = None
+    affected_radius_km: float | None = None
+    source_timestamp: str | None = None
+    data_provenance: str | None = None
+
+    @classmethod
+    def model_validate(cls, obj: Any, *args, **kwargs) -> NormalizedAlert:
+        """Ensure backward compatibility fields and aliases are harmonized."""
+        if isinstance(obj, dict):
+            obj = dict(obj)
+            if "hazard_id" in obj and "id" not in obj:
+                obj["id"] = obj["hazard_id"]
+            elif "id" in obj and "hazard_id" not in obj:
+                obj["hazard_id"] = obj["id"]
+
+            if "affected_radius_km" in obj and "radius_km" not in obj:
+                obj["radius_km"] = obj["affected_radius_km"]
+            elif "radius_km" in obj and "affected_radius_km" not in obj:
+                obj["affected_radius_km"] = obj["radius_km"]
+
+            if "data_provenance" in obj and "provenance" not in obj:
+                obj["provenance"] = obj["data_provenance"]
+            elif "provenance" in obj and "data_provenance" not in obj:
+                prov_val = obj["provenance"]
+                obj["data_provenance"] = str(
+                    prov_val.value if hasattr(prov_val, "value") else prov_val
+                )
+
+            if "source_timestamp" in obj and "issued_at" not in obj:
+                obj["issued_at"] = obj["source_timestamp"]
+            elif "issued_at" in obj and "source_timestamp" not in obj:
+                obj["source_timestamp"] = obj["issued_at"]
+
+            if "observed_at" in obj and "fetched_at" not in obj:
+                obj["fetched_at"] = obj["observed_at"]
+            if "observed_at" in obj and "issued_at" not in obj:
+                obj["issued_at"] = obj["observed_at"]
+
+        res = super().model_validate(obj, *args, **kwargs)
+        if not res.hazard_id:
+            object.__setattr__(res, "hazard_id", res.id)
+        if not res.affected_radius_km:
+            object.__setattr__(res, "affected_radius_km", res.radius_km)
+        if not res.source_timestamp:
+            object.__setattr__(res, "source_timestamp", res.issued_at)
+        if not res.data_provenance:
+            prov_str = str(
+                res.provenance.value if hasattr(res.provenance, "value") else res.provenance
+            )
+            object.__setattr__(res, "data_provenance", prov_str)
+        return res
+
+    def __init__(self, **data: Any):
+        if "hazard_id" in data and "id" not in data:
+            data["id"] = data["hazard_id"]
+        elif "id" in data and "hazard_id" not in data:
+            data["hazard_id"] = data["id"]
+
+        if "affected_radius_km" in data and "radius_km" not in data:
+            data["radius_km"] = data["affected_radius_km"]
+        elif "radius_km" in data and "affected_radius_km" not in data:
+            data["affected_radius_km"] = data["radius_km"]
+
+        if "data_provenance" in data and "provenance" not in data:
+            data["provenance"] = data["data_provenance"]
+        elif "provenance" in data and "data_provenance" not in data:
+            prov_val = data["provenance"]
+            data["data_provenance"] = str(
+                prov_val.value if hasattr(prov_val, "value") else prov_val
+            )
+
+        if "source_timestamp" in data and "issued_at" not in data:
+            data["issued_at"] = data["source_timestamp"]
+        elif "issued_at" in data and "source_timestamp" not in data:
+            data["source_timestamp"] = data["issued_at"]
+
+        if "observed_at" in data and "fetched_at" not in data:
+            data["fetched_at"] = data["observed_at"]
+        if "observed_at" in data and "issued_at" not in data:
+            data["issued_at"] = data["observed_at"]
+
+        super().__init__(**data)
+        if not self.hazard_id:
+            object.__setattr__(self, "hazard_id", self.id)
+        if not self.affected_radius_km:
+            object.__setattr__(self, "affected_radius_km", self.radius_km)
+        if not self.source_timestamp:
+            object.__setattr__(self, "source_timestamp", self.issued_at)
+        if not self.data_provenance:
+            prov_str = str(
+                self.provenance.value if hasattr(self.provenance, "value") else self.provenance
+            )
+            object.__setattr__(self, "data_provenance", prov_str)
+
+
+# Type alias for backward compatibility across all modules
+NormalizedHazard = NormalizedAlert
+
 
 class HazardListResponse(BaseModel):
-    """Response for listing active normalized hazards."""
+    """Response for listing active normalized hazards and alerts."""
 
     success: bool = True
-    data: list[NormalizedHazard]
+    data: list[NormalizedAlert]
     count: int
     source_summary: str = "Multi-Source Normalized Feed"
+    sources: dict[str, SourceStatus] = Field(default_factory=dict)
+    sources_health: list[SourceHealthReport] = Field(default_factory=list)
+
+
+AlertListResponse = HazardListResponse
 
 
 class AreaSafetyResponse(BaseModel):

@@ -145,32 +145,39 @@ async def test_vision_failure_graceful_degradation():
 @pytest.mark.asyncio
 async def test_hazard_feed_normalization_and_provenance():
     """Verify active hazards have normalized schema and explicit data provenance."""
-    hazards = await hazard_service.get_active_hazards()
-    assert len(hazards) >= 3
+    hazards = await hazard_service.get_active_hazards(include_simulation=True)
+    assert len(hazards) >= 2
 
     for hz in hazards:
         assert isinstance(hz, NormalizedHazard)
-        assert hz.hazard_id.startswith("hz-")
+        valid_prefix = (
+            hz.id.startswith("alt-")
+            or hz.id.startswith("sim-")
+            or hz.hazard_id.startswith("alt-")
+            or hz.hazard_id.startswith("sim-")
+        )
+        assert valid_prefix
         assert hz.source is not None
         assert hz.severity in (
             HazardSeverity.CRITICAL,
             HazardSeverity.WARNING,
             HazardSeverity.WATCH,
             HazardSeverity.ADVISORY,
+            HazardSeverity.INFO,
         )
         assert hz.why_it_matters is not None
         assert hz.recommended_action is not None
-        assert hz.data_provenance in ("LIVE", "CACHED", "FALLBACK")
-        assert hz.affected_radius_km > 0.0
+        assert hz.data_provenance in ("LIVE", "CACHED", "FALLBACK", "SIMULATED")
+        assert hz.radius_km > 0.0
 
 
 @pytest.mark.asyncio
 async def test_spatial_relevance_filtering_for_citizens():
     """Verify citizen location filtering returns only nearby or critical hazards."""
-    # Salt Lake Sector 12 coords (close to Kolkata flood hazard)
+    # Salt Lake Sector 12 coords (close to simulated flood hazard)
     nearby_lat, nearby_lon = 22.5750, 88.3700
     nearby_hazards = await hazard_service.get_active_hazards(
-        lat=nearby_lat, lon=nearby_lon, max_distance_km=2.5
+        lat=nearby_lat, lon=nearby_lon, max_distance_km=2.5, include_simulation=True
     )
 
     # Should include Sector 12 flood hazard
@@ -180,10 +187,10 @@ async def test_spatial_relevance_filtering_for_citizens():
     # Distant coords (100km away outside Kolkata)
     far_lat, far_lon = 23.5000, 89.5000
     far_hazards = await hazard_service.get_active_hazards(
-        lat=far_lat, lon=far_lon, max_distance_km=2.0
+        lat=far_lat, lon=far_lon, max_distance_km=2.0, include_simulation=True
     )
 
-    # Distant queries should filter out localized watches, but retain CRITICAL alerts
+    # Distant queries filter out localized watches, retaining CRITICAL alerts
     for h in far_hazards:
         assert h.severity == HazardSeverity.CRITICAL
 

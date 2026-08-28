@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { citizenAlertsData } from '../data/citizen/alerts.mock'
+import { useLocation } from '../hooks/useLocation'
 import { fetchHazards } from '../services/api'
+import { formatRelativeFreshness } from '../services/locationIntelligenceService'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -9,10 +10,13 @@ import { StatusIndicator } from '../components/ui/StatusIndicator'
 
 export const CitizenAlerts = () => {
   const navigate = useNavigate()
+  const { location } = useLocation()
   const [selectedFilter, setSelectedFilter] = useState('all')
   const [activeAlertDetail, setActiveAlertDetail] = useState(null)
   const [liveHazards, setLiveHazards] = useState([])
-  const [lastUpdated, setLastUpdated] = useState('Live Feed')
+  const [isDemoMode, setIsDemoMode] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [lastFetchedAt, setLastFetchedAt] = useState(null)
   const alertModalRef = useRef(null)
 
   // Escape key + body scroll lock for alert detail modal
@@ -38,47 +42,50 @@ export const CitizenAlerts = () => {
   useEffect(() => {
     let isMounted = true
     const loadHazards = async () => {
-      const result = await fetchHazards(22.5726, 88.3639, 10.0)
-      if (isMounted && result.success && result.data && result.data.length > 0) {
-        setLiveHazards(result.data)
-        setLastUpdated('Just now')
+      setIsLoading(true)
+      const lat = location.latitude || 22.5726
+      const lon = location.longitude || 88.3639
+      const result = await fetchHazards(lat, lon, 25.0, isDemoMode)
+      if (isMounted) {
+        setIsLoading(false)
+        if (result.success && result.data) {
+          setLiveHazards(result.data)
+          setLastFetchedAt(new Date().toISOString())
+        }
       }
     }
     loadHazards()
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [location.latitude, location.longitude, isDemoMode])
 
-  const { alerts: mockAlerts } = citizenAlertsData
-
-  // Merge live hazards into alerts feed
-  const displayAlerts =
-    liveHazards.length > 0
-      ? liveHazards.map((hz) => ({
-          id: hz.hazard_id,
-          severity: hz.severity,
-          status: `${hz.severity} ACTIVE`,
-          title: hz.title,
-          summary: hz.description,
-          details: hz.why_it_matters,
-          distance: `${hz.affected_radius_km} km radius`,
-          timestamp: 'Live Feed',
-          provenance: hz.data_provenance || 'LIVE',
-          source: hz.source,
-          affectedArea: 'Sector 12 & Salt Lake Drainage Basin',
-          actions: [
-            hz.recommended_action,
-            'Monitor official emergency broadcasts.',
-            'Keep power banks charged and move supplies above ground level.',
-          ],
-          nearestSafeHaven: {
-            name: 'Salt Lake Stadium Evacuation Hub',
-            distance: '0.9 km',
-            routeStatus: 'Safe Elevated Corridor',
-          },
-        }))
-      : mockAlerts
+  // Map normalized alerts directly from backend contract (No fake live labels)
+  const displayAlerts = liveHazards.map((hz) => ({
+    id: hz.id || hz.hazard_id,
+    severity: hz.severity,
+    status: `${hz.severity} ACTIVE`,
+    title: hz.title,
+    summary: hz.description,
+    details: hz.why_it_matters || hz.description,
+    distance:
+      hz.distance_formatted ||
+      (hz.radius_km ? `${hz.radius_km} km radius` : `${hz.affected_radius_km} km radius`),
+    timestamp: formatRelativeFreshness(hz.observed_at || hz.issued_at, 'Observed'),
+    provenance: hz.provenance || hz.data_provenance || 'LIVE',
+    source: hz.source,
+    affectedArea: hz.affected_area || 'Monitored Sector',
+    actions: [
+      hz.recommended_action,
+      'Monitor official emergency broadcasts.',
+      'Keep power banks charged and move supplies above ground level.',
+    ],
+    nearestSafeHaven: {
+      name: 'Salt Lake Stadium Evacuation Hub',
+      distance: '0.9 km',
+      routeStatus: 'Safe Elevated Corridor',
+    },
+  }))
 
   const filteredAlerts = displayAlerts.filter((a) => {
     if (selectedFilter === 'all') return true
@@ -148,7 +155,30 @@ export const CitizenAlerts = () => {
           </h1>
         </div>
 
-        <StatusIndicator status="safe" label={`Feed updated ${lastUpdated}`} showDot={true} />
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsDemoMode((prev) => !prev)}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${
+              isDemoMode
+                ? 'bg-amber-950/80 text-amber-300 border-amber-500/50'
+                : 'bg-salvus-surface border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
+            }`}
+            title="Toggle between live verified feeds and demo simulation mode"
+          >
+            <span>{isDemoMode ? '🧪' : '📡'}</span>
+            <span>{isDemoMode ? 'Simulation Mode' : 'Live Feeds'}</span>
+          </button>
+          <StatusIndicator
+            status="safe"
+            label={
+              lastFetchedAt
+                ? `Updated ${formatRelativeFreshness(lastFetchedAt)}`
+                : 'Feeds Monitored'
+            }
+            showDot={true}
+          />
+        </div>
       </div>
 
       {/* Filter Tabs */}
@@ -181,51 +211,102 @@ export const CitizenAlerts = () => {
 
       {/* Alerts Feed List */}
       <div className="space-y-4">
-        {filteredAlerts.map((alert) => (
-          <Card
-            key={alert.id}
-            variant={getCardVariant(alert.severity)}
-            padding="md"
-            onClick={() => setActiveAlertDetail(alert)}
-            className="cursor-pointer transition-all hover:border-salvus-border-strong"
-          >
-            {/* Header: Severity & Location */}
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 mb-2">
-              <div className="flex items-center gap-2">
-                <Badge variant={getBadgeVariant(alert.severity)} dot={true}>
-                  {alert.severity}
-                </Badge>
-                <span className="text-xs text-salvus-text-muted">· {alert.timestamp}</span>
-              </div>
-
-              <div className="flex items-center gap-1.5 text-xs text-salvus-text-muted">
-                <span>📍</span>
-                <span>{alert.distance}</span>
-              </div>
-            </div>
-
-            {/* 1. WHAT HAPPENED */}
-            <h2 className="text-base sm:text-lg font-bold text-salvus-text-primary tracking-tight">
-              {alert.title}
-            </h2>
-
-            {/* 2. WHY IT MATTERS */}
-            <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 leading-relaxed">
-              {alert.summary}
+        {isLoading ? (
+          <Card padding="lg" className="text-center py-12">
+            <span className="text-2xl mb-2 inline-block animate-spin">⏳</span>
+            <p className="text-xs text-salvus-text-secondary">
+              Querying verified emergency and weather telemetry feeds...
             </p>
-
-            {/* 3. WHAT TO DO Preview */}
-            <div className="mt-3.5 pt-3 border-t border-salvus-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2 text-salvus-text-muted truncate">
-                <span>Source:</span>
-                <span className="truncate max-w-[280px] sm:max-w-md">{alert.source}</span>
-              </div>
-              <span className="text-salvus-info font-semibold flex items-center gap-1 shrink-0">
-                View recommended safety actions →
+          </Card>
+        ) : filteredAlerts.length === 0 ? (
+          <Card
+            padding="lg"
+            className="text-center py-12 flex flex-col items-center justify-center"
+          >
+            <span className="text-4xl mb-3" aria-hidden="true">
+              🛡️
+            </span>
+            <h2 className="text-lg font-bold text-salvus-text-primary">
+              No Active Emergency Alerts in Your Sector
+            </h2>
+            <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1.5 max-w-md leading-relaxed">
+              Monitored channels confirm clear conditions within your sector. All live telemetry and
+              sensor feeds report normal parameters.
+            </p>
+            <div className="mt-4 flex items-center gap-2 text-xs text-salvus-text-muted flex-wrap justify-center">
+              <span>Verified feeds:</span>
+              <span className="font-mono text-salvus-safe font-semibold">
+                Open-Meteo Weather Service · USGS Earthquake Hazards Program
               </span>
             </div>
+            {!isDemoMode && (
+              <button
+                type="button"
+                onClick={() => setIsDemoMode(true)}
+                className="mt-4 text-xs text-salvus-info font-semibold hover:underline cursor-pointer"
+              >
+                Preview disaster alerts in Simulation Mode →
+              </button>
+            )}
           </Card>
-        ))}
+        ) : (
+          filteredAlerts.map((alert) => (
+            <Card
+              key={alert.id}
+              variant={getCardVariant(alert.severity)}
+              padding="md"
+              onClick={() => setActiveAlertDetail(alert)}
+              className="cursor-pointer transition-all hover:border-salvus-border-strong"
+            >
+              {/* Header: Severity, Provenance & Location */}
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 mb-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant={getBadgeVariant(alert.severity)} dot={true}>
+                    {alert.severity}
+                  </Badge>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold uppercase border ${
+                      alert.provenance === 'LIVE'
+                        ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40'
+                        : alert.provenance === 'SIMULATED'
+                          ? 'bg-amber-950/70 text-amber-300 border-amber-500/40'
+                          : 'bg-slate-900 text-slate-400 border-slate-700'
+                    }`}
+                  >
+                    {alert.provenance}
+                  </span>
+                  <span className="text-xs text-salvus-text-muted">· {alert.timestamp}</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-salvus-text-muted">
+                  <span>📍</span>
+                  <span>{alert.distance}</span>
+                </div>
+              </div>
+
+              {/* 1. WHAT HAPPENED */}
+              <h2 className="text-base sm:text-lg font-bold text-salvus-text-primary tracking-tight">
+                {alert.title}
+              </h2>
+
+              {/* 2. WHY IT MATTERS */}
+              <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 leading-relaxed">
+                {alert.summary}
+              </p>
+
+              {/* 3. WHAT TO DO Preview */}
+              <div className="mt-3.5 pt-3 border-t border-salvus-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 text-salvus-text-muted truncate">
+                  <span>Source:</span>
+                  <span className="truncate max-w-[280px] sm:max-w-md">{alert.source}</span>
+                </div>
+                <span className="text-salvus-info font-semibold flex items-center gap-1 shrink-0">
+                  View recommended safety actions →
+                </span>
+              </div>
+            </Card>
+          ))
+        )}
       </div>
 
       {/* Detailed Alert Modal with 3-Part Guidance */}

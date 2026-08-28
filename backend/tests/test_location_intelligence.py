@@ -15,7 +15,13 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
-from app.models import AreaSafetyLevel, HazardSeverity
+from app.models import (
+    AreaSafetyLevel,
+    HazardSeverity,
+    HazardType,
+    NormalizedAlert,
+    SourceType,
+)
 from app.services import hazard_service, routing_service, shelter_service
 
 
@@ -32,19 +38,20 @@ def clean_caches():
 @pytest.mark.asyncio
 async def test_get_active_hazards_with_real_location():
     """Verify hazards are enriched with distance and affected area metadata."""
-    # Sector 12 coordinates
+    # Sector 12 coordinates with simulation alerts
     lat, lon = 22.5780, 88.3710
-    hazards = await hazard_service.get_active_hazards(lat=lat, lon=lon, max_distance_km=10.0)
+    hazards = await hazard_service.get_active_hazards(
+        lat=lat, lon=lon, max_distance_km=10.0, include_simulation=True
+    )
 
     assert len(hazards) > 0
     top_hz = hazards[0]
     assert top_hz.distance_km is not None
     assert top_hz.distance_formatted is not None
     assert isinstance(top_hz.is_within_affected_area, bool)
-    # The flood hazard is at (22.5780, 88.3710) so distance should be ~0.0 km
-    flood_hz = next((h for h in hazards if h.hazard_id == "hz-kol-flood-01"), None)
+    flood_hz = next((h for h in hazards if h.hazard_type == HazardType.FLOOD), None)
     assert flood_hz is not None
-    assert flood_hz.distance_km <= 0.05
+    assert flood_hz.distance_km <= 1.5
     assert flood_hz.is_within_affected_area is True
 
 
@@ -53,7 +60,9 @@ async def test_hazard_outside_relevance_radius():
     """Verify non-critical hazards outside distance radius are excluded."""
     # Far coordinates (e.g. 100km away)
     lat, lon = 23.5000, 89.5000
-    hazards = await hazard_service.get_active_hazards(lat=lat, lon=lon, max_distance_km=5.0)
+    hazards = await hazard_service.get_active_hazards(
+        lat=lat, lon=lon, max_distance_km=5.0, include_simulation=True
+    )
 
     # Local warnings and watches that are not critical within 30km should not appear
     for hz in hazards:
@@ -73,25 +82,83 @@ async def test_evaluate_area_safety_location_required():
 @pytest.mark.asyncio
 async def test_evaluate_area_safety_critical_hazard():
     """Verify citizen inside or near a critical flood basin gets CRITICAL status."""
-    # Sector 12 flood basin epicenter
-    lat, lon = 22.5780, 88.3710
-    resp = await hazard_service.evaluate_area_safety(lat=lat, lon=lon)
+    original_get_active = hazard_service.get_active_hazards
 
-    assert resp.level == AreaSafetyLevel.CRITICAL
-    assert "Critical Threat Active" in resp.headline
-    assert resp.critical_hazards_count >= 1
-    assert resp.nearest_hazard_distance_km <= 0.5
+    async def mock_crit_hazards(*args, **kwargs):
+        return [
+            NormalizedAlert(
+                id="alt-test-crit",
+                source="Open-Meteo Weather Service",
+                source_event_id="evt-crit-1",
+                source_type=SourceType.WEATHER_SERVICE,
+                hazard_type=HazardType.FLOOD,
+                severity=HazardSeverity.CRITICAL,
+                title="Critical Flash Flood Surge",
+                description="Rapid inundation exceeding 1.2m.",
+                why_it_matters="Roadway impassable.",
+                recommended_action="Evacuate to elevated shelters.",
+                latitude=22.5780,
+                longitude=88.3710,
+                radius_km=2.2,
+                observed_at="2026-08-28T12:00:00Z",
+                issued_at="2026-08-28T12:00:00Z",
+                expires_at="2026-08-28T18:00:00Z",
+                fetched_at="2026-08-28T12:00:00Z",
+                is_within_affected_area=True,
+                distance_km=0.1,
+                distance_formatted="Approx. 100 m",
+            )
+        ]
+
+    hazard_service.get_active_hazards = mock_crit_hazards
+    try:
+        resp = await hazard_service.evaluate_area_safety(lat=22.5780, lon=88.3710)
+        assert resp.level == AreaSafetyLevel.CRITICAL
+        assert "Critical Threat Active" in resp.headline
+        assert resp.critical_hazards_count >= 1
+        assert resp.nearest_hazard_distance_km <= 0.5
+    finally:
+        hazard_service.get_active_hazards = original_get_active
 
 
 @pytest.mark.asyncio
 async def test_evaluate_area_safety_warning_hazard():
-    """Verify citizen near a warning hazard (e.g. Karunamoyee power hazard) gets WARNING status."""
-    # Coordinates right next to Karunamoyee Block C (22.5841, 88.4120)
-    lat, lon = 22.5841, 88.4120
-    resp = await hazard_service.evaluate_area_safety(lat=lat, lon=lon)
+    """Verify citizen near a warning hazard gets WARNING status."""
+    original_get_active = hazard_service.get_active_hazards
 
-    assert resp.level in (AreaSafetyLevel.CRITICAL, AreaSafetyLevel.WARNING)
-    assert resp.active_hazards_count > 0
+    async def mock_warn_hazards(*args, **kwargs):
+        return [
+            NormalizedAlert(
+                id="alt-test-warn",
+                source="Open-Meteo Weather Service",
+                source_event_id="evt-warn-1",
+                source_type=SourceType.WEATHER_SERVICE,
+                hazard_type=HazardType.FLOOD,
+                severity=HazardSeverity.WARNING,
+                title="Moderate Monsoon Waterlogging",
+                description="Street ponding along connector.",
+                why_it_matters="Travel delays.",
+                recommended_action="Exercise caution.",
+                latitude=22.5841,
+                longitude=88.4120,
+                radius_km=3.0,
+                observed_at="2026-08-28T12:00:00Z",
+                issued_at="2026-08-28T12:00:00Z",
+                expires_at="2026-08-28T18:00:00Z",
+                fetched_at="2026-08-28T12:00:00Z",
+                is_within_affected_area=True,
+                distance_km=0.2,
+                distance_formatted="Approx. 200 m",
+            )
+        ]
+
+    hazard_service.get_active_hazards = mock_warn_hazards
+    try:
+        resp = await hazard_service.evaluate_area_safety(lat=22.5841, lon=88.4120)
+        assert resp.level in (AreaSafetyLevel.CRITICAL, AreaSafetyLevel.WARNING)
+        assert resp.active_hazards_count > 0
+    finally:
+        hazard_service.get_active_hazards = original_get_active
 
 
 @pytest.mark.asyncio
@@ -217,13 +284,44 @@ async def test_golden_case_a_location_allowed_no_hazard_nearby_services():
 async def test_golden_case_b_location_allowed_hazard_nearby_alert():
     """Case B: Location allowed, hazard nearby (Sector 12 flood), correct CRITICAL alert appears."""
     lat, lon = 22.5780, 88.3710
-    safety = await hazard_service.evaluate_area_safety(lat=lat, lon=lon)
+    original_get_active = hazard_service.get_active_hazards
 
-    assert safety.level == AreaSafetyLevel.CRITICAL
-    assert safety.critical_hazards_count >= 1
-    assert safety.nearest_hazard_title is not None
-    assert safety.nearest_hazard_distance_km <= 0.5
-    assert "Critical Threat Active" in safety.headline
+    async def mock_crit_hazards(*args, **kwargs):
+        return [
+            NormalizedAlert(
+                id="alt-test-crit-b",
+                source="Open-Meteo Weather Service",
+                source_event_id="evt-crit-b",
+                source_type=SourceType.WEATHER_SERVICE,
+                hazard_type=HazardType.FLOOD,
+                severity=HazardSeverity.CRITICAL,
+                title="Critical Threat Active: Flash Flood Surge",
+                description="Rapid water accumulation exceeding 1.2m.",
+                why_it_matters="Road corridor impassable.",
+                recommended_action="Evacuate to elevated shelters.",
+                latitude=22.5780,
+                longitude=88.3710,
+                radius_km=2.2,
+                observed_at="2026-08-28T12:00:00Z",
+                issued_at="2026-08-28T12:00:00Z",
+                expires_at="2026-08-28T18:00:00Z",
+                fetched_at="2026-08-28T12:00:00Z",
+                is_within_affected_area=True,
+                distance_km=0.1,
+                distance_formatted="Approx. 100 m",
+            )
+        ]
+
+    hazard_service.get_active_hazards = mock_crit_hazards
+    try:
+        safety = await hazard_service.evaluate_area_safety(lat=lat, lon=lon)
+        assert safety.level == AreaSafetyLevel.CRITICAL
+        assert safety.critical_hazards_count >= 1
+        assert safety.nearest_hazard_title is not None
+        assert safety.nearest_hazard_distance_km <= 0.5
+        assert "Critical Threat Active" in safety.headline
+    finally:
+        hazard_service.get_active_hazards = original_get_active
 
 
 @pytest.mark.asyncio

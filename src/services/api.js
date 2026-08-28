@@ -759,20 +759,29 @@ export const resetSimulationFleet = async () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch multi-source normalized hazards with optional location filtering.
+ * Fetch multi-source normalized hazards with optional location filtering and source telemetry.
  */
-export const fetchHazards = async (lat = null, lon = null, maxDistanceKm = null) => {
+export const fetchHazards = async (
+  lat = null,
+  lon = null,
+  maxDistanceKm = null,
+  includeSimulation = false
+) => {
   try {
     const params = {}
     if (lat !== null) params.lat = lat
     if (lon !== null) params.lon = lon
     if (maxDistanceKm !== null) params.max_distance_km = maxDistanceKm
+    if (includeSimulation) params.include_simulation = true
 
     const response = await apiClient.get('/api/hazards', { params })
     return {
       success: true,
       data: response.data.data || [],
       count: response.data.count || 0,
+      sourceSummary: response.data.source_summary,
+      sources: response.data.sources || {},
+      sourcesHealth: response.data.sources_health || [],
     }
   } catch (error) {
     return {
@@ -780,6 +789,8 @@ export const fetchHazards = async (lat = null, lon = null, maxDistanceKm = null)
       error: { message: error.message },
       data: [],
       count: 0,
+      sources: {},
+      sourcesHealth: [],
     }
   }
 }

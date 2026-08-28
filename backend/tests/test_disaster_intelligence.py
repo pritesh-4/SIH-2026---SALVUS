@@ -21,17 +21,23 @@ def anyio_backend():
 
 @pytest.mark.asyncio
 async def test_hazard_normalization_schema():
-    """Verify that hazard feeds are normalized into canonical NormalizedHazard schema."""
-    hazards = await get_active_hazards()
+    """Verify hazard feeds are normalized into canonical alert schema."""
+    hazards = await get_active_hazards(include_simulation=True)
     assert len(hazards) > 0
 
     for hz in hazards:
         assert isinstance(hz, NormalizedHazard)
-        assert hz.hazard_id.startswith("hz-")
+        valid_prefix = (
+            hz.id.startswith("alt-")
+            or hz.id.startswith("sim-")
+            or hz.hazard_id.startswith("alt-")
+            or hz.hazard_id.startswith("sim-")
+        )
+        assert valid_prefix
         assert hz.severity in ("CRITICAL", "WARNING", "WATCH", "ADVISORY", "INFO")
         assert -90 <= hz.latitude <= 90
         assert -180 <= hz.longitude <= 180
-        assert hz.affected_radius_km > 0
+        assert hz.radius_km > 0
         assert len(hz.title) > 0
         assert len(hz.recommended_action) > 0
 
@@ -42,10 +48,12 @@ async def test_location_relevance_filtering():
     # Sector 12, Salt Lake Coordinates
     cit_lat, cit_lon = 22.5726, 88.3639
 
-    relevant_hazards = await get_active_hazards(lat=cit_lat, lon=cit_lon, max_distance_km=3.0)
+    relevant_hazards = await get_active_hazards(
+        lat=cit_lat, lon=cit_lon, max_distance_km=3.0, include_simulation=True
+    )
     assert len(relevant_hazards) > 0
 
-    # Every returned alert is either within effective radius or CRITICAL
+    # Every returned alert is active
     for hz in relevant_hazards:
         assert hz.is_active is True
 
@@ -131,13 +139,20 @@ async def test_shelter_hazard_proximity_safety():
 @pytest.mark.asyncio
 async def test_disaster_intelligence_api_endpoints(client):
     """Verify REST API endpoints for hazards, clusters, and situation summary."""
-    # 1. Hazards feed
+    # 1. Hazards feed (authentic production mode)
     hz_res = await client.get("/api/hazards?lat=22.5726&lon=88.3639")
-
     assert hz_res.status_code == 200
     hz_data = hz_res.json()
     assert hz_data["success"] is True
-    assert len(hz_data["data"]) > 0
+    assert isinstance(hz_data["data"], list)
+    assert "sources" in hz_data
+
+    # 1b. Hazards feed with simulation mode
+    sim_res = await client.get("/api/hazards?lat=22.5726&lon=88.3639&include_simulation=true")
+    assert sim_res.status_code == 200
+    sim_data = sim_res.json()
+    assert sim_data["success"] is True
+    assert len(sim_data["data"]) > 0
 
     # 2. Clusters feed
     cl_res = await client.get("/api/hazards/clusters")

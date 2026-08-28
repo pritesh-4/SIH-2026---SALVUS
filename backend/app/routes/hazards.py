@@ -32,15 +32,23 @@ async def list_hazards(
     lat: float | None = Query(default=None, ge=-90, le=90, description="Citizen latitude"),
     lon: float | None = Query(default=None, ge=-180, le=180, description="Citizen longitude"),
     max_distance_km: float | None = Query(default=None, ge=0.1, le=100.0),
+    include_simulation: bool = Query(
+        default=False, description="Include simulated alerts for testing/demo"
+    ),
 ):
     """Retrieve normalized active disaster signals with optional location filtering."""
     hazards = await hazard_service.get_active_hazards(
-        lat=lat, lon=lon, max_distance_km=max_distance_km
+        lat=lat,
+        lon=lon,
+        max_distance_km=max_distance_km,
+        include_simulation=include_simulation,
     )
     return HazardListResponse(
         data=hazards,
         count=len(hazards),
-        source_summary="Open-Meteo, USGS, GDACS, IMD Normalized Feeds",
+        source_summary="Open-Meteo Weather Service, USGS Earthquake Hazards Program",
+        sources=hazard_service.get_source_statuses(),
+        sources_health=hazard_service.get_source_health_reports(),
     )
 
 
