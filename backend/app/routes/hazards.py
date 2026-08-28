@@ -28,6 +28,7 @@ router = APIRouter(tags=["disaster_intelligence"])
 
 
 @router.get("/api/hazards", response_model=HazardListResponse)
+@router.get("/api/alerts", response_model=HazardListResponse)
 async def list_hazards(
     lat: float | None = Query(default=None, ge=-90, le=90, description="Citizen latitude"),
     lon: float | None = Query(default=None, ge=-180, le=180, description="Citizen longitude"),

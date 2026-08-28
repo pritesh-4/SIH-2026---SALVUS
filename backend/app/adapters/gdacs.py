@@ -128,12 +128,50 @@ class GDACSAdapter(BaseAlertAdapter):
             props = feat.get("properties") or {}
             geom = feat.get("geometry") or {}
             coords = geom.get("coordinates")
+            geom_type = geom.get("type", "Point")
 
-            if not coords or len(coords) < 2:
+            if not coords:
                 continue
 
-            lon, lat = coords[0], coords[1]
-            if lat < -90.0 or lat > 90.0 or lon < -180.0 or lon > 180.0:
+            lat: float | None = None
+            lon: float | None = None
+            geom_poly: list[list[float]] | None = None
+
+            if geom_type == "Point" and len(coords) >= 2 and isinstance(coords[0], (int, float)):
+                lon, lat = float(coords[0]), float(coords[1])
+            elif geom_type == "Polygon" and isinstance(coords, list) and len(coords) > 0:
+                ring = coords[0]
+                if isinstance(ring, list) and len(ring) >= 3:
+                    geom_poly = [
+                        [float(pt[1]), float(pt[0])]
+                        for pt in ring
+                        if isinstance(pt, (list, tuple)) and len(pt) >= 2
+                    ]
+                    if len(geom_poly) >= 3:
+                        lat = sum(p[0] for p in geom_poly) / len(geom_poly)
+                        lon = sum(p[1] for p in geom_poly) / len(geom_poly)
+            elif geom_type == "MultiPolygon" and isinstance(coords, list) and len(coords) > 0:
+                poly = coords[0]
+                if isinstance(poly, list) and len(poly) > 0:
+                    ring = poly[0]
+                    if isinstance(ring, list) and len(ring) >= 3:
+                        geom_poly = [
+                            [float(pt[1]), float(pt[0])]
+                            for pt in ring
+                            if isinstance(pt, (list, tuple)) and len(pt) >= 2
+                        ]
+                        if len(geom_poly) >= 3:
+                            lat = sum(p[0] for p in geom_poly) / len(geom_poly)
+                            lon = sum(p[1] for p in geom_poly) / len(geom_poly)
+            elif len(coords) >= 2 and isinstance(coords[0], (int, float)):
+                lon, lat = float(coords[0]), float(coords[1])
+
+            if (
+                lat is None
+                or lon is None
+                or not (-90.0 <= lat <= 90.0)
+                or not (-180.0 <= lon <= 180.0)
+            ):
                 continue
 
             event_id = str(props.get("eventid") or props.get("id") or f"gdacs-{len(alerts)}")
@@ -196,6 +234,7 @@ class GDACSAdapter(BaseAlertAdapter):
                 provenance=AlertProvenance.LIVE,
                 confidence=0.96,
                 is_active=True,
+                geometry=geom_poly,
             )
             alerts.append(alert)
 

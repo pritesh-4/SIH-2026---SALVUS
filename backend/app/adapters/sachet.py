@@ -237,7 +237,7 @@ class SachetAdapter(BaseAlertAdapter):
                 or "Designated Regional Sector"
             ).strip()
 
-            lat, lon, radius_km = self._extract_coordinates(area_info, rec)
+            lat, lon, radius_km, geom_poly = self._extract_coordinates(area_info, rec)
             if lat is None or lon is None:
                 # Do not inject arbitrary location if coordinates are missing
                 return None
@@ -284,6 +284,7 @@ class SachetAdapter(BaseAlertAdapter):
                 provenance=AlertProvenance.LIVE,
                 confidence=0.98,
                 is_active=True,
+                geometry=geom_poly,
             )
 
         except Exception as e:
@@ -326,11 +327,12 @@ class SachetAdapter(BaseAlertAdapter):
 
     def _extract_coordinates(
         self, area_info: dict[str, Any], rec: dict[str, Any]
-    ) -> tuple[float | None, float | None, float]:
-        """Extract centroid latitude, longitude, and radius from CAP area fields."""
+    ) -> tuple[float | None, float | None, float, list[list[float]] | None]:
+        """Extract centroid latitude, longitude, radius, and polygon from CAP area fields."""
         lat = area_info.get("latitude") or rec.get("latitude") or rec.get("lat")
         lon = area_info.get("longitude") or rec.get("longitude") or rec.get("lon")
         radius = float(area_info.get("radius_km") or rec.get("radius_km") or 10.0)
+        geom_poly: list[list[float]] | None = None
 
         # Handle circle format: "lat,lon radius"
         circle = area_info.get("circle") or rec.get("circle")
@@ -347,21 +349,22 @@ class SachetAdapter(BaseAlertAdapter):
 
         # Handle polygon format: "lat1,lon1 lat2,lon2 ..."
         polygon = area_info.get("polygon") or rec.get("polygon")
-        if polygon and isinstance(polygon, str) and (lat is None or lon is None):
+        if polygon and isinstance(polygon, str):
             pairs = polygon.strip().split()
-            lats, lons = [], []
+            coords_list: list[list[float]] = []
             for p in pairs:
                 if "," in p:
                     p_lat, p_lon = p.split(",")
-                    lats.append(float(p_lat))
-                    lons.append(float(p_lon))
-            if lats and lons:
-                lat = sum(lats) / len(lats)
-                lon = sum(lons) / len(lons)
+                    coords_list.append([float(p_lat), float(p_lon)])
+            if len(coords_list) >= 3:
+                geom_poly = coords_list
+                if lat is None or lon is None:
+                    lat = sum(c[0] for c in coords_list) / len(coords_list)
+                    lon = sum(c[1] for c in coords_list) / len(coords_list)
 
         if lat is not None and lon is not None:
-            return float(lat), float(lon), radius
-        return None, None, radius
+            return float(lat), float(lon), radius, geom_poly
+        return None, None, radius, None
 
     def _parse_iso_time(self, raw_time: str | None, default_iso: str) -> str:
         """Parse raw timestamp strings safely to ISO format."""

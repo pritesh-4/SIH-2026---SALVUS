@@ -717,6 +717,16 @@ class AlertProvenance(StrEnum):
     SIMULATED = "SIMULATED"
 
 
+class RelevanceLevel(StrEnum):
+    """Geographic and situational life-safety relevance tier for a specific citizen location."""
+
+    CRITICAL = "CRITICAL"
+    HIGH = "HIGH"
+    MODERATE = "MODERATE"
+    LOW = "LOW"
+    IRRELEVANT = "IRRELEVANT"
+
+
 class SourceStatus(StrEnum):
     """Operational status of external disaster intelligence feeds."""
 
@@ -779,10 +789,15 @@ class NormalizedAlert(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     is_active: bool = True
 
-    # Spatial enrichment fields
+    # Spatial & Geo-Relevance enrichment fields (Phase 3)
     distance_km: float | None = None
     distance_formatted: str | None = None
     is_within_affected_area: bool = False
+    geometry: list[list[float]] | None = None
+    is_inside_geometry: bool = False
+    relevance_level: RelevanceLevel | None = None
+    sources_matched: list[str] = Field(default_factory=list)
+    relative_time_label: str | None = None
 
     # Backward compatibility aliases for existing domain consumers
     hazard_id: str | None = None

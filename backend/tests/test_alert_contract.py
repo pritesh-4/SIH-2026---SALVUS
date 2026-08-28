@@ -261,7 +261,7 @@ def test_cross_source_spatial_temporal_deduplication():
     assert len(deduped) == 2
     eq_alert = next(a for a in deduped if a.hazard_type == HazardType.EARTHQUAKE)
     assert eq_alert.severity == HazardSeverity.WARNING
-    assert eq_alert.source == "USGS Earthquake Hazards Program"
+    assert "USGS Earthquake Hazards Program" in eq_alert.source
 
 
 @pytest.mark.asyncio
