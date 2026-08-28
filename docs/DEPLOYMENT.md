@@ -162,3 +162,60 @@ Salvus utilizes SQLite in Write-Ahead Logging (`WAL`) mode. Understanding the st
    Open `https://salvus.vercel.app/authority` and observe the bottom-right connection badge displays `LIVE` (green indicator).
 4. **Trigger End-to-End Test Beacon:**
    Open `/citizen` in one window and `/authority` in another; trigger an SOS beacon and confirm instant WebSocket appearance.
+
+---
+
+## 7. Local Docker Architecture & Containerization
+
+Salvus provides a minimal, secure Docker runtime (`backend/Dockerfile` and `docker-compose.yml`) for instant local environment reproducibility:
+
+```mermaid
+flowchart TD
+    subgraph Host_Machine ["Developer Host Machine"]
+        Frontend["Vite Dev Server (localhost:5173)"]
+        LocalData["Host Directory: ./backend/data"]
+    end
+
+    subgraph Docker_Engine ["Docker Container: salvus-backend (Port 8000:8000)"]
+        NonRootUser["Non-root user (appuser:appgroup UID 1001)"]
+        ASGI["Uvicorn ASGI App (app.main:combined_asgi_app)"]
+        FastAPI["FastAPI REST API (/health, /docs, /api/v1/...)"]
+        SocketIO["Python-SocketIO Server (/socket.io/)"]
+        ContainerData["Mounted Volume: /app/data"]
+        SQLite["SQLite WAL Database (salvus.db)"]
+    end
+
+    Frontend <-->|HTTP REST & WebSockets| ASGI
+    ASGI --> FastAPI
+    ASGI --> SocketIO
+    FastAPI --> SQLite
+    LocalData <-->|Bind Mount Persistence| ContainerData
+    ContainerData --> SQLite
+```
+
+### Docker Quickstart:
+
+```bash
+# Build and start the backend container
+docker compose up --build
+
+# Run in background (detached mode)
+docker compose up -d
+
+# Verify health endpoint
+curl http://localhost:8000/health
+
+# Stop the container
+docker compose down
+```
+
+---
+
+## 8. Future Infrastructure Extension Points
+
+The containerization layer is designed to remain intentionally simple and lightweight, while preparing Salvus for modular scaling when required:
+
+1. **Dedicated Worker Nodes:** Background processing containers can inherit `backend/Dockerfile` using entrypoint overrides (e.g., `CMD ["python", "-m", "app.workers.feed_ingest"]`).
+2. **State & Cache Backing:** Easy addition of Redis / Dragonfly services into `docker-compose.yml` for distributed Socket.IO adapters or rate-limiting.
+3. **Relational Database Migration:** Clean migration path from SQLite to PostgreSQL via `DATABASE_URL` without altering application code.
+4. **AI Inference & Disaster Feeds:** Containerized sandbox execution for async satellite / telemetry feed ingestion.

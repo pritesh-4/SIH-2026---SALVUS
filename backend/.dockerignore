@@ -1,0 +1,49 @@
+# ==============================================================================
+# Salvus Docker Ignore File (Backend context)
+# ==============================================================================
+
+# Version Control & Metadata
+.git
+.github
+
+# Secrets & Environment Configuration (CRITICAL - Prevent credential leakage)
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# Python Virtual Environments, Bytecode & Caches
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Local SQLite Databases & Volatile Runtime Storage
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+data/
+
+# Test Coverage & Logs
+coverage/
+*.lcov
+.nyc_output/
+logs/
+*.log
+
+# Editor & OS Metadata
+.vscode/
+.idea/
+*.sw?
+.DS_Store
+Thumbs.db
