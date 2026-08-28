@@ -589,6 +589,10 @@ class RouteResponse(BaseModel):
     provider: str = "osrm"  # "osrm" or "salvus_fallback"
     calculated_at: str | None = None  # ISO timestamp
     is_fallback: bool = False
+    is_safe_route: bool = True
+    hazard_warning: str | None = None
+    hazard_intersections: list[str] = Field(default_factory=list)
+    safety_disclaimer: str = "Recommended route based on current available hazard data."
 
 
 class RouteSingleResponse(BaseModel):
@@ -690,8 +694,17 @@ class ShelterRecommendationListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Disaster Intelligence & Situation Models
+# Disaster Intelligence, Hazards & Situation Models
 # ---------------------------------------------------------------------------
+
+
+class AreaSafetyLevel(StrEnum):
+    SAFE = "SAFE"
+    WATCH = "WATCH"
+    WARNING = "WARNING"
+    CRITICAL = "CRITICAL"
+    NO_DATA = "NO_DATA"
+    LOCATION_REQUIRED = "LOCATION_REQUIRED"
 
 
 class NormalizedHazard(BaseModel):
@@ -714,6 +727,9 @@ class NormalizedHazard(BaseModel):
     is_active: bool = True
     source_timestamp: str
     data_provenance: str = Field(default="LIVE", description="LIVE | CACHED | FALLBACK")
+    distance_km: float | None = None
+    distance_formatted: str | None = None
+    is_within_affected_area: bool = False
 
 
 class HazardListResponse(BaseModel):
@@ -723,6 +739,28 @@ class HazardListResponse(BaseModel):
     data: list[NormalizedHazard]
     count: int
     source_summary: str = "Multi-Source Normalized Feed"
+
+
+class AreaSafetyResponse(BaseModel):
+    """Structured location-grounded citizen area safety assessment."""
+
+    success: bool = True
+    level: AreaSafetyLevel
+    headline: str
+    description: str
+    recommended_action: str
+    latitude: float | None = None
+    longitude: float | None = None
+    active_hazards_count: int = 0
+    critical_hazards_count: int = 0
+    warning_hazards_count: int = 0
+    nearest_hazard_distance_km: float | None = None
+    nearest_hazard_title: str | None = None
+    nearest_shelter: RecommendedShelterResponse | None = None
+    observed_at: str
+    evaluated_at: str
+    data_provenance: str = "LIVE"
+    source_summary: str = "Normalized Multi-Source Emergency Feeds"
 
 
 class IncidentCluster(BaseModel):

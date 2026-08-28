@@ -1,72 +1,49 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLocation } from '../hooks/useLocation'
 import { LANDMARKS } from '../lib/location'
 import { loadNearbyPlaces, hasMovedSignificantly } from '../services/placesService'
+import { fetchHazards } from '../services/api'
+import { fetchRoute } from '../services/routingService'
+import { formatRelativeFreshness } from '../services/locationIntelligenceService'
 import { SalvusLeafletMap } from '../components/common/SalvusLeafletMap'
-import { SimulatedBadge } from '../components/common/SimulatedBadge'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { StatusIndicator } from '../components/ui/StatusIndicator'
 
-const CITIZEN_HAZARDS = [
-  {
-    id: 'hz-1',
-    ticket_id: 'SV-1982',
-    name: 'Sector 12 Underpass Flooding',
-    type: 'flood',
-    severity: 'CRITICAL',
-    status: 'NEW',
-    description: 'Submerged underpass with 1.4m standing floodwater. Avoid vehicular transit.',
-    latitude: 22.5841,
-    longitude: 88.412,
-    distance: '620m North',
-    distance_formatted: 'Approx. 620 m',
-    recommendedAction: 'Use elevated northern bypass route. Do not attempt to cross on foot.',
-  },
-  {
-    id: 'hz-2',
-    ticket_id: 'SV-1910',
-    name: 'Downed Power Wire Hazard',
-    type: 'power_line',
-    severity: 'HIGH',
-    status: 'VERIFIED',
-    description: 'Power wire down near water channel. Area isolated by emergency crew.',
-    latitude: 22.565,
-    longitude: 88.358,
-    distance: '480m West',
-    distance_formatted: 'Approx. 480 m',
-    recommendedAction: 'Maintain minimum 50-meter clearance. Keep clear of standing water.',
-  },
-]
-
 const CATEGORY_FILTERS = [
   { id: 'all', label: 'All Places', icon: '📍' },
+  { id: 'shelter', label: 'Safe Shelters', icon: '🏠' },
+  { id: 'hazards', label: 'Active Hazards', icon: '⚠️' },
   { id: 'hospital', label: 'Hospitals & Clinics', icon: '🏥' },
   { id: 'pharmacy', label: 'Pharmacies', icon: '💊' },
   { id: 'police', label: 'Police', icon: '🛡️' },
   { id: 'fire_station', label: 'Fire & Rescue', icon: '🚒' },
-  { id: 'shelter', label: 'Safe Shelters', icon: '🏠' },
-  { id: 'hazards', label: 'Hazards', icon: '⚠️' },
 ]
 
 export const CitizenMap = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [activeFilter, setActiveFilter] = useState('all')
   const [selectedItem, setSelectedItem] = useState(null)
   const [activeRouteGuide, setActiveRouteGuide] = useState(null)
+  const [activeMapRoute, setActiveMapRoute] = useState(null)
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false)
 
-  // Real-world nearby places state
+  // Real-world nearby places and live hazards state
   const [nearbyPlaces, setNearbyPlaces] = useState([])
+  const [liveHazards, setLiveHazards] = useState([])
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false)
   const [placesError, setPlacesError] = useState(null)
+  const [lastFetchedAt, setLastFetchedAt] = useState(null)
 
   const { location, isAcquiring, recenterSignal, requestLocation, selectLandmark, recenterMap } =
     useLocation()
 
   const routeModalRef = useRef(null)
   const prevCoordsRef = useRef(null)
+  const initialUrlHandledRef = useRef(false)
 
   // Request location on map mount if not yet requested
   useEffect(() => {
@@ -79,8 +56,8 @@ export const CitizenMap = () => {
     }
   }, [location.source, location.latitude, location.permission, requestLocation])
 
-  // Fetch real-world nearby places from backend
-  const fetchPlaces = useCallback(
+  // Fetch real-world nearby places and normalized hazards from backend
+  const fetchPlacesAndHazards = useCallback(
     async (force = false) => {
       const lat = location.latitude || 22.5726
       const lon = location.longitude || 88.3639
@@ -95,33 +72,116 @@ export const CitizenMap = () => {
       setIsLoadingPlaces(true)
       setPlacesError(null)
 
-      const result = await loadNearbyPlaces({
-        latitude: lat,
-        longitude: lon,
-        radius: 2500,
-        includeVerified: true,
-      })
+      try {
+        const [placesRes, hazardsRes] = await Promise.allSettled([
+          loadNearbyPlaces({
+            latitude: lat,
+            longitude: lon,
+            radius: 3000,
+            includeVerified: true,
+          }),
+          fetchHazards(lat, lon, 15.0),
+        ])
 
-      setIsLoadingPlaces(false)
-      if (result.success && result.data?.length > 0) {
-        setNearbyPlaces(result.data)
-        setPlacesError(null)
-        // If no item selected yet, select first nearby place or shelter
-        setSelectedItem((prev) => prev || result.data[0])
-      } else if (!result.success) {
-        setPlacesError(result.error?.message || 'Nearby places are temporarily unavailable.')
+        setIsLoadingPlaces(false)
+        setLastFetchedAt(new Date().toISOString())
+
+        if (
+          placesRes.status === 'fulfilled' &&
+          placesRes.value?.success &&
+          placesRes.value.data?.length > 0
+        ) {
+          setNearbyPlaces(placesRes.value.data)
+          setPlacesError(null)
+          // If no item selected yet, select first place
+          setSelectedItem((prev) => prev || placesRes.value.data[0])
+        } else if (placesRes.status === 'fulfilled' && !placesRes.value?.success) {
+          setPlacesError(
+            placesRes.value.error?.message || 'Nearby places are temporarily unavailable.'
+          )
+        }
+
+        if (hazardsRes.status === 'fulfilled' && hazardsRes.value?.success) {
+          setLiveHazards(hazardsRes.value.data || [])
+        }
+      } catch {
+        setIsLoadingPlaces(false)
+        setPlacesError('Failed to refresh local situational intelligence.')
       }
     },
     [location.latitude, location.longitude]
   )
 
-  // Refetch nearby places when citizen location becomes available or moves
+  // Refetch when citizen location becomes available or moves
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchPlaces(false)
+      fetchPlacesAndHazards(false)
     }, 0)
     return () => clearTimeout(timer)
-  }, [fetchPlaces])
+  }, [fetchPlacesAndHazards])
+
+  // Real OSRM Safe Walking Route Calculation
+  const handleCalculateRoute = useCallback(
+    async (target) => {
+      if (!target || typeof target.latitude !== 'number' || typeof target.longitude !== 'number') {
+        return
+      }
+
+      const userLat = location.latitude || 22.5726
+      const userLon = location.longitude || 88.3639
+
+      setIsCalculatingRoute(true)
+
+      const routeResult = await fetchRoute(
+        userLat,
+        userLon,
+        target.latitude,
+        target.longitude,
+        'walking'
+      )
+      setIsCalculatingRoute(false)
+
+      if (routeResult.success && routeResult.data) {
+        const routeData = {
+          ...routeResult.data,
+          label: `Walking Route to ${target.name || 'Destination'}`,
+          targetName: target.name,
+          targetAddress: target.address,
+          targetItem: target,
+        }
+        setActiveMapRoute(routeData)
+        setActiveRouteGuide(routeData)
+      }
+    },
+    [location.latitude, location.longitude]
+  )
+
+  // Handle URL query parameters (e.g. ?shelterId=...&action=route from CitizenHome)
+  useEffect(() => {
+    if (initialUrlHandledRef.current) return
+    const shelterIdParam = searchParams.get('shelterId')
+    const actionParam = searchParams.get('action')
+
+    if (shelterIdParam && nearbyPlaces.length > 0) {
+      initialUrlHandledRef.current = true
+      const match =
+        nearbyPlaces.find(
+          (p) =>
+            p.id === shelterIdParam ||
+            p.id === `salvus-${shelterIdParam}` ||
+            p.name.toLowerCase().includes(shelterIdParam.toLowerCase())
+        ) || nearbyPlaces.find((p) => p.category === 'shelter')
+
+      if (match) {
+        setTimeout(() => {
+          setSelectedItem(match)
+          if (actionParam === 'route') {
+            handleCalculateRoute(match)
+          }
+        }, 0)
+      }
+    }
+  }, [searchParams, nearbyPlaces, handleCalculateRoute])
 
   // Escape key + body scroll lock for route modal
   useEffect(() => {
@@ -158,10 +218,10 @@ export const CitizenMap = () => {
     })
   }, [nearbyPlaces, activeFilter])
 
-  const displayedIncidents = useMemo(() => {
+  const displayedHazards = useMemo(() => {
     if (activeFilter !== 'all' && activeFilter !== 'hazards') return []
-    return CITIZEN_HAZARDS
-  }, [activeFilter])
+    return liveHazards
+  }, [liveHazards, activeFilter])
 
   const isPermissionDenied = location.permission === 'DENIED' || location.status === 'DENIED'
   const isLocationUnavailable =
@@ -194,7 +254,7 @@ export const CitizenMap = () => {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => fetchPlaces(true)}
+            onClick={() => fetchPlacesAndHazards(true)}
             disabled={isLoadingPlaces}
             className="px-3 py-1.5 rounded-xl bg-salvus-surface border border-salvus-border hover:border-salvus-info text-salvus-text-secondary hover:text-salvus-text-primary text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
             title="Refresh real-world places around your coordinates"
@@ -300,7 +360,7 @@ export const CitizenMap = () => {
           </div>
           <button
             type="button"
-            onClick={() => fetchPlaces(true)}
+            onClick={() => fetchPlacesAndHazards(true)}
             className="text-xs font-semibold text-salvus-info hover:underline cursor-pointer"
           >
             Retry Feed
@@ -312,8 +372,8 @@ export const CitizenMap = () => {
       <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-4 no-scrollbar">
         {CATEGORY_FILTERS.map((f) => {
           let count
-          if (f.id === 'all') count = nearbyPlaces.length + CITIZEN_HAZARDS.length
-          else if (f.id === 'hazards') count = CITIZEN_HAZARDS.length
+          if (f.id === 'all') count = nearbyPlaces.length + liveHazards.length
+          else if (f.id === 'hazards') count = liveHazards.length
           else {
             count = nearbyPlaces.filter((p) => {
               const cat = p.category?.toLowerCase() || ''
@@ -416,15 +476,17 @@ export const CitizenMap = () => {
               places={displayedPlaces}
               selectedPlaceId={selectedItem?.id}
               onSelectPlace={(p) => setSelectedItem(p)}
-              incidents={displayedIncidents}
-              shelters={[]}
+              hazards={displayedHazards}
+              activeRoute={activeMapRoute}
+              onClearRoute={() => setActiveMapRoute(null)}
               showLayers={{
                 places: activeFilter !== 'hazards',
-                incidents: activeFilter === 'all' || activeFilter === 'hazards',
+                hazards: activeFilter === 'all' || activeFilter === 'hazards',
+                incidents: false,
                 shelters: false,
                 responders: false,
+                routes: true,
               }}
-              onSelectIncident={(inc) => setSelectedItem(inc)}
               className="h-full w-full"
             />
           </div>
@@ -442,25 +504,32 @@ export const CitizenMap = () => {
               </div>
               <div className="flex items-center gap-1.5 font-medium">
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
-                <span>Places ({displayedPlaces.length})</span>
+                <span>Places & Shelters ({displayedPlaces.length})</span>
               </div>
               <div className="flex items-center gap-1.5 font-medium">
                 <span className="h-2.5 w-2.5 rounded-full bg-salvus-critical"></span>
-                <span>Hazards ({displayedIncidents.length})</span>
+                <span>Hazards ({displayedHazards.length})</span>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (displayedPlaces.length > 0) {
-                  setSelectedItem(displayedPlaces[0])
-                }
-                recenterMap()
-              }}
-              className="text-salvus-info hover:underline font-semibold cursor-pointer text-xs"
-            >
-              Reset view
-            </button>
+            <div className="flex items-center gap-3">
+              {lastFetchedAt && (
+                <span className="text-[11px] text-salvus-text-muted font-mono">
+                  {formatRelativeFreshness(lastFetchedAt)}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (displayedPlaces.length > 0) {
+                    setSelectedItem(displayedPlaces[0])
+                  }
+                  recenterMap()
+                }}
+                className="text-salvus-info hover:underline font-semibold cursor-pointer text-xs"
+              >
+                Reset view
+              </button>
+            </div>
           </div>
         </Card>
 
@@ -489,7 +558,9 @@ export const CitizenMap = () => {
                                 : 'neutral'
                       }
                     >
-                      {selectedItem.category?.toUpperCase() || selectedItem.type?.toUpperCase()}
+                      {selectedItem.category?.toUpperCase() ||
+                        selectedItem.type?.toUpperCase() ||
+                        'PLACE'}
                     </Badge>
 
                     {/* Strict Provenance Badge */}
@@ -513,7 +584,7 @@ export const CitizenMap = () => {
 
                 {/* Title & Address */}
                 <h2 className="text-xl font-bold text-salvus-text-primary tracking-tight">
-                  {selectedItem.name || `Hazard #${selectedItem.ticket_id}`}
+                  {selectedItem.name || `Hazard #${selectedItem.ticket_id || selectedItem.id}`}
                 </h2>
                 <p className="text-xs text-salvus-text-secondary mt-1">
                   {selectedItem.address ||
@@ -534,16 +605,15 @@ export const CitizenMap = () => {
                       <span>🛡️</span>
                       <span>
                         <strong>Officially designated Salvus emergency refuge.</strong> Verified
-                        civil defense resources and intake active.
+                        civil defense resources, bed occupancy, and medical triage active.
                       </span>
                     </div>
                   ) : (
                     <div className="flex items-start gap-2">
                       <span>ℹ️</span>
                       <span>
-                        <strong>Real-world geographic place (OpenStreetMap).</strong> For general
-                        reference and situational orientation; not an official Salvus emergency
-                        shelter.
+                        <strong>Real-world geographic place (OpenStreetMap).</strong> Contextual
+                        civic amenity; not an official Salvus evacuation shelter.
                       </span>
                     </div>
                   )}
@@ -553,7 +623,7 @@ export const CitizenMap = () => {
                 {selectedItem.amenities && selectedItem.amenities.length > 0 && (
                   <div className="mt-4">
                     <span className="text-xs font-bold text-salvus-text-primary block mb-2">
-                      Facilities & Tags:
+                      Facilities & Services:
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedItem.amenities.map((a) => (
@@ -584,11 +654,12 @@ export const CitizenMap = () => {
                 {/* Hazard-Specific Details */}
                 {(selectedItem.type === 'flood' ||
                   selectedItem.type === 'power_line' ||
-                  selectedItem.type === 'hazard') && (
+                  selectedItem.type === 'hazard' ||
+                  selectedItem.hazard_type) && (
                   <div className="mt-4 space-y-3">
                     <div className="bg-salvus-critical-bg border border-salvus-critical-border p-3.5 rounded-xl">
                       <div className="flex items-center gap-2 text-salvus-critical font-bold text-xs mb-1">
-                        <span>⚠️ HAZARD WARNING</span>
+                        <span>⚠️ ACTIVE HAZARD WARNING</span>
                       </div>
                       <p className="text-xs text-salvus-critical font-medium leading-relaxed">
                         {selectedItem.description}
@@ -600,7 +671,8 @@ export const CitizenMap = () => {
                         Recommended Action
                       </span>
                       <p className="text-xs text-salvus-text-secondary leading-relaxed">
-                        {selectedItem.recommendedAction ||
+                        {selectedItem.recommended_action ||
+                          selectedItem.recommendedAction ||
                           'Keep clear of the affected area. Follow safe elevated bypass.'}
                       </p>
                     </div>
@@ -615,10 +687,11 @@ export const CitizenMap = () => {
                     variant="safe"
                     size="lg"
                     fullWidth={true}
-                    onClick={() => setActiveRouteGuide(selectedItem)}
+                    onClick={() => handleCalculateRoute(selectedItem)}
+                    loading={isCalculatingRoute}
                     className="font-bold text-xs sm:text-sm"
                   >
-                    View Safe Walking Route
+                    {isCalculatingRoute ? 'Calculating Route...' : 'View Safe Walking Route'}
                   </Button>
                 )}
                 {(selectedItem.type === 'flood' || selectedItem.type === 'power_line') && (
@@ -637,10 +710,13 @@ export const CitizenMap = () => {
                     variant="primary"
                     size="lg"
                     fullWidth={true}
-                    onClick={() => setActiveRouteGuide(selectedItem)}
+                    onClick={() => handleCalculateRoute(selectedItem)}
+                    loading={isCalculatingRoute}
                     className="font-bold text-xs sm:text-sm"
                   >
-                    View Directions / Walking Guide
+                    {isCalculatingRoute
+                      ? 'Calculating Route...'
+                      : 'View Directions / Walking Guide'}
                   </Button>
                 )}
               </div>
@@ -665,7 +741,7 @@ export const CitizenMap = () => {
         </div>
       </div>
 
-      {/* Interactive Safe Route Guidance Modal */}
+      {/* Interactive Safe Route Guidance Modal / Drawer */}
       {activeRouteGuide && (
         <div
           role="dialog"
@@ -684,16 +760,26 @@ export const CitizenMap = () => {
             className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl relative text-salvus-text-primary outline-none"
           >
             <div className="flex items-center justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge
-                  variant={activeRouteGuide.provenance === 'SALVUS_VERIFIED' ? 'safe' : 'neutral'}
+                  variant={
+                    activeRouteGuide.is_safe_route === false
+                      ? 'warning'
+                      : activeRouteGuide.targetItem?.provenance === 'SALVUS_VERIFIED'
+                        ? 'safe'
+                        : 'neutral'
+                  }
                   dot={true}
                 >
-                  {activeRouteGuide.provenance === 'SALVUS_VERIFIED'
-                    ? 'Safe Route Guidance'
-                    : 'Walking Guidance'}
+                  {activeRouteGuide.is_safe_route === false
+                    ? 'Hazard Proximity Route'
+                    : activeRouteGuide.targetItem?.provenance === 'SALVUS_VERIFIED'
+                      ? 'Safe Walking Route'
+                      : 'Walking Guidance'}
                 </Badge>
-                <SimulatedBadge label="OFFLINE ROUTE" />
+                <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-slate-900 text-slate-400 border border-slate-700">
+                  {activeRouteGuide.is_fallback ? 'VECTOR CORRIDOR' : 'OSRM NAVIGATED'}
+                </span>
               </div>
               <button
                 type="button"
@@ -709,17 +795,54 @@ export const CitizenMap = () => {
               id="route-modal-title"
               className="text-xl font-extrabold text-salvus-text-primary tracking-tight"
             >
-              Route to {activeRouteGuide.name}
+              Route to {activeRouteGuide.targetName || activeRouteGuide.name}
             </h3>
             <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1">
               Distance:{' '}
-              <strong className="text-salvus-text-primary">
-                {activeRouteGuide.distance_formatted || activeRouteGuide.distance}
+              <strong className="text-salvus-text-primary font-mono">
+                {activeRouteGuide.distance_km
+                  ? `${activeRouteGuide.distance_km} km`
+                  : activeRouteGuide.distance_formatted || '650m'}
               </strong>{' '}
-              · Estimated Time: <strong className="text-salvus-safe">4-8 mins</strong>
+              · Estimated Time:{' '}
+              <strong className="text-salvus-safe font-mono">
+                {activeRouteGuide.eta_formatted ||
+                  `${Math.ceil((activeRouteGuide.distance_km || 0.6) * 12)} min`}
+              </strong>
             </p>
 
-            <div className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-4 my-4 space-y-3">
+            {/* Route Hazard Safety Callout */}
+            <div
+              className={`my-3.5 p-3 rounded-xl border text-xs leading-relaxed ${
+                activeRouteGuide.is_safe_route === false
+                  ? 'bg-amber-950/40 border-amber-500/50 text-amber-300'
+                  : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
+              }`}
+            >
+              {activeRouteGuide.is_safe_route === false ? (
+                <div>
+                  <div className="flex items-center gap-1.5 font-bold mb-1">
+                    <span>⚠️</span>
+                    <span>HAZARD PROXIMITY CAUTION</span>
+                  </div>
+                  <p className="text-amber-200/90 text-xs">
+                    {activeRouteGuide.hazard_warning ||
+                      'Route passes near active flood/infrastructure hazard. Maintain high ground.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2">
+                  <span>✓</span>
+                  <span>
+                    <strong>Recommended route based on current available hazard data.</strong> No
+                    active critical hazards intersect this path.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Turn-by-Turn Pedestrian Advice */}
+            <div className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-4 my-3 space-y-3">
               <div className="flex items-start gap-3 text-xs">
                 <span className="h-5 w-5 rounded-full bg-salvus-safe-bg border border-salvus-safe-border text-salvus-safe font-bold text-[11px] flex items-center justify-center shrink-0">
                   1
@@ -729,7 +852,7 @@ export const CitizenMap = () => {
                     Head along main pedestrian access route
                   </strong>
                   <span className="text-salvus-text-secondary">
-                    Stay on paved pathways and avoid low-lying water collection zones.
+                    Stay on elevated paved walkways and avoid low-lying drainage crossings.
                   </span>
                 </div>
               </div>
@@ -740,24 +863,28 @@ export const CitizenMap = () => {
                 </span>
                 <div>
                   <strong className="text-salvus-text-primary block">
-                    Approach destination entry
+                    Approach destination entrance
                   </strong>
                   <span className="text-salvus-text-secondary">
-                    {activeRouteGuide.address || 'Follow destination signage.'}
+                    {activeRouteGuide.targetAddress ||
+                      activeRouteGuide.address ||
+                      'Follow on-site civil defense signage.'}
                   </span>
                 </div>
               </div>
             </div>
 
-            <Button
-              variant="safe"
-              size="lg"
-              fullWidth={true}
-              onClick={() => setActiveRouteGuide(null)}
-              className="font-bold text-xs sm:text-sm"
-            >
-              Close Route View
-            </Button>
+            <div className="flex items-center gap-3 pt-2">
+              <Button
+                variant="safe"
+                size="lg"
+                fullWidth={true}
+                onClick={() => setActiveRouteGuide(null)}
+                className="font-bold text-xs sm:text-sm"
+              >
+                Keep Route on Map & Close
+              </Button>
+            </div>
           </div>
         </div>
       )}

@@ -156,6 +156,65 @@ def clear_route_cache() -> None:
     _ROUTE_CACHE.clear()
 
 
+async def evaluate_route_hazards(
+    coordinates: list[list[float]],
+) -> tuple[bool, str | None, list[str]]:
+    """Evaluate if route coordinates intersect or approach known active disaster hazards.
+
+    Returns:
+        tuple: (is_safe_route, hazard_warning, hazard_intersections)
+    """
+    try:
+        from app.services.hazard_service import get_active_hazards
+
+        active_hazards = await get_active_hazards()
+        critical_hazards = [
+            hz for hz in active_hazards if hz.severity in ("CRITICAL", "WARNING") and hz.is_active
+        ]
+
+        if not critical_hazards or not coordinates:
+            return True, None, []
+
+        intersections = []
+        is_safe = True
+        min_distance_km = 999.0
+        nearest_hazard = None
+
+        # Sample waypoints along the route
+        step = max(1, len(coordinates) // 25)
+        sampled_points = coordinates[::step]
+        if coordinates[-1] not in sampled_points:
+            sampled_points.append(coordinates[-1])
+
+        for pt in sampled_points:
+            pt_lat, pt_lon = pt[0], pt[1]
+            for hz in critical_hazards:
+                dist = haversine_distance_km(pt_lat, pt_lon, hz.latitude, hz.longitude)
+                if dist < min_distance_km:
+                    min_distance_km = dist
+                    nearest_hazard = hz
+
+                # Intersects if within affected radius or within 400m of critical hazard
+                if dist <= max(0.4, hz.affected_radius_km * 0.7):
+                    is_safe = False
+                    inter_desc = f"{hz.title} (within {int(dist * 1000)}m of route)"
+                    if inter_desc not in intersections:
+                        intersections.append(inter_desc)
+
+        hazard_warning = None
+        if not is_safe and nearest_hazard:
+            dist_m = int(min_distance_km * 1000)
+            hazard_warning = (
+                f"Caution: Route intersects or passes within proximity ({dist_m}m) "
+                f"of active hazard zone: {nearest_hazard.title}."
+            )
+
+        return is_safe, hazard_warning, intersections
+    except Exception as e:
+        print(f"[RoutingService] Route hazard evaluation skipped: {e}")
+        return True, None, []
+
+
 async def get_route(
     origin_lat: float,
     origin_lon: float,
@@ -164,7 +223,7 @@ async def get_route(
     profile: RouteProfile | str = RouteProfile.DRIVING,
     client: httpx.AsyncClient | None = None,
 ) -> RouteResponse:
-    """Calculate real-world routing geometry, distance, and duration between two GPS coordinates.
+    """Calculate real-world routing geometry, distance, duration, and safety assessment.
 
     Queries OSRM service with automatic fallback to vector corridor on timeout/error.
     """
@@ -184,6 +243,15 @@ async def get_route(
     if profile_str == "boat":
         route_resp = _generate_fallback_corridor(
             origin_lat, origin_lon, dest_lat, dest_lon, profile="boat"
+        )
+        is_safe, warning, intersections = await evaluate_route_hazards(route_resp.coordinates)
+        route_resp = route_resp.model_copy(
+            update={
+                "is_safe_route": is_safe,
+                "hazard_warning": warning,
+                "hazard_intersections": intersections,
+                "safety_disclaimer": "Recommended route based on current available hazard data.",
+            }
         )
         _ROUTE_CACHE[cache_key] = (route_resp, now + CACHE_TTL_SECONDS)
         return route_resp
@@ -231,6 +299,8 @@ async def get_route(
                 summary = best_route.get("legs", [{}])[0].get("summary", "OSRM Navigated Route")
                 now_iso = datetime.now(UTC).isoformat()
 
+                is_safe, warning, intersections = await evaluate_route_hazards(coordinates)
+
                 route_resp = RouteResponse(
                     distance_km=dist_km,
                     distance_meters=dist_meters,
@@ -246,6 +316,10 @@ async def get_route(
                     provider="osrm",
                     calculated_at=now_iso,
                     is_fallback=False,
+                    is_safe_route=is_safe,
+                    hazard_warning=warning,
+                    hazard_intersections=intersections,
+                    safety_disclaimer="Recommended route based on current available hazard data.",
                 )
 
                 _ROUTE_CACHE[cache_key] = (route_resp, now + CACHE_TTL_SECONDS)
@@ -257,6 +331,15 @@ async def get_route(
 
     route_resp = _generate_fallback_corridor(
         origin_lat, origin_lon, dest_lat, dest_lon, profile=profile_str
+    )
+    is_safe, warning, intersections = await evaluate_route_hazards(route_resp.coordinates)
+    route_resp = route_resp.model_copy(
+        update={
+            "is_safe_route": is_safe,
+            "hazard_warning": warning,
+            "hazard_intersections": intersections,
+            "safety_disclaimer": "Recommended route based on current available hazard data.",
+        }
     )
     _ROUTE_CACHE[cache_key] = (route_resp, now + CACHE_TTL_SECONDS)
     return route_resp

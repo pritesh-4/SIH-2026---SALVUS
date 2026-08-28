@@ -12,6 +12,7 @@ from fastapi import APIRouter, Query
 
 from app.db import get_database
 from app.models import (
+    AreaSafetyResponse,
     HazardListResponse,
     IncidentClusterListResponse,
     SituationSummaryResponse,
@@ -41,6 +42,20 @@ async def list_hazards(
         count=len(hazards),
         source_summary="Open-Meteo, USGS, GDACS, IMD Normalized Feeds",
     )
+
+
+@router.get("/api/hazards/area-status", response_model=AreaSafetyResponse)
+@router.get("/api/hazards/safety-status", response_model=AreaSafetyResponse)
+async def get_area_safety_status(
+    lat: float | None = Query(default=None, ge=-90, le=90, description="Citizen latitude"),
+    lon: float | None = Query(default=None, ge=-180, le=180, description="Citizen longitude"),
+):
+    """Evaluate location-grounded area safety threat level.
+
+    Possible levels: SAFE, WATCH, WARNING, CRITICAL, NO_DATA, LOCATION_REQUIRED.
+    """
+    db = await get_database()
+    return await hazard_service.evaluate_area_safety(lat=lat, lon=lon, db=db)
 
 
 @router.get("/api/hazards/clusters", response_model=IncidentClusterListResponse)
