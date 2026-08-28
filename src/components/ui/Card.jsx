@@ -87,7 +87,7 @@ export const CardHeader = ({ children, className = '', ...props }) => (
 
 export const CardTitle = ({ children, className = '', as: Component = 'h3', ...props }) => (
   <Component
-    className={`text-lg font-bold text-salvus-text-primary tracking-tight leading-snug ${className}`}
+    className={`text-h3 font-bold text-salvus-text-primary tracking-tight leading-snug ${className}`}
     {...props}
   >
     {children}

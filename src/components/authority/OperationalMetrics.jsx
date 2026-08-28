@@ -20,36 +20,30 @@ export const OperationalMetrics = ({
       {/* 1. Critical Threats */}
       <Card variant="critical" padding="sm" className="flex flex-col justify-between">
         <div className="flex items-center justify-between gap-1 mb-1">
-          <span className="text-xs font-bold uppercase tracking-wider text-salvus-critical">
-            Critical Threats
-          </span>
+          <span className="text-xs font-bold text-salvus-critical">Critical Threats</span>
           <Badge variant="critical" size="sm" dot={true}>
             Priority
           </Badge>
         </div>
-        <span className="text-2xl font-extrabold text-salvus-critical font-mono">{critical}</span>
+        <span className="text-2xl font-extrabold text-salvus-critical">{critical}</span>
       </Card>
 
       {/* 2. Active Incidents */}
       <Card padding="sm" className="flex flex-col justify-between">
         <div className="flex items-center justify-between gap-1 mb-1">
-          <span className="text-xs font-semibold uppercase tracking-wider text-salvus-text-secondary">
-            Active Incidents
-          </span>
+          <span className="text-xs font-semibold text-salvus-text-secondary">Active Incidents</span>
           <span className="text-[11px] text-salvus-text-muted">{resolved} resolved</span>
         </div>
-        <span className="text-2xl font-extrabold text-salvus-text-primary font-mono">{active}</span>
+        <span className="text-2xl font-extrabold text-salvus-text-primary">{active}</span>
       </Card>
 
       {/* 3. Fleet Deployed */}
       <Card variant="info" padding="sm" className="flex flex-col justify-between">
         <div className="flex items-center justify-between gap-1 mb-1">
-          <span className="text-xs font-semibold uppercase tracking-wider text-salvus-info">
-            Fleet Deployed
-          </span>
+          <span className="text-xs font-semibold text-salvus-info">Fleet Deployed</span>
           <span className="text-[11px] text-salvus-info/80">{totalRespondersCount} total</span>
         </div>
-        <span className="text-2xl font-extrabold text-salvus-info font-mono">
+        <span className="text-2xl font-extrabold text-salvus-info">
           {activeRespondersCount}{' '}
           <span className="text-xs font-normal text-salvus-text-muted">
             / {totalRespondersCount}
@@ -60,16 +54,12 @@ export const OperationalMetrics = ({
       {/* 4. Shelter Capacity */}
       <Card variant="safe" padding="sm" className="flex flex-col justify-between">
         <div className="flex items-center justify-between gap-1 mb-1">
-          <span className="text-xs font-semibold uppercase tracking-wider text-salvus-safe">
-            Available Beds
-          </span>
+          <span className="text-xs font-semibold text-salvus-safe">Available Beds</span>
           <Badge variant="safe" size="sm">
             Stable
           </Badge>
         </div>
-        <span className="text-2xl font-extrabold text-salvus-safe font-mono">
-          {totalBedsAvailable}
-        </span>
+        <span className="text-2xl font-extrabold text-salvus-safe">{totalBedsAvailable}</span>
       </Card>
     </section>
   )

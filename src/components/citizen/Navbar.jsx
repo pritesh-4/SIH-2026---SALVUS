@@ -14,11 +14,11 @@ export const Navbar = ({ unreadAlertsCount = 1 }) => {
       <div className="max-w-[1440px] mx-auto px-4 sm:px-8 lg:px-12 h-16 flex items-center justify-between gap-4">
         {/* Brand */}
         <Link to="/citizen" className="flex items-center gap-2 group">
-          <span className="text-salvus-text-primary font-extrabold text-lg tracking-wider group-hover:text-salvus-info transition-colors">
+          <span className="text-salvus-text-primary font-extrabold text-lg tracking-wide group-hover:text-salvus-info transition-colors">
             SALVUS
           </span>
-          <span className="text-[11px] font-semibold text-salvus-text-muted tracking-widest uppercase">
-            CITIZEN
+          <span className="text-[11px] font-semibold text-salvus-text-muted tracking-wide">
+            Citizen
           </span>
         </Link>
 
