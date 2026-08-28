@@ -990,13 +990,19 @@ class SituationSummaryResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Real-World Nearby Places Models (Phase 1: Real-World Places Intelligence)
+# Real-World Nearby Places Models (Phase 2: Proximity, Routing, Cache & Trust)
 # ---------------------------------------------------------------------------
 
 
 class PlaceProvenance(StrEnum):
     OSM_MAPPED = "OSM_MAPPED"
     SALVUS_VERIFIED = "SALVUS_VERIFIED"
+
+
+class PlaceFreshness(StrEnum):
+    FRESH = "FRESH"
+    STALE = "STALE"
+    UNAVAILABLE = "UNAVAILABLE"
 
 
 class PlaceCategory(StrEnum):
@@ -1067,6 +1073,8 @@ class PlacesResponse(BaseModel):
     """Response schema for nearby real-world places."""
 
     success: bool = True
+    status: str = "OK"
+    freshness: PlaceFreshness = PlaceFreshness.FRESH
     data: list[PlaceModel] = Field(default_factory=list)
     count: int = 0
     searched_radius_km: float = 2.0
@@ -1074,3 +1082,21 @@ class PlacesResponse(BaseModel):
     query_center: dict[str, float]
     cached: bool = False
     fetched_at: str | None = None
+
+
+class PlaceRouteResponse(BaseModel):
+    """On-demand turn-by-turn route calculation response for a single selected place."""
+
+    success: bool = True
+    place: PlaceModel
+    origin: dict[str, float]
+    destination: dict[str, float]
+    route_distance_m: float
+    route_duration_s: float
+    eta_formatted: str
+    coordinates: list[list[float]] = Field(default_factory=list)
+    profile: str = "walking"
+    is_fallback: bool = False
+    is_safe_route: bool = True
+    hazard_warning: str | None = None
+    calculated_at: str

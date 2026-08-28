@@ -1,12 +1,14 @@
-"""Places REST API routes (Phase 1: Real-World Places Intelligence).
+"""Places REST API routes (Phase 2: Proximity, Routing, Cache & Trust).
 
 Provides endpoints for querying real-world geographic context (hospitals,
 clinics, pharmacies, police stations, fire stations, emergency facilities,
-and emergency shelters) around citizen GPS coordinates with strict provenance separation.
+and emergency shelters) around citizen GPS coordinates with strict provenance separation,
+multi-factor ranking, and on-demand turn-by-turn routing.
 
 Endpoints:
-    GET  /api/places/nearby — Query real-world geographic places
-    GET  /api/places        — Architectural alias endpoint
+    GET  /api/places/nearby          — Query ranked nearby real-world places
+    GET  /api/places                 — Architectural alias endpoint
+    GET  /api/places/{place_id}/route — On-demand single-target route calculation
 """
 
 from __future__ import annotations
@@ -18,6 +20,11 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.db import get_database
 from app.models import (
+    PlaceCategory,
+    PlaceFreshness,
+    PlaceModel,
+    PlaceProvenance,
+    PlaceRouteResponse,
     PlacesResponse,
 )
 from app.services import places_service
@@ -45,12 +52,15 @@ async def get_nearby_places_endpoint(
     radius: int | None = Query(None, description="Query radius in meters (legacy parameter)"),
     categories: str | None = Query(None, description="Comma-separated category filters"),
     include_verified: bool = Query(True, description="Include official Salvus-verified shelters"),
+    safe_places_only: bool = Query(False, description="Prioritize safe evacuation facilities"),
 ) -> PlacesResponse:
-    """Retrieve nearby geographic places with strict provenance distinction.
+    """Retrieve nearby geographic places with provenance distinction and multi-factor ranking.
 
     - Real-world external OpenStreetMap facilities are tagged OSM_MAPPED.
+
     - Official Salvus civil defense shelters are tagged SALVUS_VERIFIED.
-    - If the provider does not provide contact details, fields return null (no fabrication).
+    - Missing contact or operational details return null (no fabrication).
+    - Ranked by life-safety emergency suitability and proximity.
     """
     target_lon = lon if lon is not None else lng
     if target_lon is None:
@@ -91,22 +101,24 @@ async def get_nearby_places_endpoint(
         effective_radius_km = 2.0
 
     cat_list = [c.strip() for c in categories.split(",") if c.strip()] if categories else None
-
     now_iso = datetime.now(UTC).isoformat()
 
     try:
         db = await get_database()
-        places, is_cached = await places_service.get_nearby_places(
+        places, is_cached, freshness = await places_service.get_nearby_places(
             lat=lat,
             lon=target_lon,
             radius=effective_radius_m,
             categories=cat_list,
             include_verified=include_verified,
+            safe_places_priority=safe_places_only,
             db=db,
         )
 
         return PlacesResponse(
             success=True,
+            status="OK",
+            freshness=freshness,
             data=places,
             count=len(places),
             searched_radius_km=effective_radius_km,
@@ -119,6 +131,8 @@ async def get_nearby_places_endpoint(
         # Graceful degradation on unexpected provider failure so citizen UI never crashes
         return PlacesResponse(
             success=True,
+            status="PROVIDER_UNAVAILABLE",
+            freshness=PlaceFreshness.UNAVAILABLE,
             data=[],
             count=0,
             searched_radius_km=effective_radius_km,
@@ -127,3 +141,92 @@ async def get_nearby_places_endpoint(
             cached=False,
             fetched_at=now_iso,
         )
+
+
+@router.get("/api/places/{place_id}/route", response_model=PlaceRouteResponse)
+async def get_place_route_endpoint(
+    place_id: str,
+    origin_lat: float = Query(..., ge=-90.0, le=90.0, description="Origin citizen latitude"),
+    origin_lon: float = Query(..., ge=-180.0, le=180.0, description="Origin citizen longitude"),
+    profile: str = Query("walking", description="Transit mode profile (walking/driving)"),
+    radius: int = Query(5000, description="Search radius in meters to locate the target place"),
+) -> PlaceRouteResponse:
+    """Calculate on-demand real-world route from origin GPS to a specific selected place."""
+    validate_coordinates(origin_lat, origin_lon)
+    db = await get_database()
+
+    # 1. Handle direct Salvus-verified shelter ID lookup
+    if place_id.startswith("salvus-shelter-"):
+        shelter_raw_id = place_id.replace("salvus-shelter-", "")
+        from app.services import shelter_service
+
+        sh = await shelter_service.get_shelter_by_id(db, shelter_raw_id)
+        if not sh:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "success": False,
+                    "error": {
+                        "code": "SHELTER_NOT_FOUND",
+                        "message": f"Verified shelter '{place_id}' not found.",
+                    },
+                },
+            )
+
+        dist_km = places_service.haversine_distance_km(
+            origin_lat, origin_lon, sh.latitude, sh.longitude
+        )
+        dist_m = round(dist_km * 1000.0, 1)
+        now_iso = datetime.now(UTC).isoformat()
+
+        target_place = PlaceModel(
+            id=place_id,
+            source="Salvus Civil Defense",
+            source_id=str(sh.id),
+            provenance=PlaceProvenance.SALVUS_VERIFIED,
+            category=PlaceCategory.SHELTER,
+            name=sh.name,
+            latitude=sh.latitude,
+            longitude=sh.longitude,
+            address=sh.address,
+            distance_km=dist_km,
+            distance_meters=dist_m,
+            distance_formatted=places_service.format_distance(dist_m),
+            fetched_at=now_iso,
+            amenities=sh.amenities or [],
+            opening_hours="24/7 Emergency Operation",
+        )
+        return await places_service.get_place_route(
+            origin_lat=origin_lat,
+            origin_lon=origin_lon,
+            place=target_place,
+            profile=profile,
+        )
+
+    # 2. Locate place via nearby search
+    places, _, _ = await places_service.get_nearby_places(
+        lat=origin_lat,
+        lon=origin_lon,
+        radius=radius,
+        include_verified=True,
+        db=db,
+    )
+    target_place = next((p for p in places if p.id == place_id), None)
+    if not target_place:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "PLACE_NOT_FOUND",
+                    "message": f"Place '{place_id}' not found within nearby radius.",
+                },
+            },
+        )
+
+    return await places_service.get_place_route(
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+        place=target_place,
+        profile=profile,
+    )

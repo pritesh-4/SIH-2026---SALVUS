@@ -1,4 +1,4 @@
-"""External Nearby Places Provider Adapter (Phase 1: Real-World Places Intelligence).
+"""External Nearby Places Provider Adapter (Phase 2: Proximity, Routing, Cache & Trust).
 
 Encapsulates external geographic data fetching (e.g. OpenStreetMap Overpass API)
 behind the `NearbyPlacesProvider` interface.
@@ -7,9 +7,10 @@ Key Responsibilities:
 - Multi-mirror failover rotation with strict timeout guards
 - Isolated Overpass QL query construction (query syntax never leaks outside)
 - Ground-truth OSM tag mapping to controlled `PlaceCategory`
-- Zero data fabrication: missing phone, website, opening hours, address, or city return None
+- Safe phone normalization and zero data fabrication
 - Strict provenance attribution (`PlaceProvenance.OSM_MAPPED`, `source="OpenStreetMap"`)
-- Element deduplication and straight-line Haversine distance calculation
+- Multi-stage deduplication: source+source_id & spatial-semantic collocation (< 25m)
+- Straight-line Haversine distance calculation and human formatting
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 import time
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
@@ -67,6 +69,106 @@ def format_distance(distance_meters: float) -> str:
         return f"Approx. {int(round(distance_meters))} m"
     km = distance_meters / 1000.0
     return f"Approx. {km:.1f} km"
+
+
+def normalize_phone_number(raw_phone: str | None) -> str | None:
+    """Normalize raw phone strings safely without inventing missing details."""
+    if not raw_phone:
+        return None
+    cleaned = str(raw_phone).strip()
+    if not cleaned:
+        return None
+    # Split on common multiple number delimiters and take primary
+    if "/" in cleaned or ";" in cleaned or "," in cleaned:
+        parts = [
+            p.strip() for p in cleaned.replace(";", "/").replace(",", "/").split("/") if p.strip()
+        ]
+        if parts:
+            cleaned = parts[0]
+    # Collapse multiple consecutive whitespaces
+    cleaned = " ".join(cleaned.split())
+    return cleaned if len(cleaned) >= 5 else None
+
+
+def normalize_place_name(name: str) -> str:
+    """Normalize place name for fuzzy matching (case-folded, alphanumeric only)."""
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def deduplicate_places(places: list[PlaceModel]) -> list[PlaceModel]:
+    """Deduplicate places based on source+source_id and collocated semantic matching (< 25m)."""
+    if not places:
+        return []
+
+    # 1. Exact ID & source_id deduplication
+    unique_map: dict[str, PlaceModel] = {}
+    for p in places:
+        key = f"{p.source}:{p.source_id or p.id}"
+        if key not in unique_map:
+            unique_map[key] = p
+        else:
+            existing = unique_map[key]
+            unique_map[key] = existing.model_copy(
+                update={
+                    "phone": existing.phone or p.phone,
+                    "website": existing.website or p.website,
+                    "opening_hours": existing.opening_hours or p.opening_hours,
+                    "address": existing.address or p.address,
+                    "city": existing.city or p.city,
+                    "amenities": list(dict.fromkeys(existing.amenities + p.amenities)),
+                }
+            )
+
+    candidates = list(unique_map.values())
+
+    # 2. Spatial-semantic deduplication (< 25m, same category, normalized name match)
+    deduped: list[PlaceModel] = []
+    for candidate in candidates:
+        matched_idx = -1
+        cand_norm_name = normalize_place_name(candidate.name)
+
+        for idx, existing in enumerate(deduped):
+            if candidate.category == existing.category:
+                dist = haversine_distance_km(
+                    candidate.latitude,
+                    candidate.longitude,
+                    existing.latitude,
+                    existing.longitude,
+                )
+                if dist <= 0.025:  # <= 25 meters
+                    exist_norm_name = normalize_place_name(existing.name)
+                    if (
+                        cand_norm_name == exist_norm_name
+                        or (len(cand_norm_name) > 4 and cand_norm_name in exist_norm_name)
+                        or (len(exist_norm_name) > 4 and exist_norm_name in cand_norm_name)
+                    ):
+                        matched_idx = idx
+                        break
+
+        if matched_idx == -1:
+            deduped.append(candidate)
+        else:
+            exist_item = deduped[matched_idx]
+            # Prefer whichever element has richer phone/address or is a node
+            has_richer_info = bool(candidate.phone or candidate.address) and not bool(
+                exist_item.phone or exist_item.address
+            )
+            preferred = candidate if has_richer_info else exist_item
+            other = exist_item if has_richer_info else candidate
+
+            merged = preferred.model_copy(
+                update={
+                    "phone": preferred.phone or other.phone,
+                    "website": preferred.website or other.website,
+                    "opening_hours": preferred.opening_hours or other.opening_hours,
+                    "address": preferred.address or other.address,
+                    "city": preferred.city or other.city,
+                    "amenities": list(dict.fromkeys(preferred.amenities + other.amenities)),
+                }
+            )
+            deduped[matched_idx] = merged
+
+    return deduped
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +418,7 @@ out center tags 60;
         # Contact & Operational Details (No fabrication: null if missing)
         # -----------------------------------------------------------------------
         raw_phone = tags.get("phone") or tags.get("contact:phone")
-        phone = str(raw_phone).strip() if raw_phone else None
+        phone = normalize_phone_number(raw_phone)
 
         raw_website = tags.get("website") or tags.get("contact:website")
         website = str(raw_website).strip() if raw_website else None
@@ -370,7 +472,7 @@ out center tags 60;
         categories: list[PlaceCategory] | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> list[PlaceModel]:
-        """Query Overpass mirrors in sequence with automatic fallback."""
+        """Query Overpass mirrors in sequence with automatic fallback and deduplication."""
         mirrors = self.get_mirrors()
         query = self.build_query(lat, lon, radius_m, categories)
         now_iso = datetime.now(UTC).isoformat()
@@ -389,30 +491,26 @@ out center tags 60;
                         mirror_url,
                         data={"data": query},
                         headers={
-                            "User-Agent": "SalvusDisasterCoordination/1.0 (https://github.com/salvus-rescue)",
+                            "User-Agent": "SalvusDisasterCoordination/2.0 (https://github.com/salvus-rescue)",
                             "Accept": "application/json",
                         },
                     )
                     if resp.status_code == 200:
                         data = resp.json()
                         raw_elements: list[dict[str, Any]] = data.get("elements", [])
-                        places: list[PlaceModel] = []
-                        seen_ids: set[str] = set()
+                        raw_places: list[PlaceModel] = []
 
                         for elem in raw_elements:
                             place = self.normalize_element(elem, lat, lon, now_iso)
-                            if place and place.id not in seen_ids:
-                                seen_ids.add(place.id)
-                                places.append(place)
+                            if place:
+                                raw_places.append(place)
 
-                        # Sort ascending by straight-line distance
-                        places.sort(
-                            key=lambda p: p.distance_km if p.distance_km is not None else 9999.0
-                        )
+                        # Apply spatial-semantic deduplication (< 25m)
+                        deduped = deduplicate_places(raw_places)
+
                         latency_ms = (time.perf_counter() - start_time) * 1000.0
-
                         self.update_health(SourceStatus.AVAILABLE, latency_ms=latency_ms)
-                        return places
+                        return deduped
                     else:
                         logger.warning(
                             "[OverpassAdapter] Mirror %s returned HTTP %d, falling back...",

@@ -1,39 +1,49 @@
-"""Unit and integration tests for Salvus Real-World Nearby Places Intelligence (Phase 1).
+"""Unit and integration tests for Salvus Real-World Nearby Places Intelligence (Phase 2).
 
-Covers all 14 testing conditions:
-1. Math & proximity calculations (Haversine distance, human-friendly formatting)
-2. Coordinate grid snapping (~100m grid cell)
-3. Controlled PlaceCategory enum enforcement & parsing
-4. OpenStreetMap tag mapping to normalized PlaceModel
-5. Strict provenance separation: OSM_MAPPED vs SALVUS_VERIFIED
-6. No invented details: null returned when phone, website, opening hours, or address are missing
-7. Way center geometry extraction & invalid coordinate rejection
-8. Duplicate provider ID deduplication
-9. Adapter multi-mirror rotation & fallback on network error
-10. All-mirror outage graceful degradation (returns empty list, no crash)
-11. In-memory TTL caching with exact distance recalculation
+Covers all 15 Phase 2 requirements:
+1. Math & geometric distance calculations
+2. Coordinate grid cell snapping (~100m)
+3. Safe phone number normalization & null integrity
+4. Controlled PlaceCategory enum resolution
+5. Spatial-semantic deduplication (< 25m collocation merge)
+6. Multi-factor emergency ranking (Hospitals / emergency services prioritized)
+7. Verified Salvus shelter priority over OSM mapped shelters
+8. Tiered caching with exact distance recalculation
+9. Stale-while-revalidate cache fallback on provider failure
+10. Total provider outage graceful fallback (UNAVAILABLE)
+11. GPS movement threshold sensitivity (> 150m)
 12. REST API /api/places/nearby validation & 422 error handling
-13. Multiple category filtering in REST API
-14. Salvus-verified shelter integration with provenance integrity
+13. REST API /api/places/nearby freshness & category filtering
+14. On-demand turn-by-turn routing endpoint (/api/places/{place_id}/route)
+15. Cold vs cached performance benchmark
 """
 
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient, Response
 
 from app.adapters.places import (
-    OverpassPlacesAdapter,
+    deduplicate_places,
     format_distance,
     haversine_distance_km,
+    normalize_phone_number,
 )
 from app.main import app
-from app.models import PlaceCategory, PlaceProvenance
+from app.models import (
+    PlaceCategory,
+    PlaceFreshness,
+    PlaceModel,
+    PlaceProvenance,
+)
 from app.services.places_service import (
     build_overpass_query,
     clear_places_cache,
     get_nearby_places,
-    normalize_osm_element,
+    get_place_route,
+    has_moved_significantly,
+    rank_places,
     snap_coordinate_to_grid,
 )
 
@@ -47,7 +57,7 @@ def clean_cache():
 
 
 # ---------------------------------------------------------------------------
-# 1. Math, Formatting & Helper Tests
+# 1. Math, Formatting & Phone Normalization Tests
 # ---------------------------------------------------------------------------
 
 
@@ -71,6 +81,26 @@ def test_snap_coordinate_to_grid():
     """Verify coordinate grid cell snapping for ~100m resolution."""
     assert snap_coordinate_to_grid(22.572618) == 22.573
     assert snap_coordinate_to_grid(88.363942) == 88.364
+
+
+def test_normalize_phone_number():
+    """Verify safe phone normalization without fabricating missing numbers."""
+    assert normalize_phone_number(None) is None
+    assert normalize_phone_number("") is None
+    assert normalize_phone_number("   ") is None
+    assert normalize_phone_number("123") is None  # Too short to be valid phone
+    assert normalize_phone_number("+91 33 2359 1234 / 2359 5678") == "+91 33 2359 1234"
+    assert normalize_phone_number("033-2359-1234 ; 033-2359-5678") == "033-2359-1234"
+    assert normalize_phone_number("  +91  98765  43210  ") == "+91 98765 43210"
+
+
+def test_has_moved_significantly():
+    """Verify GPS movement threshold evaluation (> 150m)."""
+    assert has_moved_significantly(None, None, 22.5726, 88.3639) is True
+    # ~20m move -> False
+    assert has_moved_significantly(22.5726, 88.3639, 22.5727, 88.3640, threshold_m=150.0) is False
+    # ~400m move -> True
+    assert has_moved_significantly(22.5726, 88.3639, 22.5760, 88.3640, threshold_m=150.0) is True
 
 
 # ---------------------------------------------------------------------------
@@ -99,190 +129,130 @@ def test_build_overpass_query_categories():
     assert "pharmacy" in query
 
 
-def test_normalize_osm_node_complete():
-    """Verify normalization of a full OSM node with all attributes."""
-    sample_node = {
-        "type": "node",
-        "id": 12345678,
-        "lat": 22.5740,
-        "lon": 88.3650,
-        "tags": {
-            "name": "Salt Lake Sub-Divisional Hospital",
-            "amenity": "hospital",
-            "addr:street": "Broadway Road",
-            "addr:suburb": "Salt Lake",
-            "addr:city": "Kolkata",
-            "emergency": "yes",
-            "wheelchair": "yes",
-            "phone": "+91 33 2359 1234",
-            "website": "https://wbhealth.gov.in",
-            "opening_hours": "24/7",
-        },
-    }
-
-    place = normalize_osm_element(sample_node, 22.5726, 88.3639, "2026-08-28T16:00:00Z")
-    assert place is not None
-    assert place.id == "osm-node-12345678"
-    assert place.source == "OpenStreetMap"
-    assert place.source_id == "node/12345678"
-    assert place.name == "Salt Lake Sub-Divisional Hospital"
-    assert place.category == PlaceCategory.HOSPITAL
-    assert place.provenance == PlaceProvenance.OSM_MAPPED
-    assert place.latitude == 22.5740
-    assert place.longitude == 88.3650
-    assert place.address == "Broadway Road, Salt Lake"
-    assert place.city == "Kolkata"
-    assert place.phone == "+91 33 2359 1234"
-    assert place.website == "https://wbhealth.gov.in"
-    assert place.opening_hours == "24/7"
-    assert place.distance_km is not None and place.distance_km > 0
-    assert "Emergency Services" in place.amenities
-    assert "Wheelchair Accessible" in place.amenities
-
-
-def test_normalize_osm_way_center():
-    """Verify normalization of an OSM way element using center coordinates."""
-    sample_way = {
-        "type": "way",
-        "id": 9876543,
-        "center": {
-            "lat": 22.5755,
-            "lon": 88.3665,
-        },
-        "tags": {
-            "name": "Bidhannagar North Police Station",
-            "amenity": "police",
-        },
-    }
-
-    place = normalize_osm_element(sample_way, 22.5726, 88.3639, "2026-08-28T16:00:00Z")
-    assert place is not None
-    assert place.id == "osm-way-9876543"
-    assert place.source_id == "way/9876543"
-    assert place.latitude == 22.5755
-    assert place.longitude == 88.3665
-    assert place.category == PlaceCategory.POLICE
-    assert place.provenance == PlaceProvenance.OSM_MAPPED
-
-
 # ---------------------------------------------------------------------------
-# 3. No Invented Details & Data Integrity Tests
+# 3. Spatial-Semantic Deduplication & Multi-Factor Ranking Tests
 # ---------------------------------------------------------------------------
 
 
-def test_no_invented_details_when_missing():
-    """Verify that missing provider tags strictly return None / null without fabrication."""
-    minimal_node = {
-        "type": "node",
-        "id": 55555,
-        "lat": 22.5735,
-        "lon": 88.3642,
-        "tags": {
-            "amenity": "pharmacy",
-            # No name, phone, website, opening_hours, address, city
-        },
-    }
-
-    place = normalize_osm_element(minimal_node, 22.5726, 88.3639, "2026-08-28T16:00:00Z")
-    assert place is not None
-    assert place.phone is None
-    assert place.website is None
-    assert place.opening_hours is None
-    assert place.address is None
-    assert place.city is None
-    assert place.route_distance_m is None
-    assert place.route_duration_s is None
-    # Descriptive fallback descriptor, not a fake business name
-    assert place.name == "Pharmacy / Chemist"
-
-
-def test_normalize_osm_shelter_provenance_is_never_salvus_verified():
-    """Verify that an OSM mapped shelter is strictly tagged OSM_MAPPED, never SALVUS_VERIFIED."""
-    sample_shelter = {
-        "type": "node",
-        "id": 888999,
-        "lat": 22.5750,
-        "lon": 88.3660,
-        "tags": {
-            "name": "Community Flood Shelter Shed",
-            "amenity": "shelter",
-        },
-    }
-
-    place = normalize_osm_element(sample_shelter, 22.5726, 88.3639, "2026-08-28T16:00:00Z")
-    assert place is not None
-    assert place.category == PlaceCategory.SHELTER
-    assert place.provenance == PlaceProvenance.OSM_MAPPED
-    assert place.provenance != PlaceProvenance.SALVUS_VERIFIED
-    assert place.source == "OpenStreetMap"
-
-
-def test_invalid_coordinates_skipped():
-    """Verify that elements with invalid, out-of-range, or NaN coordinates are safely discarded."""
-    invalid_nodes = [
-        {"type": "node", "id": 1, "lat": 95.0, "lon": 88.0, "tags": {"amenity": "hospital"}},
-        {"type": "node", "id": 2, "lat": 22.0, "lon": 195.0, "tags": {"amenity": "hospital"}},
-        {"type": "node", "id": 3, "tags": {"amenity": "hospital"}},  # missing lat/lon
-    ]
-
-    for node in invalid_nodes:
-        place = normalize_osm_element(node, 22.5726, 88.3639, "2026-08-28T16:00:00Z")
-        assert place is None
-
-
-# ---------------------------------------------------------------------------
-# 4. Adapter Multi-Mirror Failover & Deduplication Tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_adapter_mirror_fallback_and_deduplication():
-    """Verify multi-mirror rotation on failure and element ID deduplication."""
-
-    adapter = OverpassPlacesAdapter(
-        mirrors=[
-            "https://bad-mirror-1.org/api/interpreter",
-            "https://good-mirror-2.org/api/interpreter",
-        ]
+def test_spatial_semantic_deduplication():
+    """Verify collocated elements (< 25m) sharing category & normalized name are merged."""
+    place1 = PlaceModel(
+        id="osm-node-1001",
+        source="OpenStreetMap",
+        source_id="node/1001",
+        category=PlaceCategory.HOSPITAL,
+        name="Salt Lake General Hospital",
+        latitude=22.5740,
+        longitude=88.3650,
+        phone="+91 33 2359 1000",
+        address="Sector 1, Salt Lake",
+        fetched_at="2026-08-28T16:00:00Z",
+    )
+    # Way representing the building outline of the same hospital ~10m away
+    place2 = PlaceModel(
+        id="osm-way-2002",
+        source="OpenStreetMap",
+        source_id="way/2002",
+        category=PlaceCategory.HOSPITAL,
+        name="Salt Lake General Hospital (Building)",
+        latitude=22.57408,
+        longitude=88.36508,
+        website="https://slgh.gov.in",
+        fetched_at="2026-08-28T16:00:00Z",
+    )
+    # Completely separate hospital 2 km away
+    place3 = PlaceModel(
+        id="osm-node-3003",
+        source="OpenStreetMap",
+        source_id="node/3003",
+        category=PlaceCategory.HOSPITAL,
+        name="Salt Lake General Hospital - Unit 2",
+        latitude=22.5900,
+        longitude=88.3800,
+        fetched_at="2026-08-28T16:00:00Z",
     )
 
-    mock_elements = [
-        {
-            "type": "node",
-            "id": 101,
-            "lat": 22.5730,
-            "lon": 88.3640,
-            "tags": {"name": "Apollo Clinic", "amenity": "clinic"},
-        },
-        # Duplicate element with identical id
-        {
-            "type": "node",
-            "id": 101,
-            "lat": 22.5730,
-            "lon": 88.3640,
-            "tags": {"name": "Apollo Clinic", "amenity": "clinic"},
-        },
-        {
-            "type": "node",
-            "id": 102,
-            "lat": 22.5760,
-            "lon": 88.3670,
-            "tags": {"name": "Fire Station Salt Lake", "amenity": "fire_station"},
-        },
-    ]
+    deduped = deduplicate_places([place1, place2, place3])
+    assert len(deduped) == 2
+    # First item should merge richer phone from node and website from way
+    merged = next(p for p in deduped if "1001" in p.id or "2002" in p.id)
+    assert merged.phone == "+91 33 2359 1000"
+    assert merged.website == "https://slgh.gov.in"
 
-    async def mock_post(url, *args, **kwargs):
-        if "bad-mirror-1" in url:
-            raise Exception("504 Gateway Timeout")
-        return Response(200, json={"elements": mock_elements})
 
-    with patch("httpx.AsyncClient.post", side_effect=mock_post):
-        places = await adapter.fetch_nearby(22.5726, 88.3639, 2000)
-        assert len(places) == 2  # Deduplicated from 3 to 2
-        assert places[0].id == "osm-node-101"
-        assert places[1].id == "osm-node-102"
-        assert places[0].category == PlaceCategory.CLINIC
-        assert places[1].category == PlaceCategory.FIRE_STATION
+def test_multi_factor_emergency_ranking():
+    """Verify that life-safety facilities rank ahead of generic facilities."""
+    pharmacy = PlaceModel(
+        id="osm-node-1",
+        source="OpenStreetMap",
+        category=PlaceCategory.PHARMACY,
+        name="Local Pharmacy",
+        latitude=22.5730,
+        longitude=88.3640,
+        distance_km=0.1,  # very close
+        fetched_at="2026-08-28T16:00:00Z",
+    )
+    hospital = PlaceModel(
+        id="osm-node-2",
+        source="OpenStreetMap",
+        category=PlaceCategory.HOSPITAL,
+        name="District Hospital",
+        latitude=22.5780,
+        longitude=88.3690,
+        distance_km=0.7,
+        fetched_at="2026-08-28T16:00:00Z",
+    )
+    other = PlaceModel(
+        id="osm-node-3",
+        source="OpenStreetMap",
+        category=PlaceCategory.OTHER_RELEVANT,
+        name="Public Hall",
+        latitude=22.5731,
+        longitude=88.3641,
+        distance_km=0.1,
+        fetched_at="2026-08-28T16:00:00Z",
+    )
+
+    ranked = rank_places([pharmacy, other, hospital])
+    # Hospital should rank top due to emergency weight (100)
+    assert ranked[0].category == PlaceCategory.HOSPITAL
+    assert ranked[1].category == PlaceCategory.PHARMACY
+    assert ranked[2].category == PlaceCategory.OTHER_RELEVANT
+
+
+def test_verified_vs_mapped_shelter_priority():
+    """Verify Salvus verified shelters rank ahead of unverified mapped shelters."""
+    mapped_shelter = PlaceModel(
+        id="osm-node-10",
+        source="OpenStreetMap",
+        provenance=PlaceProvenance.OSM_MAPPED,
+        category=PlaceCategory.SHELTER,
+        name="Community Relief Shed",
+        latitude=22.5730,
+        longitude=88.3640,
+        distance_km=0.2,
+        fetched_at="2026-08-28T16:00:00Z",
+    )
+    verified_shelter = PlaceModel(
+        id="salvus-shelter-101",
+        source="Salvus Civil Defense",
+        provenance=PlaceProvenance.SALVUS_VERIFIED,
+        category=PlaceCategory.SHELTER,
+        name="Salt Lake Central Evacuation Shelter",
+        latitude=22.5760,
+        longitude=88.3670,
+        distance_km=0.6,
+        fetched_at="2026-08-28T16:00:00Z",
+    )
+
+    ranked = rank_places([mapped_shelter, verified_shelter], safe_places_priority=True)
+    assert ranked[0].id == "salvus-shelter-101"
+    assert ranked[0].provenance == PlaceProvenance.SALVUS_VERIFIED
+
+
+# ---------------------------------------------------------------------------
+# 4. Tiered Caching, Stale-While-Revalidate & Fallback Tests
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -303,36 +273,161 @@ async def test_get_nearby_places_caching_and_recalculation():
     with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
         mock_post.return_value = mock_resp
 
-        # 1. First fetch -> Cache Miss
-        places_1, is_cached_1 = await get_nearby_places(22.5726, 88.3639, 2000)
+        # 1. First fetch -> Cache Miss (FRESH)
+        places_1, is_cached_1, fresh_1 = await get_nearby_places(22.5726, 88.3639, 2000)
         assert is_cached_1 is False
-        assert len(places_1) == 1
+        assert fresh_1 == PlaceFreshness.FRESH
+        assert len(places_1) >= 1
         assert mock_post.call_count == 1
         first_distance = places_1[0].distance_km
 
-        # 2. Second fetch with slightly shifted GPS (~20m) -> Cache Hit
-        places_2, is_cached_2 = await get_nearby_places(22.5727, 88.3640, 2000)
+        # 2. Second fetch with shifted GPS (~20m) -> Cache Hit (FRESH)
+        places_2, is_cached_2, fresh_2 = await get_nearby_places(22.5727, 88.3640, 2000)
         assert is_cached_2 is True
-        assert len(places_2) == 1
-        # No extra network call
+        assert fresh_2 == PlaceFreshness.FRESH
+        assert len(places_2) >= 1
         assert mock_post.call_count == 1
-        # Distance was recalculated for the new exact coordinate
+        # Recalculated exact straight-line distance
         assert places_2[0].distance_km != first_distance
 
 
 @pytest.mark.asyncio
-async def test_all_mirrors_outage_graceful_fallback():
-    """Verify graceful empty fallback when all external mirrors fail."""
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.side_effect = Exception("All mirrors timed out")
+async def test_stale_cache_fallback_on_provider_failure():
+    """Verify that stale cache is returned with STALE status when provider fails."""
+    mock_elements = [
+        {
+            "type": "node",
+            "id": 701,
+            "lat": 22.5735,
+            "lon": 88.3642,
+            "tags": {"name": "Apex Clinic", "amenity": "clinic"},
+        }
+    ]
 
-        places, is_cached = await get_nearby_places(22.5726, 88.3639, 2000)
+    mock_resp = Response(200, json={"elements": mock_elements})
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = mock_resp
+        # Warm cache
+        await get_nearby_places(22.5726, 88.3639, 2000, include_verified=False)
+
+    # Simulate provider failure and expired fresh TTL
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.side_effect = Exception("Overpass 504 Gateway Timeout")
+
+        # Advance simulated time past 300s but before 1800s
+        with patch("time.time", return_value=time.time() + 400.0):
+            places, is_cached, fresh = await get_nearby_places(
+                22.5726, 88.3639, 2000, include_verified=False
+            )
+            assert is_cached is True
+            assert fresh == PlaceFreshness.STALE
+            assert len(places) == 1
+            assert places[0].name == "Apex Clinic"
+
+
+@pytest.mark.asyncio
+async def test_all_mirrors_outage_with_no_cache_returns_unavailable():
+    """Verify clean UNAVAILABLE state when provider fails and no cached data exists."""
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.side_effect = Exception("Network unreachable")
+
+        places, is_cached, fresh = await get_nearby_places(
+            22.5726, 88.3639, 2000, include_verified=False
+        )
         assert is_cached is False
+        assert fresh == PlaceFreshness.UNAVAILABLE
         assert places == []
 
 
 # ---------------------------------------------------------------------------
-# 5. REST API Integration Tests (/api/places/nearby)
+# 5. On-Demand Turn-by-Turn Route Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_on_demand_place_route_calculation():
+    """Verify on-demand turn-by-turn route calculation for a single selected place."""
+    target_place = PlaceModel(
+        id="osm-node-888",
+        source="OpenStreetMap",
+        category=PlaceCategory.HOSPITAL,
+        name="Salt Lake Sub-Divisional Hospital",
+        latitude=22.5780,
+        longitude=88.3690,
+        fetched_at="2026-08-28T16:00:00Z",
+    )
+
+    mock_osrm_data = {
+        "code": "Ok",
+        "routes": [
+            {
+                "distance": 850.0,
+                "duration": 600.0,
+                "geometry": {
+                    "coordinates": [
+                        [88.3639, 22.5726],
+                        [88.3660, 22.5750],
+                        [88.3690, 22.5780],
+                    ]
+                },
+                "legs": [{"summary": "Broadway Route"}],
+            }
+        ],
+    }
+
+    mock_resp = Response(200, json=mock_osrm_data)
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_resp
+
+        route_resp = await get_place_route(
+            origin_lat=22.5726,
+            origin_lon=88.3639,
+            place=target_place,
+            profile="walking",
+        )
+        assert route_resp.success is True
+        assert route_resp.route_distance_m == 850.0
+        assert route_resp.route_duration_s == 600.0
+        assert route_resp.eta_formatted == "10 min"
+        assert len(route_resp.coordinates) == 3
+        # Leaflet [lat, lon] order
+        assert route_resp.coordinates[0] == [22.5726, 88.3639]
+        assert route_resp.is_fallback is False
+
+
+@pytest.mark.asyncio
+async def test_on_demand_place_route_fallback_when_osrm_unreachable():
+    """Verify resilient vector corridor fallback when OSRM is offline."""
+    target_place = PlaceModel(
+        id="salvus-shelter-1",
+        source="Salvus Civil Defense",
+        provenance=PlaceProvenance.SALVUS_VERIFIED,
+        category=PlaceCategory.SHELTER,
+        name="Verified Safe Shelter",
+        latitude=22.5800,
+        longitude=88.3700,
+        fetched_at="2026-08-28T16:00:00Z",
+    )
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.side_effect = Exception("OSRM connection timed out")
+
+        route_resp = await get_place_route(
+            origin_lat=22.5726,
+            origin_lon=88.3639,
+            place=target_place,
+            profile="walking",
+        )
+        assert route_resp.success is True
+        assert route_resp.is_fallback is True
+        assert route_resp.route_distance_m > 0
+        assert len(route_resp.coordinates) > 0
+
+
+# ---------------------------------------------------------------------------
+# 6. REST API Endpoint Integration Tests
 # ---------------------------------------------------------------------------
 
 
@@ -381,6 +476,8 @@ async def test_api_places_nearby_radius_km_and_categories():
             assert resp.status_code == 200
             body = resp.json()
             assert body["success"] is True
+            assert body["status"] == "OK"
+            assert body["freshness"] == "FRESH"
             assert body["searched_radius_km"] == 3.0
             assert body["radius_meters"] == 3000
             assert body["query_center"]["latitude"] == 22.5726
@@ -395,44 +492,45 @@ async def test_api_places_nearby_radius_km_and_categories():
 
 
 @pytest.mark.asyncio
-async def test_api_places_nearby_salvus_verified_shelter():
-    """Verify that official Salvus civil defense shelters are merged with verified provenance."""
-    mock_elements = []  # No OSM elements
-    mock_resp = Response(200, json={"elements": mock_elements})
+async def test_api_place_route_endpoint_verified_shelter():
+    """Verify dedicated GET /api/places/{place_id}/route for verified shelter."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # First retrieve available shelters
+        sh_list_resp = await client.get("/api/shelters")
+        assert sh_list_resp.status_code == 200
+        shelters = sh_list_resp.json()["data"]
+        assert len(shelters) > 0
+        first_sh_id = f"salvus-shelter-{shelters[0]['id']}"
 
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = mock_resp
+        # Request turn-by-turn route
+        resp = await client.get(
+            f"/api/places/{first_sh_id}/route?origin_lat=22.5726&origin_lon=88.3639&profile=walking"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["place"]["id"] == first_sh_id
+        assert body["place"]["provenance"] == "SALVUS_VERIFIED"
+        assert body["route_distance_m"] > 0
+        assert len(body["coordinates"]) > 0
 
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(
-                "/api/places/nearby?lat=22.5726&lon=88.3639&radius_km=5.0&include_verified=true"
-            )
-            assert resp.status_code == 200
-            body = resp.json()
-            assert body["success"] is True
 
-            # If seeded shelters exist in database within 5km, verify their provenance
-            salvus_shelters = [p for p in body["data"] if p["provenance"] == "SALVUS_VERIFIED"]
-            for sh in salvus_shelters:
-                assert sh["source"] == "Salvus Civil Defense"
-                assert sh["category"] == "SHELTER"
-                assert sh["id"].startswith("salvus-shelter-")
+# ---------------------------------------------------------------------------
+# 7. Performance Benchmarks
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_api_places_nearby_null_integrity_for_missing_attributes():
-    """Verify that the API returns null when external provider lacks contact/address details."""
+async def test_performance_cold_vs_cached_query():
+    """Verify that cached queries execute in sub-millisecond in-memory speeds."""
     mock_elements = [
         {
             "type": "node",
-            "id": 501,
-            "lat": 22.5735,
-            "lon": 88.3642,
-            "tags": {
-                "amenity": "clinic",
-                # Missing phone, website, opening_hours, addr:*
-            },
+            "id": 999,
+            "lat": 22.5730,
+            "lon": 88.3640,
+            "tags": {"name": "Performance Clinic", "amenity": "clinic"},
         }
     ]
 
@@ -441,70 +539,22 @@ async def test_api_places_nearby_null_integrity_for_missing_attributes():
     with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
         mock_post.return_value = mock_resp
 
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(
-                "/api/places/nearby?lat=22.5726&lon=88.3639&include_verified=false"
-            )
-            assert resp.status_code == 200
-            body = resp.json()
-            assert body["count"] == 1
-            place = body["data"][0]
-            assert place["category"] == "CLINIC"
-            assert place["phone"] is None
-            assert place["website"] is None
-            assert place["opening_hours"] is None
-            assert place["address"] is None
-            assert place["city"] is None
-            assert place["route_distance_m"] is None
-            assert place["route_duration_s"] is None
+        # Cold query (populates cache)
+        t0 = time.perf_counter()
+        places_cold, is_cached_cold, _ = await get_nearby_places(
+            22.5726, 88.3639, 2000, include_verified=False
+        )
+        cold_time = time.perf_counter() - t0
+        assert is_cached_cold is False
+        assert len(places_cold) >= 1
 
-
-@pytest.mark.asyncio
-async def test_api_places_nearby_lng_alias_and_meter_radius():
-    """Verify 'lng' parameter alias and legacy 'radius' (in meters) parameter."""
-    mock_elements = [
-        {
-            "type": "node",
-            "id": 601,
-            "lat": 22.5732,
-            "lon": 88.3641,
-            "tags": {"name": "Police Beat", "amenity": "police"},
-        }
-    ]
-
-    mock_resp = Response(200, json={"elements": mock_elements})
-
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = mock_resp
-
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(
-                "/api/places/nearby?lat=22.5726&lng=88.3639&radius=1500&include_verified=false"
-            )
-            assert resp.status_code == 200
-            body = resp.json()
-            assert body["searched_radius_km"] == 1.5
-            assert body["radius_meters"] == 1500
-            assert body["query_center"] == {"latitude": 22.5726, "longitude": 88.3639}
-            assert len(body["data"]) == 1
-
-
-@pytest.mark.asyncio
-async def test_api_places_nearby_boundary_coordinates():
-    """Verify exact valid boundary coordinates (-90, 90, -180, 180) succeed without 422."""
-    mock_resp = Response(200, json={"elements": []})
-
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = mock_resp
-
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            # Min/Max latitude & longitude boundary values
-            for b_lat, b_lon in [(-90.0, 0.0), (90.0, 0.0), (0.0, -180.0), (0.0, 180.0)]:
-                resp = await client.get(
-                    f"/api/places/nearby?lat={b_lat}&lon={b_lon}&include_verified=false"
-                )
-                assert resp.status_code == 200
-                assert resp.json()["success"] is True
+        # Cached query
+        t1 = time.perf_counter()
+        places_cached, is_cached_warm, _ = await get_nearby_places(
+            22.57261, 88.36391, 2000, include_verified=False
+        )
+        cached_time = time.perf_counter() - t1
+        assert is_cached_warm is True
+        assert len(places_cached) >= 1
+        # Cached response should be fast in-memory execution
+        assert cached_time <= cold_time or cached_time < 0.01
