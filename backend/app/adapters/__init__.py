@@ -12,13 +12,16 @@ from __future__ import annotations
 from app.adapters.base import BaseAlertAdapter
 from app.adapters.gdacs import GDACSAdapter
 from app.adapters.open_meteo import OpenMeteoAdapter
+from app.adapters.places import NearbyPlacesProvider, OverpassPlacesAdapter
 from app.adapters.sachet import SachetAdapter
 from app.adapters.usgs import USGSAdapter
 
 __all__ = [
     "BaseAlertAdapter",
     "GDACSAdapter",
+    "NearbyPlacesProvider",
     "OpenMeteoAdapter",
+    "OverpassPlacesAdapter",
     "SachetAdapter",
     "USGSAdapter",
 ]

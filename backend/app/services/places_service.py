@@ -1,44 +1,46 @@
-"""Salvus Places Service — Real-world nearby geographic context via OpenStreetMap (Overpass).
+"""Salvus Places Service — Real-world nearby geographic context via OSM & Civil Defense.
 
 Key Architectural Pillars:
-- Multi-mirror Overpass endpoint rotation with fast fallback
+- Modular `NearbyPlacesProvider` adapter layer (OverpassPlacesAdapter by default)
 - In-memory TTL cache with ~100m grid cell coordinate snapping
 - In-flight request deduplication to prevent hammering public OSM infrastructure
-- Strict provenance classification: OSM_MAPPED vs SALVUS_VERIFIED
-- High-performance Haversine distance calculation and human-friendly formatting
+- Strict provenance classification: `OSM_MAPPED` vs `SALVUS_VERIFIED`
+- High-performance straight-line Haversine distance calculation and human-friendly formatting
+- Honest data integrity: null for missing contact or operational attributes
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import math
-import os
 import time
 from datetime import UTC, datetime
 from typing import Any
 
+import aiosqlite
 import httpx
 
+from app.adapters.places import (
+    NearbyPlacesProvider,
+    OverpassPlacesAdapter,
+    format_distance,
+    haversine_distance_km,
+)
 from app.models import PlaceCategory, PlaceModel, PlaceProvenance
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Configuration & Mirror Endpoints
+# Configuration & Thresholds
 # ---------------------------------------------------------------------------
 
-DEFAULT_OVERPASS_MIRRORS = [
-    "https://overpass-api.de/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-]
-
-REQUEST_TIMEOUT_SECONDS = 4.5
 CACHE_TTL_SECONDS = 300.0  # 5-minute TTL cache
-MAX_QUERY_RADIUS_METERS = 5000
-MIN_QUERY_RADIUS_METERS = 300
-DEFAULT_QUERY_RADIUS_METERS = 2000
+MAX_QUERY_RADIUS_METERS = 10000  # 10 km upper bound
+MIN_QUERY_RADIUS_METERS = 100  # 100 m lower bound
+DEFAULT_QUERY_RADIUS_METERS = 2000  # 2 km default
+
+# Default Provider Instance
+_default_provider: NearbyPlacesProvider = OverpassPlacesAdapter()
 
 # In-memory TTL Cache: {cache_key: (list[PlaceModel], expire_timestamp)}
 _PLACES_CACHE: dict[tuple[float, float, int, tuple[str, ...]], tuple[list[PlaceModel], float]] = {}
@@ -49,33 +51,15 @@ _IN_FLIGHT_TASKS: dict[
 ] = {}
 
 
-def get_overpass_mirrors() -> list[str]:
-    """Resolve Overpass API mirror URLs from environment or defaults."""
-    env_url = os.getenv("OVERPASS_URL", "").strip()
-    if env_url:
-        return [env_url] + [m for m in DEFAULT_OVERPASS_MIRRORS if m != env_url]
-    return list(DEFAULT_OVERPASS_MIRRORS)
+def get_provider() -> NearbyPlacesProvider:
+    """Get the active nearby places provider adapter."""
+    return _default_provider
 
 
-def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate great-circle distance between two GPS coordinates in kilometers."""
-    radius_km = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
-    )
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return round(radius_km * c, 3)
-
-
-def format_distance(distance_meters: float) -> str:
-    """Format meter distance into human-readable label with initial proximity note."""
-    if distance_meters < 1000:
-        return f"Approx. {int(round(distance_meters))} m"
-    km = distance_meters / 1000.0
-    return f"Approx. {km:.1f} km"
+def set_provider(provider: NearbyPlacesProvider) -> None:
+    """Override the active nearby places provider adapter (useful for testing)."""
+    global _default_provider
+    _default_provider = provider
 
 
 def snap_coordinate_to_grid(coord: float, precision: int = 3) -> float:
@@ -87,43 +71,18 @@ def build_overpass_query(
     lat: float,
     lon: float,
     radius: int,
-    categories: list[str] | None = None,
+    categories: list[str | PlaceCategory] | None = None,
 ) -> str:
-    """Construct compact Overpass QL query around given center coordinate."""
-    # Target amenities based on requested categories
-    amenity_tags = ["hospital", "clinic", "pharmacy", "police", "fire_station"]
+    """Compatibility wrapper: generate Overpass QL query via default adapter."""
+    parsed_cats = None
     if categories:
-        filtered = []
-        for cat in categories:
-            cat_clean = cat.strip().lower()
-            if cat_clean in ("hospital", "hospitals"):
-                filtered.extend(["hospital", "clinic"])
-            elif cat_clean in ("clinic", "clinics"):
-                filtered.append("clinic")
-            elif cat_clean in ("pharmacy", "pharmacies"):
-                filtered.append("pharmacy")
-            elif cat_clean == "police":
-                filtered.append("police")
-            elif cat_clean in ("fire", "fire_station", "fire_stations"):
-                filtered.append("fire_station")
-            elif cat_clean in ("shelter", "shelters"):
-                filtered.append("shelter")
-        if filtered:
-            amenity_tags = list(set(filtered))
-
-    regex_amenities = "|".join(amenity_tags)
-
-    query = f"""
-[out:json][timeout:5];
-(
-  node["amenity"~"{regex_amenities}"](around:{radius},{lat},{lon});
-  way["amenity"~"{regex_amenities}"](around:{radius},{lat},{lon});
-  node["emergency"~"ambulance_station|disaster_response"](around:{radius},{lat},{lon});
-  way["emergency"~"ambulance_station|disaster_response"](around:{radius},{lat},{lon});
-);
-out center tags 50;
-"""
-    return query.strip()
+        parsed_cats = [
+            c if isinstance(c, PlaceCategory) else PlaceCategory.from_str(c) for c in categories
+        ]
+    if isinstance(_default_provider, OverpassPlacesAdapter):
+        return _default_provider.build_query(lat, lon, radius, parsed_cats)
+    adapter = OverpassPlacesAdapter()
+    return adapter.build_query(lat, lon, radius, parsed_cats)
 
 
 def normalize_osm_element(
@@ -132,98 +91,11 @@ def normalize_osm_element(
     origin_lon: float,
     now_iso: str,
 ) -> PlaceModel | None:
-    """Normalize raw OpenStreetMap node/way element into project-owned PlaceModel."""
-    elem_id = elem.get("id")
-    elem_type = elem.get("type", "node")
-    tags = elem.get("tags") or {}
-
-    # Coordinate extraction (node has lat/lon; way has center {lat, lon})
-    lat = elem.get("lat") or (elem.get("center", {}).get("lat") if "center" in elem else None)
-    lon = elem.get("lon") or (elem.get("center", {}).get("lon") if "center" in elem else None)
-
-    if lat is None or lon is None:
-        return None
-
-    # Determine place category
-    amenity = tags.get("amenity", "").lower()
-    emergency = tags.get("emergency", "").lower()
-
-    if amenity == "hospital":
-        category = PlaceCategory.HOSPITAL
-        fallback_name = "Medical Facility / Hospital"
-    elif amenity == "clinic":
-        category = PlaceCategory.CLINIC
-        fallback_name = "Health Clinic"
-    elif amenity == "pharmacy":
-        category = PlaceCategory.PHARMACY
-        fallback_name = "Pharmacy / Chemist"
-    elif amenity == "police":
-        category = PlaceCategory.POLICE
-        fallback_name = "Police Station"
-    elif amenity == "fire_station":
-        category = PlaceCategory.FIRE_STATION
-        fallback_name = "Fire & Rescue Station"
-    elif emergency in ("ambulance_station", "disaster_response"):
-        category = PlaceCategory.EMERGENCY_FACILITY
-        fallback_name = "Emergency Response Post"
-    elif amenity == "shelter":
-        category = PlaceCategory.SHELTER
-        fallback_name = "Community Shelter (OSM Mapped)"
-    else:
-        category = PlaceCategory.OTHER
-        fallback_name = "Public Facility"
-
-    name = tags.get("name") or tags.get("name:en") or tags.get("operator") or fallback_name
-
-    # Address construction
-    street = tags.get("addr:street")
-    housenumber = tags.get("addr:housenumber")
-    suburb = tags.get("addr:suburb") or tags.get("addr:district") or tags.get("addr:city")
-    postcode = tags.get("addr:postcode")
-
-    addr_parts = []
-    if housenumber and street:
-        addr_parts.append(f"{housenumber} {street}")
-    elif street:
-        addr_parts.append(street)
-    if suburb:
-        addr_parts.append(suburb)
-    if postcode:
-        addr_parts.append(postcode)
-
-    address = ", ".join(addr_parts) if addr_parts else None
-
-    # Distance calculation
-    dist_km = haversine_distance_km(origin_lat, origin_lon, float(lat), float(lon))
-    dist_m = round(dist_km * 1000, 1)
-
-    # Amenities extraction
-    amenities: list[str] = []
-    if tags.get("emergency") == "yes" or tags.get("emergency"):
-        amenities.append("Emergency Services")
-    if tags.get("wheelchair") in ("yes", "designated"):
-        amenities.append("Wheelchair Accessible")
-    if tags.get("dispensing") == "yes":
-        amenities.append("Prescription Dispensing")
-    if tags.get("healthcare:speciality"):
-        amenities.append(tags["healthcare:speciality"].replace(";", ", "))
-
-    return PlaceModel(
-        id=f"osm-{elem_type}-{elem_id}",
-        name=name,
-        category=category,
-        latitude=float(lat),
-        longitude=float(lon),
-        address=address,
-        distance_meters=dist_m,
-        distance_formatted=format_distance(dist_m),
-        source="OPENSTREETMAP",
-        provenance=PlaceProvenance.OSM_MAPPED,
-        amenities=amenities,
-        phone=tags.get("phone") or tags.get("contact:phone"),
-        opening_hours=tags.get("opening_hours"),
-        fetched_at=now_iso,
-    )
+    """Compatibility wrapper: normalize raw OSM element via default adapter."""
+    if isinstance(_default_provider, OverpassPlacesAdapter):
+        return _default_provider.normalize_element(elem, origin_lat, origin_lon, now_iso)
+    adapter = OverpassPlacesAdapter()
+    return adapter.normalize_element(elem, origin_lat, origin_lon, now_iso)
 
 
 # ---------------------------------------------------------------------------
@@ -231,119 +103,160 @@ def normalize_osm_element(
 # ---------------------------------------------------------------------------
 
 
-async def _execute_overpass_query(
+async def _execute_provider_fetch(
     lat: float,
     lon: float,
-    radius: int,
-    categories: list[str] | None = None,
+    radius_m: int,
+    categories: list[PlaceCategory] | None = None,
+    client: httpx.AsyncClient | None = None,
 ) -> list[PlaceModel]:
-    """Execute Overpass query against mirrors in sequence with timeout guards."""
-    mirrors = get_overpass_mirrors()
-    query = build_overpass_query(lat, lon, radius, categories)
-    now_iso = datetime.now(UTC).isoformat()
-
-    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-        for mirror_url in mirrors:
-            try:
-                response = await client.post(
-                    mirror_url,
-                    data={"data": query},
-                    headers={
-                        "User-Agent": "SalvusDisasterCoordination/0.2 (https://github.com/salvus-rescue)",
-                        "Accept": "application/json",
-                    },
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    elements = data.get("elements", [])
-                    places: list[PlaceModel] = []
-                    for elem in elements:
-                        place = normalize_osm_element(elem, lat, lon, now_iso)
-                        if place:
-                            places.append(place)
-
-                    # Sort by proximity
-                    places.sort(key=lambda p: p.distance_meters)
-                    return places
-                else:
-                    logger.warning(
-                        "[Overpass] Mirror %s returned HTTP %d, trying next...",
-                        mirror_url,
-                        response.status_code,
-                    )
-            except Exception as e:
-                logger.warning(
-                    "[Overpass] Failed query on mirror %s (%s), trying next...",
-                    mirror_url,
-                    str(e),
-                )
-
-    logger.warning(
-        "[Overpass] All public mirrors unavailable or timed out. Returning empty fallback."
+    """Execute provider fetch via the active provider adapter."""
+    provider = get_provider()
+    return await provider.fetch_nearby(
+        lat=lat,
+        lon=lon,
+        radius_m=radius_m,
+        categories=categories,
+        client=client,
     )
-    return []
 
 
 async def get_nearby_places(
     lat: float,
     lon: float,
     radius: int = DEFAULT_QUERY_RADIUS_METERS,
-    categories: list[str] | None = None,
+    categories: list[str | PlaceCategory] | None = None,
+    include_verified: bool = False,
+    db: aiosqlite.Connection | None = None,
+    client: httpx.AsyncClient | None = None,
 ) -> tuple[list[PlaceModel], bool]:
-    """Retrieve nearby geographic places with caching and request deduplication.
+    """Retrieve nearby geographic places with caching, deduplication, and shelter integration.
 
     Returns:
         tuple[list[PlaceModel], bool]: (places_list, is_cached)
     """
     # 1. Validate and clamp radius
     clamped_radius = max(MIN_QUERY_RADIUS_METERS, min(MAX_QUERY_RADIUS_METERS, radius))
-    cat_key = tuple(sorted([c.strip().lower() for c in (categories or []) if c.strip()]))
 
-    # 2. Snap coordinates to ~100m grid for cache lookup
+    # 2. Parse category filters to controlled PlaceCategory enums
+    parsed_categories: list[PlaceCategory] | None = None
+    if categories:
+        clean_cats = [
+            c if isinstance(c, PlaceCategory) else PlaceCategory.from_str(c)
+            for c in categories
+            if str(c).strip()
+        ]
+        if clean_cats:
+            parsed_categories = list(dict.fromkeys(clean_cats))  # deduplicate preserving order
+
+    cat_key = tuple(sorted([c.value for c in parsed_categories])) if parsed_categories else ("ALL",)
+
+    # 3. Snap coordinates to ~100m grid for cache lookup
     grid_lat = snap_coordinate_to_grid(lat, 3)
     grid_lon = snap_coordinate_to_grid(lon, 3)
     cache_key = (grid_lat, grid_lon, clamped_radius, cat_key)
 
     now = time.time()
+    is_cached = False
+    osm_places: list[PlaceModel] = []
 
-    # 3. Cache check
+    # 4. Cache check
     if cache_key in _PLACES_CACHE:
         cached_places, expire_time = _PLACES_CACHE[cache_key]
         if now < expire_time:
-            # Re-compute exact distances from actual user coordinates
-            recalculated = []
+            is_cached = True
+            # Re-compute exact distances from actual user GPS coordinates
+            recalculated: list[PlaceModel] = []
             for p in cached_places:
                 dist_km = haversine_distance_km(lat, lon, p.latitude, p.longitude)
-                dist_m = round(dist_km * 1000, 1)
+                dist_m = round(dist_km * 1000.0, 1)
                 p_copy = p.model_copy(
                     update={
+                        "distance_km": dist_km,
                         "distance_meters": dist_m,
                         "distance_formatted": format_distance(dist_m),
                     }
                 )
                 recalculated.append(p_copy)
-            recalculated.sort(key=lambda x: x.distance_meters)
-            return recalculated, True
+            osm_places = recalculated
         else:
             del _PLACES_CACHE[cache_key]
 
-    # 4. In-flight request deduplication
-    if cache_key in _IN_FLIGHT_TASKS:
-        task = _IN_FLIGHT_TASKS[cache_key]
-        places = await task
-        return places, False
+    # 5. In-flight request deduplication / Fetch
+    if not is_cached:
+        if cache_key in _IN_FLIGHT_TASKS:
+            task = _IN_FLIGHT_TASKS[cache_key]
+            osm_places = await task
+        else:
+            task = asyncio.create_task(
+                _execute_provider_fetch(lat, lon, clamped_radius, parsed_categories, client=client)
+            )
+            _IN_FLIGHT_TASKS[cache_key] = task
+            try:
+                osm_places = await task
+                _PLACES_CACHE[cache_key] = (osm_places, now + CACHE_TTL_SECONDS)
+            finally:
+                _IN_FLIGHT_TASKS.pop(cache_key, None)
 
-    # 5. Create new asynchronous fetch task
-    task = asyncio.create_task(_execute_overpass_query(lat, lon, clamped_radius, categories))
-    _IN_FLIGHT_TASKS[cache_key] = task
+    all_places: list[PlaceModel] = list(osm_places)
 
-    try:
-        places = await task
-        # Store in cache
-        _PLACES_CACHE[cache_key] = (places, now + CACHE_TTL_SECONDS)
-        return places, False
-    finally:
-        _IN_FLIGHT_TASKS.pop(cache_key, None)
+    # 6. Merge official Salvus-verified shelters if requested
+    if include_verified and (not parsed_categories or PlaceCategory.SHELTER in parsed_categories):
+        try:
+            from app.services import shelter_service
+
+            verified_shelters = []
+            if db is not None:
+                verified_shelters = await shelter_service.get_all_shelters(db)
+            else:
+                from app.db import get_database
+
+                conn = await get_database()
+                verified_shelters = await shelter_service.get_all_shelters(conn)
+
+            now_iso = datetime.now(UTC).isoformat()
+            radius_km = clamped_radius / 1000.0
+
+            for sh in verified_shelters:
+                is_active = getattr(sh, "is_active", True)
+                if sh.latitude is not None and sh.longitude is not None and is_active:
+                    dist_km = haversine_distance_km(lat, lon, sh.latitude, sh.longitude)
+                    if dist_km <= radius_km:
+                        dist_m = round(dist_km * 1000.0, 1)
+                        # Extract verified amenities or designate safe refuge
+                        shelter_amenities = getattr(sh, "amenities", []) or []
+                        contact_phone = getattr(sh, "contact_phone", None)
+
+                        all_places.append(
+                            PlaceModel(
+                                id=f"salvus-shelter-{sh.id}",
+                                source="Salvus Civil Defense",
+                                source_id=str(sh.id),
+                                provenance=PlaceProvenance.SALVUS_VERIFIED,
+                                category=PlaceCategory.SHELTER,
+                                name=sh.name,
+                                latitude=sh.latitude,
+                                longitude=sh.longitude,
+                                address=sh.address,
+                                city=None,
+                                phone=contact_phone,
+                                website=None,
+                                opening_hours="24/7 Emergency Operation",
+                                distance_km=dist_km,
+                                route_distance_m=None,
+                                route_duration_s=None,
+                                fetched_at=now_iso,
+                                distance_meters=dist_m,
+                                distance_formatted=format_distance(dist_m),
+                                amenities=shelter_amenities,
+                            )
+                        )
+        except Exception as err:
+            logger.debug("[PlacesService] Verified shelter merge skipped: %s", err)
+
+    # 7. Sort combined list ascending by straight-line distance
+    all_places.sort(key=lambda p: p.distance_km if p.distance_km is not None else 9999.0)
+    return all_places, is_cached
 
 
 def clear_places_cache() -> None:

@@ -745,6 +745,7 @@ class SourceType(StrEnum):
     MUNICIPAL_TELEMETRY = "MUNICIPAL_TELEMETRY"
     SIMULATION_ENGINE = "SIMULATION_ENGINE"
     FALLBACK_MODEL = "FALLBACK_MODEL"
+    GEOSPATIAL_PROVIDER = "GEOSPATIAL_PROVIDER"
 
 
 class SourceHealthReport(BaseModel):
@@ -989,7 +990,7 @@ class SituationSummaryResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Real-World Nearby Places Models (Build 02: Real-World Geographic Context)
+# Real-World Nearby Places Models (Phase 1: Real-World Places Intelligence)
 # ---------------------------------------------------------------------------
 
 
@@ -999,41 +1000,77 @@ class PlaceProvenance(StrEnum):
 
 
 class PlaceCategory(StrEnum):
-    HOSPITAL = "hospital"
-    CLINIC = "clinic"
-    PHARMACY = "pharmacy"
-    POLICE = "police"
-    FIRE_STATION = "fire_station"
-    EMERGENCY_FACILITY = "emergency_facility"
-    SHELTER = "shelter"
-    OTHER = "other"
+    HOSPITAL = "HOSPITAL"
+    CLINIC = "CLINIC"
+    PHARMACY = "PHARMACY"
+    POLICE = "POLICE"
+    FIRE_STATION = "FIRE_STATION"
+    EMERGENCY_SERVICE = "EMERGENCY_SERVICE"
+    SHELTER = "SHELTER"
+    OTHER_RELEVANT = "OTHER_RELEVANT"
+
+    @classmethod
+    def from_str(cls, val: str) -> PlaceCategory:
+        """Parse arbitrary input string into a controlled PlaceCategory enum."""
+        clean = val.strip().upper().replace(" ", "_").replace("-", "_")
+        if clean in ("HOSPITAL", "HOSPITALS"):
+            return cls.HOSPITAL
+        if clean in ("CLINIC", "CLINICS"):
+            return cls.CLINIC
+        if clean in ("PHARMACY", "PHARMACIES", "CHEMIST", "DRUGSTORE"):
+            return cls.PHARMACY
+        if clean in ("POLICE", "POLICE_STATION", "POLICE_STATIONS"):
+            return cls.POLICE
+        if clean in ("FIRE", "FIRE_STATION", "FIRE_STATIONS", "FIRE_DEPARTMENT"):
+            return cls.FIRE_STATION
+        if clean in (
+            "EMERGENCY_SERVICE",
+            "EMERGENCY_FACILITY",
+            "EMERGENCY",
+            "AMBULANCE",
+            "DISASTER_RESPONSE",
+        ):
+            return cls.EMERGENCY_SERVICE
+        if clean in ("SHELTER", "SHELTERS", "REFUGE", "EVACUATION_CENTER"):
+            return cls.SHELTER
+        return cls.OTHER_RELEVANT
 
 
 class PlaceModel(BaseModel):
-    """Normalized real-world geographic place."""
+    """Normalized backend representation of a real-world geographic place."""
 
     id: str
-    name: str
-    category: PlaceCategory | str
-    latitude: float
-    longitude: float
-    address: str | None = None
-    distance_meters: float
-    distance_formatted: str
-    source: str = "OPENSTREETMAP"
+    source: str = "OpenStreetMap"
+    source_id: str | None = None
     provenance: PlaceProvenance = PlaceProvenance.OSM_MAPPED
-    amenities: list[str] = Field(default_factory=list)
+    category: PlaceCategory
+    name: str
+    latitude: float = Field(ge=-90.0, le=90.0)
+    longitude: float = Field(ge=-180.0, le=180.0)
+    address: str | None = None
+    city: str | None = None
     phone: str | None = None
+    website: str | None = None
     opening_hours: str | None = None
+    distance_km: float | None = None
+    route_distance_m: float | None = None
+    route_duration_s: float | None = None
     fetched_at: str
+
+    # Human-friendly formatting & compatibility fields
+    distance_meters: float | None = None
+    distance_formatted: str | None = None
+    amenities: list[str] = Field(default_factory=list)
 
 
 class PlacesResponse(BaseModel):
-    """Response model for nearby real-world places."""
+    """Response schema for nearby real-world places."""
 
     success: bool = True
-    data: list[PlaceModel]
-    count: int
+    data: list[PlaceModel] = Field(default_factory=list)
+    count: int = 0
+    searched_radius_km: float = 2.0
+    radius_meters: int = 2000
     query_center: dict[str, float]
-    radius_meters: int
     cached: bool = False
+    fetched_at: str | None = None
