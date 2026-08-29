@@ -7,6 +7,31 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.models.facility import (
+    CategoryStatusReport as CategoryStatusReport,
+)
+from app.models.facility import (
+    FacilityCategory as FacilityCategory,
+)
+from app.models.facility import (
+    FacilityFreshness as FacilityFreshness,
+)
+from app.models.facility import (
+    FacilityModel as FacilityModel,
+)
+from app.models.facility import (
+    FacilityQueryResponse as FacilityQueryResponse,
+)
+from app.models.facility import (
+    FacilityResponseState as FacilityResponseState,
+)
+from app.models.facility import (
+    SafePlaceDetails as SafePlaceDetails,
+)
+from app.models.facility import (
+    SafePlaceTrustLevel as SafePlaceTrustLevel,
+)
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -1186,6 +1211,8 @@ class PlaceModel(BaseModel):
     distance_meters: float | None = None
     distance_formatted: str | None = None
     amenities: list[str] = Field(default_factory=list)
+    safe_place_details: SafePlaceDetails | None = None
+    confidence: float = Field(default=0.85, ge=0.0, le=1.0)
 
 
 class PlacesResponse(BaseModel):
@@ -1196,11 +1223,13 @@ class PlacesResponse(BaseModel):
     freshness: PlaceFreshness = PlaceFreshness.FRESH
     data: list[PlaceModel] = Field(default_factory=list)
     count: int = 0
-    searched_radius_km: float = 2.0
-    radius_meters: int = 2000
+    searched_radius_km: float = 10.0
+    radius_meters: int = 10000
     query_center: dict[str, float]
     cached: bool = False
     fetched_at: str | None = None
+    category_statuses: dict[str, CategoryStatusReport] = Field(default_factory=dict)
+    provider_summary: str = "Salvus Real-World Facilities Engine"
 
 
 class PlaceRouteResponse(BaseModel):

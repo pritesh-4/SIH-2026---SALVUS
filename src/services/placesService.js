@@ -1,12 +1,13 @@
 /**
- * Salvus Client-Side Places Service (Phase 3: Citizen Nearby Places Experience)
+ * Salvus Client-Side Facilities & Places Service (Phase 2 Real-World Data Engine)
  *
  * Provides:
- * - Canonical category definitions and robust normalization across OSM/backend tags
- * - Provenance badge resolution (✓ Salvus verified vs Map data)
- * - Safe URL and distance normalization
+ * - Canonical category definitions and robust normalization
+ * - Strict client-side 10,000m (10 km) radius validation
+ * - Clear straight-line distance formatting ('850 m away' / '1.3 km away')
+ * - Provenance badge resolution (✓ Salvus verified, Official Authority, Geoapify, Map data)
  * - Single-source-of-truth category matching for counts, filters, map markers, and directory
- * - Smart client-side movement threshold checks (> 150m)
+ * - Multi-provider response status handling (AVAILABLE, PARTIAL_RESULTS, NO_RESULTS, UNAVAILABLE, STALE)
  */
 
 import { fetchNearbyPlaces, fetchPlaceRoute } from './api.js'
@@ -30,6 +31,18 @@ export const PROVENANCE_LABELS = {
     variant: 'safe',
     description: 'Officially designated and operational civil defense facility.',
   },
+  OFFICIAL_AUTHORITY: {
+    label: 'Official Authority',
+    shortLabel: 'Official',
+    variant: 'safe',
+    description: 'Government or municipal emergency responder.',
+  },
+  GEOAPIFY_PLACES: {
+    label: 'Geoapify Places',
+    shortLabel: 'Geoapify',
+    variant: 'neutral',
+    description: 'Real-world geospatial facility intelligence.',
+  },
   OSM_MAPPED: {
     label: 'Map data',
     shortLabel: 'Mapped',
@@ -45,8 +58,7 @@ export const PROVENANCE_LABELS = {
 }
 
 /**
- * Normalizes raw category strings from diverse OSM/backend representations
- * into a canonical category identifier:
+ * Normalizes raw category strings from diverse providers into a canonical category identifier:
  * 'hospital' | 'pharmacy' | 'police' | 'fire_station' | 'shelter' | 'emergency' | 'other'
  */
 export const normalizePlaceCategory = (rawCategory) => {
@@ -173,13 +185,15 @@ export const matchesCategoryFilter = (place, filterId) => {
 
 /**
  * Format geometric distance nicely for UI labels.
+ * Under 1 km: '850 m away'
+ * Over 1 km:  '1.3 km away'
  */
 export const formatDistance = (meters) => {
-  if (meters == null || isNaN(meters)) return 'Distance unknown'
+  if (meters == null || isNaN(meters) || meters < 0) return 'Distance unknown'
   if (meters < 1000) {
-    return `Approx. ${Math.round(meters)} m`
+    return `${Math.round(meters)} m away`
   }
-  return `Approx. ${(meters / 1000).toFixed(1)} km`
+  return `${(meters / 1000).toFixed(1)} km away`
 }
 
 /**
@@ -209,6 +223,7 @@ export const calculateClientDistanceM = (lat1, lon1, lat2, lon2) => {
 
 /**
  * Normalize raw backend place into a consistent, predictable client-side model.
+ * Enforces strict <= 10,000m (10 km) boundary.
  */
 export const normalizePlace = (raw, originLat = null, originLon = null) => {
   if (!raw || typeof raw !== 'object') return null
@@ -219,7 +234,12 @@ export const normalizePlace = (raw, originLat = null, originLon = null) => {
   if (isNaN(lat) || isNaN(lon)) return null
 
   // Recalculate distance if origin is provided
-  let distM = raw.distance_meters
+  let distM =
+    raw.distance_meters != null
+      ? raw.distance_meters
+      : raw.straight_line_distance_meters != null
+        ? raw.straight_line_distance_meters
+        : null
   let distKm = raw.distance_km
 
   if (originLat != null && originLon != null && !isNaN(originLat) && !isNaN(originLon)) {
@@ -227,28 +247,52 @@ export const normalizePlace = (raw, originLat = null, originLon = null) => {
     distKm = distM != null ? distM / 1000 : null
   }
 
+  // Strict 10,000m radius check
+  if (distM != null && distM > 10000) {
+    return null
+  }
+
   const rawCat = raw.category || 'other'
   const canonicalCat = normalizePlaceCategory(rawCat)
 
+  let provenance = 'OSM_MAPPED'
+  if (raw.provenance === 'SALVUS_VERIFIED' || raw.verified === true) {
+    provenance = 'SALVUS_VERIFIED'
+  } else if (raw.provider === 'geoapify' || raw.source?.includes('Geoapify')) {
+    provenance = 'GEOAPIFY_PLACES'
+  } else if (raw.provenance === 'SEEDED_DEMO') {
+    provenance = 'SEEDED_DEMO'
+  }
+
   return {
     id: String(raw.id || `place-${lat}-${lon}`),
-    source: raw.source || 'OpenStreetMap',
-    source_id: raw.source_id ? String(raw.source_id) : null,
-    provenance: raw.provenance === 'SALVUS_VERIFIED' ? 'SALVUS_VERIFIED' : 'OSM_MAPPED',
+    source: raw.source || (raw.provider === 'geoapify' ? 'Geoapify Places' : 'OpenStreetMap'),
+    source_id:
+      raw.source_id || raw.provider_place_id
+        ? String(raw.source_id || raw.provider_place_id)
+        : null,
+    provenance,
     category: canonicalCat,
     raw_category: rawCat,
     name: String(raw.name || 'Unnamed Facility').trim(),
     latitude: lat,
     longitude: lon,
-    address: raw.address ? String(raw.address).trim() : null,
+    address:
+      raw.address || raw.formatted_address
+        ? String(raw.address || raw.formatted_address).trim()
+        : null,
     city: raw.city ? String(raw.city).trim() : null,
     phone: raw.phone ? String(raw.phone).trim() : null,
     website: raw.website ? String(raw.website).trim() : null,
     opening_hours: raw.opening_hours ? String(raw.opening_hours).trim() : null,
+    open_now: raw.open_now != null ? raw.open_now : null,
     distance_km: distKm,
     distance_meters: distM,
     distance_formatted: raw.distance_formatted || formatDistance(distM),
+    distance_type: 'Straight-line distance',
     amenities: Array.isArray(raw.amenities) ? raw.amenities : [],
+    safe_place_details: raw.safe_place_details || null,
+    confidence: typeof raw.confidence === 'number' ? raw.confidence : 0.85,
     fetched_at: raw.fetched_at || new Date().toISOString(),
     route_distance_m: raw.route_distance_m || null,
     route_duration_s: raw.route_duration_s || null,
@@ -258,6 +302,12 @@ export const normalizePlace = (raw, originLat = null, originLon = null) => {
 export const getProvenanceBadge = (provenance) => {
   if (provenance === 'SALVUS_VERIFIED') {
     return PROVENANCE_LABELS.SALVUS_VERIFIED
+  }
+  if (provenance === 'OFFICIAL_AUTHORITY') {
+    return PROVENANCE_LABELS.OFFICIAL_AUTHORITY
+  }
+  if (provenance === 'GEOAPIFY_PLACES') {
+    return PROVENANCE_LABELS.GEOAPIFY_PLACES
   }
   if (provenance === 'SEEDED_DEMO') {
     return PROVENANCE_LABELS.SEEDED_DEMO
@@ -304,7 +354,7 @@ export const hasMovedSignificantly = (prevCoords, newCoords, thresholdM = 150) =
 export const loadNearbyPlaces = async ({
   latitude,
   longitude,
-  radius = 2000,
+  radius = 10000,
   categories = null,
   includeVerified = true,
   safePlacesOnly = false,
@@ -337,18 +387,20 @@ export const loadNearbyPlaces = async ({
 
     return {
       success: true,
-      status: res.status || (normalized.length > 0 ? 'OK' : 'EMPTY'),
-      freshness: res.freshness || 'FRESH',
+      status: res.status || (normalized.length > 0 ? 'AVAILABLE' : 'NO_RESULTS'),
+      freshness: res.freshness || 'LIVE',
       cached: res.cached || false,
       data: normalized,
       count: normalized.length,
       fetchedAt: res.fetchedAt,
+      categoryStatuses: res.category_statuses || {},
+      providerSummary: res.provider_summary || 'Salvus Real-World Facilities Engine',
     }
   }
 
   return {
     success: false,
-    status: res.status || 'PROVIDER_UNAVAILABLE',
+    status: res.status || 'UNAVAILABLE',
     freshness: res.freshness || 'UNAVAILABLE',
     cached: false,
     error: res.error?.message || 'Nearby places temporarily unavailable.',

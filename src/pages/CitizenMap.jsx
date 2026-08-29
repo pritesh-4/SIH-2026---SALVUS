@@ -31,15 +31,17 @@ export const CitizenMap = () => {
   const [selectedPlace, setSelectedPlace] = useState(null)
   const [activeMapRoute, setActiveMapRoute] = useState(null)
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false)
-  const [searchRadiusMeters, setSearchRadiusMeters] = useState(2000)
+  const [searchRadiusMeters, setSearchRadiusMeters] = useState(10000)
 
   // Real-world nearby places and live hazards state
   const [nearbyPlaces, setNearbyPlaces] = useState([])
   const [liveHazards, setLiveHazards] = useState([])
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false)
-  const [feedStatus, setFeedStatus] = useState('IDLE') // 'IDLE' | 'OK' | 'EMPTY' | 'PARTIAL' | 'PROVIDER_UNAVAILABLE'
+  const [isRefreshingPlaces, setIsRefreshingPlaces] = useState(false)
+  const [feedStatus, setFeedStatus] = useState('IDLE') // 'IDLE' | 'AVAILABLE' | 'NO_RESULTS' | 'PARTIAL_RESULTS' | 'UNAVAILABLE' | 'STALE' | 'OK' | 'EMPTY'
+  const [categoryTelemetry, setCategoryTelemetry] = useState({})
   const [placesError, setPlacesError] = useState(null)
-  const [placesFreshness, setPlacesFreshness] = useState('FRESH')
+  const [placesFreshness, setPlacesFreshness] = useState('LIVE')
   const [lastFetchedAt, setLastFetchedAt] = useState(null)
 
   const { location, isAcquiring, recenterSignal, requestLocation, selectLandmark, recenterMap } =
@@ -68,8 +70,9 @@ export const CitizenMap = () => {
 
       if (lat == null || lon == null) {
         setIsLoadingPlaces(false)
+        setIsRefreshingPlaces(false)
         setNearbyPlaces([])
-        setFeedStatus('PROVIDER_UNAVAILABLE')
+        setFeedStatus('UNAVAILABLE')
         setPlacesError(
           'Location access is off. Enable GPS or select an approximate landmark to discover nearby verified facilities.'
         )
@@ -90,7 +93,12 @@ export const CitizenMap = () => {
       prevCoordsRef.current = currentCoords
       const currentSeq = ++fetchSeqRef.current
 
-      setIsLoadingPlaces(true)
+      // Non-blanking refresh: if we already have data, keep displaying it during refresh
+      if (nearbyPlaces.length > 0) {
+        setIsRefreshingPlaces(true)
+      } else {
+        setIsLoadingPlaces(true)
+      }
       setPlacesError(null)
 
       try {
@@ -108,6 +116,7 @@ export const CitizenMap = () => {
         if (currentSeq !== fetchSeqRef.current) return
 
         setIsLoadingPlaces(false)
+        setIsRefreshingPlaces(false)
         setLastFetchedAt(new Date().toISOString())
 
         if (placesRes.status === 'fulfilled') {
@@ -115,8 +124,9 @@ export const CitizenMap = () => {
           if (res?.success) {
             const dataList = res.data || []
             setNearbyPlaces(dataList)
-            setPlacesFreshness(res.freshness || 'FRESH')
-            setFeedStatus(res.status || (dataList.length > 0 ? 'OK' : 'EMPTY'))
+            setPlacesFreshness(res.freshness || 'LIVE')
+            setFeedStatus(res.status || (dataList.length > 0 ? 'AVAILABLE' : 'NO_RESULTS'))
+            setCategoryTelemetry(res.categoryStatuses || {})
             setPlacesError(null)
 
             // Select first place if none selected or if previous is no longer in dataset
@@ -131,21 +141,34 @@ export const CitizenMap = () => {
               setSelectedPlace(null)
             }
           } else {
-            setFeedStatus(res?.status || 'PROVIDER_UNAVAILABLE')
-            setPlacesError(
-              res?.error ||
-                'Geographic places feed is temporarily unavailable from upstream providers.'
-            )
-            setPlacesFreshness(res?.freshness || 'UNAVAILABLE')
+            // Non-blanking fallback: preserve previous data if available
+            if (nearbyPlaces.length > 0) {
+              setPlacesError('Unable to refresh. Showing recently fetched data.')
+              setPlacesFreshness('STALE')
+              setFeedStatus('STALE')
+            } else {
+              setFeedStatus(res?.status || 'UNAVAILABLE')
+              setPlacesError(
+                res?.error ||
+                  'Geographic places feed is temporarily unavailable from upstream providers.'
+              )
+              setPlacesFreshness(res?.freshness || 'UNAVAILABLE')
+              setNearbyPlaces([])
+              setSelectedPlace(null)
+            }
+          }
+        } else {
+          if (nearbyPlaces.length > 0) {
+            setPlacesError('Unable to refresh. Showing recently fetched data.')
+            setPlacesFreshness('STALE')
+            setFeedStatus('STALE')
+          } else {
+            setFeedStatus('UNAVAILABLE')
+            setPlacesError('Geographic data feed is temporarily unavailable.')
+            setPlacesFreshness('UNAVAILABLE')
             setNearbyPlaces([])
             setSelectedPlace(null)
           }
-        } else {
-          setFeedStatus('PROVIDER_UNAVAILABLE')
-          setPlacesError('Geographic data feed is temporarily unavailable.')
-          setPlacesFreshness('UNAVAILABLE')
-          setNearbyPlaces([])
-          setSelectedPlace(null)
         }
 
         if (hazardsRes.status === 'fulfilled' && hazardsRes.value?.success) {
@@ -154,14 +177,20 @@ export const CitizenMap = () => {
       } catch {
         if (currentSeq !== fetchSeqRef.current) return
         setIsLoadingPlaces(false)
-        setFeedStatus('PROVIDER_UNAVAILABLE')
-        setPlacesError('Geographic data feed is temporarily unavailable.')
-        setPlacesFreshness('UNAVAILABLE')
-        setNearbyPlaces([])
-        setSelectedPlace(null)
+        setIsRefreshingPlaces(false)
+        if (nearbyPlaces.length > 0) {
+          setPlacesError('Unable to refresh. Showing recently fetched data.')
+          setPlacesFreshness('STALE')
+          setFeedStatus('STALE')
+        } else {
+          setFeedStatus('UNAVAILABLE')
+          setPlacesError('Geographic data feed is temporarily unavailable.')
+          setPlacesFreshness('UNAVAILABLE')
+          setNearbyPlaces([])
+        }
       }
     },
-    [location.latitude, location.longitude, searchRadiusMeters]
+    [location.latitude, location.longitude, searchRadiusMeters, nearbyPlaces.length]
   )
 
   // Refetch when citizen location becomes available or moves
@@ -282,7 +311,7 @@ export const CitizenMap = () => {
     return liveHazards
   }, [liveHazards, activeFilter])
 
-  // Per-category state evaluation (LOADING, SUCCESS, EMPTY, UNAVAILABLE)
+  // Per-category state evaluation (LOADING, SUCCESS, EMPTY, UNAVAILABLE, PARTIAL)
   const categoryStates = useMemo(() => {
     const states = {}
 
@@ -305,9 +334,12 @@ export const CitizenMap = () => {
         if (isLoadingPlaces) {
           status = 'LOADING'
           displayBadge = '...'
-        } else if (feedStatus === 'PROVIDER_UNAVAILABLE') {
+        } else if (feedStatus === 'UNAVAILABLE' || feedStatus === 'PROVIDER_UNAVAILABLE') {
           status = 'UNAVAILABLE'
-          displayBadge = count > 0 ? `${count} (Feed !)` : '!'
+          displayBadge = count > 0 ? `${count} (!)` : '!'
+        } else if (feedStatus === 'PARTIAL_RESULTS' || feedStatus === 'PARTIAL') {
+          status = 'PARTIAL'
+          displayBadge = `${count}`
         } else if (count === 0) {
           status = 'EMPTY'
           displayBadge = '0'
@@ -320,7 +352,7 @@ export const CitizenMap = () => {
           tooltip:
             status === 'UNAVAILABLE'
               ? 'External data feed unavailable'
-              : `${count} total nearby facilities`,
+              : `${count} total nearby facilities (10 km)`,
         }
         return
       }
@@ -328,6 +360,22 @@ export const CitizenMap = () => {
       // Individual facility category
       const matched = nearbyPlaces.filter((p) => matchesCategoryFilter(p, f.id))
       const count = matched.length
+
+      const catKey =
+        f.id === 'hospital'
+          ? 'HOSPITAL'
+          : f.id === 'pharmacy'
+            ? 'PHARMACY'
+            : f.id === 'police'
+              ? 'POLICE'
+              : f.id === 'fire_station'
+                ? 'FIRE_STATION'
+                : f.id === 'shelter'
+                  ? 'SAFE_PLACE'
+                  : null
+
+      const report = catKey ? categoryTelemetry[catKey] : null
+      const isCatUnavailable = report?.status === 'UNAVAILABLE'
 
       let status = 'SUCCESS'
       let displayBadge = String(count)
@@ -337,9 +385,13 @@ export const CitizenMap = () => {
         status = 'LOADING'
         displayBadge = '...'
         tooltip = `Searching ${f.label}...`
-      } else if (feedStatus === 'PROVIDER_UNAVAILABLE') {
+      } else if (isCatUnavailable && count === 0) {
         status = 'UNAVAILABLE'
         displayBadge = '!'
+        tooltip = `${f.label} data feed temporarily unavailable`
+      } else if (feedStatus === 'UNAVAILABLE' || feedStatus === 'PROVIDER_UNAVAILABLE') {
+        status = 'UNAVAILABLE'
+        displayBadge = count > 0 ? `${count} (!)` : '!'
         tooltip = `${f.label} data feed temporarily unavailable`
       } else if (count === 0) {
         status = 'EMPTY'
@@ -356,7 +408,14 @@ export const CitizenMap = () => {
     })
 
     return states
-  }, [nearbyPlaces, liveHazards, isLoadingPlaces, feedStatus, searchRadiusMeters])
+  }, [
+    nearbyPlaces,
+    liveHazards,
+    isLoadingPlaces,
+    feedStatus,
+    searchRadiusMeters,
+    categoryTelemetry,
+  ])
 
   const activeCategoryState = categoryStates[activeFilter] || {
     count: displayedPlaces.length,
@@ -692,19 +751,26 @@ export const CitizenMap = () => {
           {/* Place Cards List View (Accessible Equivalent & Mobile Companion) */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-salvus-text-primary uppercase tracking-wider">
-                Facility Directory ({displayedPlaces.length})
-              </h2>
-              {searchRadiusMeters !== 2000 && (
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-salvus-text-primary uppercase tracking-wider">
+                  Facility Directory ({displayedPlaces.length})
+                </h2>
+                {isRefreshingPlaces && (
+                  <span className="text-xs text-salvus-info font-medium animate-pulse">
+                    Refreshing...
+                  </span>
+                )}
+              </div>
+              {searchRadiusMeters !== 10000 && (
                 <button
                   type="button"
                   onClick={() => {
-                    setSearchRadiusMeters(2000)
-                    fetchPlacesAndHazards(true, 2000)
+                    setSearchRadiusMeters(10000)
+                    fetchPlacesAndHazards(true, 10000)
                   }}
                   className="text-xs text-salvus-info hover:underline font-semibold cursor-pointer"
                 >
-                  Reset radius to 2 km
+                  Reset radius to 10 km
                 </button>
               )}
             </div>

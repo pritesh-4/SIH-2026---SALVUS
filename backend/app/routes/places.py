@@ -89,16 +89,16 @@ async def get_nearby_places_endpoint(
             },
         ) from ve
 
-    # Resolve radius
+    # Resolve radius (strict 10km ceiling)
     if radius_km is not None:
-        effective_radius_m = int(round(radius_km * 1000.0))
-        effective_radius_km = round(radius_km, 2)
+        effective_radius_m = min(10000, max(100, int(round(radius_km * 1000.0))))
+        effective_radius_km = round(effective_radius_m / 1000.0, 2)
     elif radius is not None:
-        effective_radius_m = max(100, min(10000, radius))
+        effective_radius_m = min(10000, max(100, radius))
         effective_radius_km = round(effective_radius_m / 1000.0, 2)
     else:
-        effective_radius_m = 2000
-        effective_radius_km = 2.0
+        effective_radius_m = 10000
+        effective_radius_km = 10.0
 
     cat_list = [c.strip() for c in categories.split(",") if c.strip()] if categories else None
     now_iso = datetime.now(UTC).isoformat()
