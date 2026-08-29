@@ -2,14 +2,18 @@
  * Salvus Client-Side Places Service (Phase 3: Citizen Nearby Places Experience)
  *
  * Provides:
- * - 6 Simple, calm category definitions with icons and tactical color mappings
+ * - Canonical category definitions and robust normalization across OSM/backend tags
  * - Provenance badge resolution (✓ Salvus verified vs Map data)
- * - Safe URL normalization
+ * - Safe URL and distance normalization
+ * - Single-source-of-truth category matching for counts, filters, map markers, and directory
  * - Smart client-side movement threshold checks (> 150m)
  */
 
-import { fetchNearbyPlaces, fetchPlaceRoute } from './api'
+import { fetchNearbyPlaces, fetchPlaceRoute } from './api.js'
 
+/**
+ * Controlled list of primary category filter tabs displayed in the UI.
+ */
 export const PLACE_CATEGORIES = [
   { id: 'all', label: 'Nearby', icon: '📍', color: 'slate' },
   { id: 'hospital', label: 'Hospitals', icon: '🏥', color: 'rose' },
@@ -40,27 +44,215 @@ export const PROVENANCE_LABELS = {
   },
 }
 
+/**
+ * Normalizes raw category strings from diverse OSM/backend representations
+ * into a canonical category identifier:
+ * 'hospital' | 'pharmacy' | 'police' | 'fire_station' | 'shelter' | 'emergency' | 'other'
+ */
+export const normalizePlaceCategory = (rawCategory) => {
+  const catStr = String(rawCategory || '')
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, '_')
+
+  if (
+    catStr === 'hospital' ||
+    catStr === 'clinic' ||
+    catStr.includes('hospital') ||
+    catStr.includes('clinic') ||
+    catStr.includes('doctor')
+  ) {
+    return 'hospital'
+  }
+
+  if (
+    catStr === 'pharmacy' ||
+    catStr === 'chemist' ||
+    catStr.includes('pharmacy') ||
+    catStr.includes('chemist') ||
+    catStr.includes('medical_supply')
+  ) {
+    return 'pharmacy'
+  }
+
+  if (
+    catStr === 'police' ||
+    catStr === 'police_station' ||
+    catStr === 'police_outpost' ||
+    catStr.includes('police')
+  ) {
+    return 'police'
+  }
+
+  if (
+    catStr === 'fire_station' ||
+    catStr === 'fire' ||
+    catStr === 'fire_service' ||
+    catStr.includes('fire')
+  ) {
+    return 'fire_station'
+  }
+
+  if (
+    catStr === 'shelter' ||
+    catStr === 'safe_places' ||
+    catStr === 'safe_place' ||
+    catStr.includes('shelter') ||
+    catStr.includes('refuge') ||
+    catStr.includes('evacuation') ||
+    catStr.includes('community_centre') ||
+    catStr.includes('townhall') ||
+    catStr.includes('assembly_point')
+  ) {
+    return 'shelter'
+  }
+
+  if (
+    catStr === 'emergency' ||
+    catStr === 'emergency_service' ||
+    catStr.includes('ambulance') ||
+    catStr.includes('emergency')
+  ) {
+    return 'emergency'
+  }
+
+  return 'other'
+}
+
+/**
+ * Returns user-facing metadata (label, icon, tactical color) for a place category.
+ */
 export const getCategoryInfo = (category) => {
-  const catStr = String(category || '').toLowerCase()
-  if (catStr.includes('hospital') || catStr.includes('clinic')) {
-    return { id: 'hospital', label: 'Hospital / Clinic', icon: '🏥', color: 'rose' }
+  const canonical = normalizePlaceCategory(category)
+  switch (canonical) {
+    case 'hospital':
+      return { id: 'hospital', label: 'Hospital / Clinic', icon: '🏥', color: 'rose' }
+    case 'pharmacy':
+      return { id: 'pharmacy', label: 'Pharmacy / Chemist', icon: '💊', color: 'emerald' }
+    case 'police':
+      return { id: 'police', label: 'Police Station', icon: '🛡️', color: 'sky' }
+    case 'fire_station':
+      return { id: 'fire_station', label: 'Fire & Rescue', icon: '🚒', color: 'amber' }
+    case 'shelter':
+      return { id: 'shelter', label: 'Safe Shelter / Refuge', icon: '🏠', color: 'teal' }
+    case 'emergency':
+      return { id: 'emergency', label: 'Emergency Response', icon: '🚑', color: 'rose' }
+    default:
+      return { id: 'other', label: 'Public Facility', icon: '📍', color: 'slate' }
   }
-  if (catStr.includes('pharmacy') || catStr.includes('chemist')) {
-    return { id: 'pharmacy', label: 'Pharmacy', icon: '💊', color: 'emerald' }
+}
+
+/**
+ * Determines whether a place matches a given category filter tab.
+ * Single source of truth for counts, list filtering, and map markers.
+ */
+export const matchesCategoryFilter = (place, filterId) => {
+  if (!place || !filterId || filterId === 'all') return true
+  if (filterId === 'hazards') return false
+
+  const placeCanonical = normalizePlaceCategory(place.category)
+
+  if (filterId === 'hospital') {
+    return placeCanonical === 'hospital' || placeCanonical === 'emergency'
   }
-  if (catStr.includes('police')) {
-    return { id: 'police', label: 'Police Station', icon: '🛡️', color: 'sky' }
+  if (filterId === 'pharmacy') {
+    return placeCanonical === 'pharmacy'
   }
-  if (catStr.includes('fire')) {
-    return { id: 'fire_station', label: 'Fire & Rescue', icon: '🚒', color: 'amber' }
+  if (filterId === 'police') {
+    return placeCanonical === 'police'
   }
-  if (catStr.includes('shelter') || catStr.includes('refuge') || catStr.includes('evacuation')) {
-    return { id: 'shelter', label: 'Safe Shelter', icon: '🏠', color: 'teal' }
+  if (filterId === 'fire_station') {
+    return placeCanonical === 'fire_station'
   }
-  if (catStr.includes('emergency')) {
-    return { id: 'emergency', label: 'Emergency Service', icon: '🚑', color: 'rose' }
+  if (filterId === 'shelter') {
+    return placeCanonical === 'shelter'
   }
-  return { id: 'other', label: 'Public Facility', icon: '📍', color: 'slate' }
+
+  return placeCanonical === filterId
+}
+
+/**
+ * Format geometric distance nicely for UI labels.
+ */
+export const formatDistance = (meters) => {
+  if (meters == null || isNaN(meters)) return 'Distance unknown'
+  if (meters < 1000) {
+    return `Approx. ${Math.round(meters)} m`
+  }
+  return `Approx. ${(meters / 1000).toFixed(1)} km`
+}
+
+/**
+ * Calculate client-side straight-line Haversine distance in meters.
+ */
+export const calculateClientDistanceM = (lat1, lon1, lat2, lon2) => {
+  if (
+    typeof lat1 !== 'number' ||
+    typeof lon1 !== 'number' ||
+    typeof lat2 !== 'number' ||
+    typeof lon2 !== 'number'
+  ) {
+    return null
+  }
+  const R = 6371000 // earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLon = ((lon2 - lon1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return Math.round(R * c)
+}
+
+/**
+ * Normalize raw backend place into a consistent, predictable client-side model.
+ */
+export const normalizePlace = (raw, originLat = null, originLon = null) => {
+  if (!raw || typeof raw !== 'object') return null
+
+  const lat = typeof raw.latitude === 'number' ? raw.latitude : parseFloat(raw.latitude)
+  const lon = typeof raw.longitude === 'number' ? raw.longitude : parseFloat(raw.longitude)
+
+  if (isNaN(lat) || isNaN(lon)) return null
+
+  // Recalculate distance if origin is provided
+  let distM = raw.distance_meters
+  let distKm = raw.distance_km
+
+  if (originLat != null && originLon != null && !isNaN(originLat) && !isNaN(originLon)) {
+    distM = calculateClientDistanceM(originLat, originLon, lat, lon)
+    distKm = distM != null ? distM / 1000 : null
+  }
+
+  const rawCat = raw.category || 'other'
+  const canonicalCat = normalizePlaceCategory(rawCat)
+
+  return {
+    id: String(raw.id || `place-${lat}-${lon}`),
+    source: raw.source || 'OpenStreetMap',
+    source_id: raw.source_id ? String(raw.source_id) : null,
+    provenance: raw.provenance === 'SALVUS_VERIFIED' ? 'SALVUS_VERIFIED' : 'OSM_MAPPED',
+    category: canonicalCat,
+    raw_category: rawCat,
+    name: String(raw.name || 'Unnamed Facility').trim(),
+    latitude: lat,
+    longitude: lon,
+    address: raw.address ? String(raw.address).trim() : null,
+    city: raw.city ? String(raw.city).trim() : null,
+    phone: raw.phone ? String(raw.phone).trim() : null,
+    website: raw.website ? String(raw.website).trim() : null,
+    opening_hours: raw.opening_hours ? String(raw.opening_hours).trim() : null,
+    distance_km: distKm,
+    distance_meters: distM,
+    distance_formatted: raw.distance_formatted || formatDistance(distM),
+    amenities: Array.isArray(raw.amenities) ? raw.amenities : [],
+    fetched_at: raw.fetched_at || new Date().toISOString(),
+    route_distance_m: raw.route_distance_m || null,
+    route_duration_s: raw.route_duration_s || null,
+  }
 }
 
 export const getProvenanceBadge = (provenance) => {
@@ -84,32 +276,7 @@ export const normalizeWebsiteUrl = (url) => {
 }
 
 /**
- * Calculate distance in meters between two lat/lon pairs on client
- */
-export const calculateClientDistanceM = (lat1, lon1, lat2, lon2) => {
-  if (
-    typeof lat1 !== 'number' ||
-    typeof lon1 !== 'number' ||
-    typeof lat2 !== 'number' ||
-    typeof lon2 !== 'number'
-  ) {
-    return null
-  }
-  const R = 6371000 // meters
-  const dLat = ((lat2 - lat1) * Math.PI) / 180
-  const dLon = ((lon2 - lon1) * Math.PI) / 180
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2)
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return Math.round(R * c)
-}
-
-/**
- * Check if citizen moved significantly (> 150m) to warrant a geographic refetch
+ * Check if citizen moved significantly (> 150m) to warrant a geographic refetch.
  */
 export const hasMovedSignificantly = (prevCoords, newCoords, thresholdM = 150) => {
   if (!prevCoords || !newCoords) return true
@@ -132,7 +299,7 @@ export const hasMovedSignificantly = (prevCoords, newCoords, thresholdM = 150) =
 }
 
 /**
- * Load nearby places with graceful fallback
+ * Load nearby places with client normalization and structured state.
  */
 export const loadNearbyPlaces = async ({
   latitude,
@@ -145,12 +312,15 @@ export const loadNearbyPlaces = async ({
   if (typeof latitude !== 'number' || typeof longitude !== 'number') {
     return {
       success: false,
+      status: 'INVALID_COORDINATES',
+      freshness: 'UNAVAILABLE',
       error: 'Invalid coordinates for nearby search',
       data: [],
+      count: 0,
     }
   }
 
-  return await fetchNearbyPlaces({
+  const res = await fetchNearbyPlaces({
     lat: latitude,
     lng: longitude,
     radius,
@@ -158,6 +328,33 @@ export const loadNearbyPlaces = async ({
     includeVerified,
     safePlacesOnly,
   })
+
+  if (res.success) {
+    const rawList = Array.isArray(res.data) ? res.data : []
+    const normalized = rawList
+      .map((p) => normalizePlace(p, latitude, longitude))
+      .filter((p) => p !== null)
+
+    return {
+      success: true,
+      status: res.status || (normalized.length > 0 ? 'OK' : 'EMPTY'),
+      freshness: res.freshness || 'FRESH',
+      cached: res.cached || false,
+      data: normalized,
+      count: normalized.length,
+      fetchedAt: res.fetchedAt,
+    }
+  }
+
+  return {
+    success: false,
+    status: res.status || 'PROVIDER_UNAVAILABLE',
+    freshness: res.freshness || 'UNAVAILABLE',
+    cached: false,
+    error: res.error?.message || 'Nearby places temporarily unavailable.',
+    data: [],
+    count: 0,
+  }
 }
 
 export { fetchPlaceRoute }

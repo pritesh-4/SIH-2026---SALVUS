@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+const API_BASE_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) || ''
 
 let currentAuthToken =
   typeof window !== 'undefined' ? localStorage.getItem('salvus_auth_token') || null : null
@@ -1022,6 +1023,7 @@ export const fetchNearbyPlaces = async ({
       'Nearby places are temporarily unavailable.'
     return {
       success: false,
+      status: error.response?.data?.status || 'PROVIDER_UNAVAILABLE',
       error: { message, code: error.code || 'PLACES_UNAVAILABLE' },
       data: [],
       count: 0,
