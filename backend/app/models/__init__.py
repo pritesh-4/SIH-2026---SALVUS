@@ -1219,3 +1219,77 @@ class PlaceRouteResponse(BaseModel):
     is_safe_route: bool = True
     hazard_warning: str | None = None
     calculated_at: str
+
+
+# ---------------------------------------------------------------------------
+# Weather & Environmental Intelligence Models (Build 04)
+# ---------------------------------------------------------------------------
+
+
+class WeatherCondition(BaseModel):
+    """Normalized real-time environmental and weather observations."""
+
+    temperature: float = Field(description="Current temperature in Celsius")
+    feels_like: float = Field(description="Apparent temperature in Celsius")
+    condition: str = Field(description="Human-friendly weather condition text")
+    weather_code: int = Field(description="Standard WMO weather code")
+    precipitation: float = Field(default=0.0, description="Precipitation rate in mm/h")
+    precipitation_probability: int = Field(
+        default=0, ge=0, le=100, description="Precipitation probability percentage"
+    )
+    humidity: int = Field(default=0, ge=0, le=100, description="Relative humidity percentage")
+    wind_speed: float = Field(default=0.0, description="Wind speed in km/h")
+    wind_direction: float = Field(default=0.0, description="Wind direction in degrees")
+    wind_gusts: float = Field(default=0.0, description="Wind gusts in km/h")
+    visibility_km: float = Field(default=10.0, description="Horizontal visibility in kilometers")
+    uv_index: float = Field(default=0.0, description="UV exposure index")
+    is_day: int = Field(default=1, description="1 if daytime, 0 if nighttime")
+    sunrise: str | None = None
+    sunset: str | None = None
+    observed_at: str = Field(description="ISO timestamp of observation")
+    source: str = "Open-Meteo Weather Service"
+    provenance: AlertProvenance = AlertProvenance.LIVE
+    summary: str = Field(description="Human-centric contextual situation summary")
+
+
+class HourlyForecastItem(BaseModel):
+    """Near-term hourly forecast data point."""
+
+    time: str = Field(description="Display time label e.g. 14:00")
+    time_iso: str = Field(description="ISO timestamp of forecast interval")
+    temperature: float = Field(description="Forecast temperature in Celsius")
+    condition: str = Field(description="Human-friendly condition text")
+    weather_code: int = Field(description="Standard WMO weather code")
+    precipitation: float = Field(default=0.0, description="Precipitation in mm")
+    precipitation_probability: int = Field(
+        default=0, ge=0, le=100, description="Precipitation chance %"
+    )
+    wind_speed: float = Field(default=0.0, description="Wind speed in km/h")
+
+
+class DailyForecastSummary(BaseModel):
+    """Daily forecast summary metrics."""
+
+    max_temp: float = Field(description="Maximum temperature in Celsius")
+    min_temp: float = Field(description="Minimum temperature in Celsius")
+    max_precipitation_probability: int = Field(default=0, ge=0, le=100)
+    max_uv_index: float = Field(default=0.0)
+    sunrise: str | None = None
+    sunset: str | None = None
+
+
+class WeatherIntelligenceResponse(BaseModel):
+    """Comprehensive weather and environmental telemetry response."""
+
+    success: bool = True
+    current: WeatherCondition
+    hourly: list[HourlyForecastItem] = Field(default_factory=list)
+    daily: DailyForecastSummary | None = None
+    status: SourceStatus = SourceStatus.AVAILABLE
+    freshness: str = "LIVE"
+    data_provenance: str = "LIVE"
+    latitude: float
+    longitude: float
+    observed_at: str
+    evaluated_at: str
+    error: str | None = None

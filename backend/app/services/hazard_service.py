@@ -37,6 +37,7 @@ from app.models import (
     SourceHealthReport,
     SourceStatus,
     SourceType,
+    WeatherIntelligenceResponse,
 )
 from app.services.geo_service import (
     evaluate_alert_relevance,
@@ -91,6 +92,13 @@ def get_source_health_reports() -> list[SourceHealthReport]:
         usgs_adapter.get_health(),
         open_meteo_adapter.get_health(),
     ]
+
+
+async def get_weather_intelligence(
+    lat: float, lon: float, client: httpx.AsyncClient | None = None
+) -> WeatherIntelligenceResponse:
+    """Retrieve normalized weather telemetry and hourly forecast from Open-Meteo adapter."""
+    return await open_meteo_adapter.fetch_weather_intelligence(lat=lat, lon=lon, client=client)
 
 
 # Backward compatibility helper for legacy unit test calls

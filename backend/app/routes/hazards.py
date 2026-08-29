@@ -16,6 +16,7 @@ from app.models import (
     HazardListResponse,
     IncidentClusterListResponse,
     SituationSummaryResponse,
+    WeatherIntelligenceResponse,
 )
 from app.services import (
     clustering_service,
@@ -25,6 +26,16 @@ from app.services import (
 )
 
 router = APIRouter(tags=["disaster_intelligence"])
+
+
+@router.get("/api/weather", response_model=WeatherIntelligenceResponse)
+@router.get("/api/weather/current", response_model=WeatherIntelligenceResponse)
+async def get_weather(
+    lat: float = Query(..., ge=-90, le=90, description="Citizen latitude"),
+    lon: float = Query(..., ge=-180, le=180, description="Citizen longitude"),
+):
+    """Retrieve normalized real-time weather and hourly forecast intelligence."""
+    return await hazard_service.get_weather_intelligence(lat=lat, lon=lon)
 
 
 @router.get("/api/hazards", response_model=HazardListResponse)

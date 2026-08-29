@@ -11,7 +11,7 @@
  * 7. Human-friendly relative freshness formatting ("Updated 2 min ago")
  */
 
-import { fetchHazards, fetchRecommendedShelters, apiClient } from './api'
+import { fetchHazards, fetchRecommendedShelters, fetchWeatherIntelligence, apiClient } from './api'
 import { hasMovedSignificantly } from './placesService'
 
 /**
@@ -182,7 +182,7 @@ export const loadCitizenLocationContext = async ({ location, force = false }) =>
   try {
     // Parallel fetch with graceful failure handling
     const isDemo = Boolean(location?.isDemoMode || location?.demo)
-    const [hazardsRes, sheltersRes, safetyRes] = await Promise.allSettled([
+    const [hazardsRes, sheltersRes, safetyRes, weatherRes] = await Promise.allSettled([
       fetchHazards(location.latitude, location.longitude, 15.0, isDemo),
       fetchRecommendedShelters(location.latitude, location.longitude, null, {
         maxRadiusKm: 25.0,
@@ -190,6 +190,7 @@ export const loadCitizenLocationContext = async ({ location, force = false }) =>
         includeMapped: true,
       }),
       fetchAreaSafetyStatus(location.latitude, location.longitude),
+      fetchWeatherIntelligence(location.latitude, location.longitude, force),
     ])
 
     const hazards =
@@ -197,6 +198,9 @@ export const loadCitizenLocationContext = async ({ location, force = false }) =>
 
     const shelters =
       sheltersRes.status === 'fulfilled' && sheltersRes.value?.success ? sheltersRes.value.data : []
+
+    const weather =
+      weatherRes.status === 'fulfilled' && weatherRes.value?.success ? weatherRes.value : null
 
     let safetyStatus = safetyRes.status === 'fulfilled' ? safetyRes.value : null
 
@@ -303,6 +307,7 @@ export const loadCitizenLocationContext = async ({ location, force = false }) =>
       timestamp: now,
       hazards,
       shelters,
+      weather,
       safetyStatus,
       nearestShelter: topSafeShelter,
       activeAdvisory: topAdvisory,

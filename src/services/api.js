@@ -975,6 +975,99 @@ export const fetchSituationSummary = async () => {
 }
 
 // ---------------------------------------------------------------------------
+// Weather & Environmental Intelligence (Build 04)
+// ---------------------------------------------------------------------------
+
+const _weatherClientCache = new Map()
+const _weatherInFlightRequests = new Map()
+
+/**
+ * Fetch normalized real-time weather and hourly forecast telemetry.
+ */
+export const fetchWeatherIntelligence = async (lat, lon, force = false) => {
+  if (lat == null || lon == null || typeof lat !== 'number' || typeof lon !== 'number') {
+    return {
+      success: false,
+      status: 'LOCATION_REQUIRED',
+      freshness: 'UNAVAILABLE',
+      error: { message: 'Valid coordinates are required for weather telemetry.' },
+    }
+  }
+
+  const cacheKey = `${lat.toFixed(2)},${lon.toFixed(2)}`
+  const now = Date.now()
+
+  if (!force && _weatherClientCache.has(cacheKey)) {
+    const entry = _weatherClientCache.get(cacheKey)
+    if (now - entry.timestamp < 180000) {
+      return {
+        ...entry.data,
+        freshness: 'CACHED',
+      }
+    }
+  }
+
+  if (_weatherInFlightRequests.has(cacheKey)) {
+    return _weatherInFlightRequests.get(cacheKey)
+  }
+
+  const requestPromise = (async () => {
+    try {
+      const response = await apiClient.get('/api/weather', {
+        params: { lat, lon },
+        timeout: 6000,
+      })
+
+      if (response.data?.success) {
+        const result = {
+          success: true,
+          current: response.data.current,
+          hourly: response.data.hourly || [],
+          daily: response.data.daily || null,
+          status: response.data.status || 'AVAILABLE',
+          freshness: response.data.freshness || 'LIVE',
+          dataProvenance: response.data.data_provenance || 'LIVE',
+          observedAt: response.data.observed_at,
+          evaluatedAt: response.data.evaluated_at,
+        }
+        _weatherClientCache.set(cacheKey, { data: result, timestamp: Date.now() })
+        return result
+      }
+
+      return {
+        success: false,
+        status: response.data?.status || 'UNAVAILABLE',
+        freshness: response.data?.freshness || 'UNAVAILABLE',
+        current: response.data?.current || null,
+        hourly: response.data?.hourly || [],
+        error: { message: response.data?.error || 'Weather telemetry unavailable' },
+      }
+    } catch (error) {
+      if (_weatherClientCache.has(cacheKey)) {
+        const entry = _weatherClientCache.get(cacheKey)
+        return {
+          ...entry.data,
+          freshness: 'STALE',
+          status: 'DEGRADED',
+        }
+      }
+
+      return {
+        success: false,
+        status: 'UNAVAILABLE',
+        freshness: 'UNAVAILABLE',
+        error: { message: error.message || 'Weather feed unreachable' },
+      }
+    } finally {
+      _weatherInFlightRequests.delete(cacheKey)
+    }
+  })()
+
+  _weatherInFlightRequests.set(cacheKey, requestPromise)
+  return requestPromise
+}
+
+// ---------------------------------------------------------------------------
 // Real-World Geographic Places (Build 02: Real-World Geographic Context)
 // ---------------------------------------------------------------------------
 
