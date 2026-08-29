@@ -667,7 +667,7 @@ export const SalvusLeafletMap = ({
         if (typeof place.latitude !== 'number' || typeof place.longitude !== 'number') return
 
         const isSelected = place.id === selectedPlaceId
-        const isVerified = place.provenance === 'SALVUS_VERIFIED'
+        const isVerified = place.provenance === 'SALVUS_VERIFIED' || place.verified === true
         const cat = place.category?.toLowerCase() || 'other'
 
         let iconEmoji = '📍'
@@ -690,15 +690,27 @@ export const SalvusLeafletMap = ({
           iconEmoji = '🚒'
           bgClass = 'bg-[#231508] border-amber-500/70 text-amber-300'
           typeLabel = 'Fire & Rescue Station'
+        } else if (cat === 'emergency' || cat === 'ambulance') {
+          iconEmoji = '🚑'
+          bgClass = 'bg-[#261216] border-rose-500/80 text-rose-300 shadow-sm'
+          typeLabel = 'Emergency Response / Ambulance'
         } else if (cat === 'shelter') {
           iconEmoji = '🏠'
           bgClass = isVerified
             ? 'bg-[#0D241D] border-emerald-500 text-emerald-200 shadow-md ring-1 ring-emerald-400/40'
-            : 'bg-[#151D24] border-slate-600/80 text-slate-300'
-          typeLabel = isVerified ? 'Verified Salvus Refuge' : 'Community Shelter'
+            : 'bg-[#151D24] border-teal-600/80 text-teal-300'
+          typeLabel = isVerified ? 'Verified Salvus Refuge' : 'Safe Evacuation Shelter'
         }
 
-        const size = isSelected ? 30 : 24
+        const provenanceBadge = isVerified
+          ? '✓ SALVUS VERIFIED'
+          : place.provenance === 'GEOAPIFY_PLACES'
+            ? 'GEOAPIFY PLACES'
+            : place.provenance === 'OFFICIAL_AUTHORITY'
+              ? 'OFFICIAL'
+              : 'MAP DATA'
+
+        const size = isSelected ? 32 : 24
         const placeIcon = L.divIcon({
           className: 'custom-place-pin',
           html: `
@@ -706,10 +718,10 @@ export const SalvusLeafletMap = ({
               isRouteActive ? 'opacity-40 grayscale-30 hover:opacity-100 hover:grayscale-0' : ''
             } ${bgClass} ${
               isSelected
-                ? 'scale-110 ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-950 z-40'
+                ? 'scale-110 ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-950 z-40 shadow-lg'
                 : 'hover:scale-105'
             }" style="width:${size}px; height:${size}px;">
-              <span style="font-size: ${size > 26 ? '12px' : '10px'}">${iconEmoji}</span>
+              <span style="font-size: ${size > 26 ? '13px' : '10px'}">${iconEmoji}</span>
             </div>
           `,
           iconSize: [size, size],
@@ -730,13 +742,13 @@ export const SalvusLeafletMap = ({
               isVerified
                 ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
                 : 'bg-slate-900 text-slate-400 border-slate-700'
-            }">${isVerified ? '✓ SALVUS VERIFIED' : 'MAPPED (OSM)'}</span>
+            }">${provenanceBadge}</span>
           </div>
           <div class="text-[11px] text-slate-300 font-medium mb-1 flex items-center gap-1.5">
             <span>${iconEmoji}</span>
             <span>${typeLabel}</span>
           </div>
-          <p class="text-slate-400 text-[11px] mb-2">${place.address || 'Address unlisted in OpenStreetMap'}</p>
+          <p class="text-slate-400 text-[11px] mb-2">${place.address || 'Address unlisted in geospatial registry'}</p>
           <div class="text-[10px] text-slate-400 bg-slate-900/90 p-1.5 rounded border border-slate-800 font-mono flex items-center justify-between">
             <span>Proximity:</span>
             <span class="font-semibold text-sky-300">${place.distance_formatted}</span>

@@ -6,8 +6,9 @@
  * 1. Canonical category normalization (OSM tag mapping to controlled category IDs)
  * 2. Category filter matching (Single source of truth for counts, markers & list)
  * 3. Raw place normalization (Distance recalculation, provenance, address parsing)
- * 4. Human-readable distance formatting
+ * 4. Human-readable distance formatting ('450 m away', '2.4 km away')
  * 5. Movement threshold evaluation (> 150m)
+ * 6. Intelligent sorting for 'all' (emergency relevance) and specific categories (proximity)
  */
 
 import {
@@ -18,6 +19,7 @@ import {
   calculateClientDistanceM,
   normalizePlace,
   hasMovedSignificantly,
+  sortPlacesForCategory,
 } from '../../services/placesService.js'
 
 let passedTests = 0
@@ -180,6 +182,20 @@ function runTests() {
     'Distance formatted'
   )
 
+  // Strict 10,000m filter rejection
+  const farPlace = {
+    id: 'far-101',
+    category: 'hospital',
+    name: 'Far Hospital',
+    latitude: 23.5, // > 100 km away
+    longitude: 85.5,
+  }
+  assertEqual(
+    normalizePlace(farPlace, 22.22, 84.85),
+    null,
+    'Far facility (>10km) is strictly filtered out'
+  )
+
   // Invalid coordinates return null
   assertEqual(
     normalizePlace({ latitude: 'invalid', longitude: 84.853 }),
@@ -194,8 +210,8 @@ function runTests() {
   const dist = calculateClientDistanceM(22.227, 84.853, 22.235, 84.865)
   assert(dist > 1000 && dist < 2000, `Calculated realistic distance: ${dist}m`)
 
-  assertEqual(formatDistance(450), 'Approx. 450 m', 'Format < 1km')
-  assertEqual(formatDistance(2350), 'Approx. 2.4 km', 'Format > 1km')
+  assertEqual(formatDistance(450), '450 m away', 'Format < 1km')
+  assertEqual(formatDistance(2350), '2.4 km away', 'Format > 1km')
 
   assert(
     hasMovedSignificantly(null, { latitude: 22.227, longitude: 84.853 }),
@@ -217,6 +233,58 @@ function runTests() {
     ),
     'Large move (~330m) triggers threshold'
   )
+
+  // ---------------------------------------------------------------------------
+  // 6. Intelligent Category Sorting Tests
+  // ---------------------------------------------------------------------------
+  console.log('\n[Suite 6: Intelligent Category & Emergency Sorting]')
+  const testSet = [
+    {
+      id: 'pharm-1',
+      category: 'pharmacy',
+      name: 'Close Pharmacy',
+      distance_meters: 200,
+      confidence: 0.8,
+    },
+    {
+      id: 'hosp-1',
+      category: 'hospital',
+      name: 'City Hospital',
+      distance_meters: 600,
+      confidence: 0.9,
+    },
+    {
+      id: 'shelter-ver',
+      category: 'shelter',
+      name: 'Salvus Central Shelter',
+      provenance: 'SALVUS_VERIFIED',
+      distance_meters: 800,
+      confidence: 1.0,
+    },
+    {
+      id: 'fire-1',
+      category: 'fire_station',
+      name: 'Fire Station 1',
+      distance_meters: 500,
+      confidence: 0.85,
+    },
+  ]
+
+  // Nearby ('all') sort should prioritize Salvus verified shelter -> Hospital -> Fire -> Pharmacy
+  const sortedAll = sortPlacesForCategory(testSet, 'all')
+  assertEqual(sortedAll[0].id, 'shelter-ver', 'Top priority in Nearby is Salvus Verified Shelter')
+  assertEqual(sortedAll[1].id, 'hosp-1', 'Second priority is Hospital')
+  assertEqual(sortedAll[2].id, 'fire-1', 'Third priority is Fire Station')
+  assertEqual(sortedAll[3].id, 'pharm-1', 'Fourth priority is Pharmacy')
+
+  // Specific category tab ('pharmacy') should strictly sort by proximity distance
+  const pharmacies = [
+    { id: 'p2', category: 'pharmacy', name: 'Far Chemist', distance_meters: 1500 },
+    { id: 'p1', category: 'pharmacy', name: 'Near Chemist', distance_meters: 300 },
+  ]
+  const sortedPharm = sortPlacesForCategory(pharmacies, 'pharmacy')
+  assertEqual(sortedPharm[0].id, 'p1', 'Closest pharmacy is ranked #1 in category tab')
+  assertEqual(sortedPharm[1].id, 'p2', 'Farther pharmacy is ranked #2 in category tab')
 
   console.log(`\n========================================`)
   console.log(`RESULTS: ${passedTests} passed, ${failedTests} failed.`)

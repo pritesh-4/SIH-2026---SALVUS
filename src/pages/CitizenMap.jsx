@@ -6,6 +6,7 @@ import {
   loadNearbyPlaces,
   hasMovedSignificantly,
   matchesCategoryFilter,
+  sortPlacesForCategory,
   PLACE_CATEGORIES,
 } from '../services/placesService'
 import { fetchHazards, fetchPlaceRoute } from '../services/api'
@@ -38,7 +39,7 @@ export const CitizenMap = () => {
   const [liveHazards, setLiveHazards] = useState([])
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false)
   const [isRefreshingPlaces, setIsRefreshingPlaces] = useState(false)
-  const [feedStatus, setFeedStatus] = useState('IDLE') // 'IDLE' | 'AVAILABLE' | 'NO_RESULTS' | 'PARTIAL_RESULTS' | 'UNAVAILABLE' | 'STALE' | 'OK' | 'EMPTY'
+  const [feedStatus, setFeedStatus] = useState('IDLE') // 'IDLE' | 'AVAILABLE' | 'NO_RESULTS' | 'PARTIAL_RESULTS' | 'UNAVAILABLE' | 'STALE'
   const [categoryTelemetry, setCategoryTelemetry] = useState({})
   const [placesError, setPlacesError] = useState(null)
   const [placesFreshness, setPlacesFreshness] = useState('LIVE')
@@ -300,16 +301,20 @@ export const CitizenMap = () => {
     }
   }, [searchParams, nearbyPlaces, handleGetRoute])
 
-  // Filter places based on active category
+  // Filter and intelligently sort places based on active category
   const displayedPlaces = useMemo(() => {
     if (activeFilter === 'hazards') return []
-    return nearbyPlaces.filter((p) => matchesCategoryFilter(p, activeFilter))
+    const filtered = nearbyPlaces.filter((p) => matchesCategoryFilter(p, activeFilter))
+    return sortPlacesForCategory(filtered, activeFilter)
   }, [nearbyPlaces, activeFilter])
 
   const displayedHazards = useMemo(() => {
     if (activeFilter !== 'all' && activeFilter !== 'hazards') return []
     return liveHazards
   }, [liveHazards, activeFilter])
+
+  const isInitialPending =
+    (isLoadingPlaces || isAcquiring || feedStatus === 'IDLE') && nearbyPlaces.length === 0
 
   // Per-category state evaluation (LOADING, SUCCESS, EMPTY, UNAVAILABLE, PARTIAL)
   const categoryStates = useMemo(() => {
@@ -319,8 +324,8 @@ export const CitizenMap = () => {
       if (f.id === 'hazards') {
         states[f.id] = {
           count: liveHazards.length,
-          status: isLoadingPlaces ? 'LOADING' : 'SUCCESS',
-          displayBadge: isLoadingPlaces ? '...' : String(liveHazards.length),
+          status: isInitialPending ? 'LOADING' : 'SUCCESS',
+          displayBadge: isInitialPending ? '...' : String(liveHazards.length),
           tooltip: `${liveHazards.length} active hazard alerts`,
         }
         return
@@ -331,12 +336,12 @@ export const CitizenMap = () => {
         let status = 'SUCCESS'
         let displayBadge = String(count)
 
-        if (isLoadingPlaces) {
+        if (isInitialPending) {
           status = 'LOADING'
           displayBadge = '...'
         } else if (feedStatus === 'UNAVAILABLE' || feedStatus === 'PROVIDER_UNAVAILABLE') {
           status = 'UNAVAILABLE'
-          displayBadge = count > 0 ? `${count} (!)` : '!'
+          displayBadge = count > 0 ? `${count}` : '!'
         } else if (feedStatus === 'PARTIAL_RESULTS' || feedStatus === 'PARTIAL') {
           status = 'PARTIAL'
           displayBadge = `${count}`
@@ -352,7 +357,9 @@ export const CitizenMap = () => {
           tooltip:
             status === 'UNAVAILABLE'
               ? 'External data feed unavailable'
-              : `${count} total nearby facilities (10 km)`,
+              : isInitialPending
+                ? 'Searching nearby facilities...'
+                : `${count} total nearby facilities (10 km)`,
         }
         return
       }
@@ -381,7 +388,7 @@ export const CitizenMap = () => {
       let displayBadge = String(count)
       let tooltip = `${count} ${f.label} found`
 
-      if (isLoadingPlaces) {
+      if (isInitialPending) {
         status = 'LOADING'
         displayBadge = '...'
         tooltip = `Searching ${f.label}...`
@@ -391,7 +398,7 @@ export const CitizenMap = () => {
         tooltip = `${f.label} data feed temporarily unavailable`
       } else if (feedStatus === 'UNAVAILABLE' || feedStatus === 'PROVIDER_UNAVAILABLE') {
         status = 'UNAVAILABLE'
-        displayBadge = count > 0 ? `${count} (!)` : '!'
+        displayBadge = count > 0 ? `${count}` : '!'
         tooltip = `${f.label} data feed temporarily unavailable`
       } else if (count === 0) {
         status = 'EMPTY'
@@ -411,7 +418,7 @@ export const CitizenMap = () => {
   }, [
     nearbyPlaces,
     liveHazards,
-    isLoadingPlaces,
+    isInitialPending,
     feedStatus,
     searchRadiusMeters,
     categoryTelemetry,
@@ -432,6 +439,47 @@ export const CitizenMap = () => {
     requestLocation({ timeout: 10000 })
     recenterMap()
   }
+
+  // Determine top real-world status indicator state and label
+  const statusTelemetry = useMemo(() => {
+    if (isInitialPending) {
+      return {
+        status: 'info',
+        label: 'Locating Facilities...',
+        showDot: true,
+      }
+    }
+    if (feedStatus === 'UNAVAILABLE' || placesFreshness === 'UNAVAILABLE') {
+      return {
+        status: 'critical',
+        label: 'Data Feed Unavailable',
+        showDot: true,
+      }
+    }
+    if (feedStatus === 'PARTIAL_RESULTS' || feedStatus === 'PARTIAL') {
+      return {
+        status: 'warning',
+        label: 'Partial Data · Some Sources Unavailable',
+        showDot: true,
+      }
+    }
+    if (feedStatus === 'STALE' || placesFreshness === 'CACHED') {
+      return {
+        status: 'warning',
+        label: lastFetchedAt
+          ? `Cached Data · ${formatRelativeFreshness(lastFetchedAt)}`
+          : 'Cached Data',
+        showDot: true,
+      }
+    }
+    return {
+      status: 'safe',
+      label: lastFetchedAt
+        ? `Real-World Data · ${formatRelativeFreshness(lastFetchedAt)}`
+        : 'Real-World Data · Live',
+      showDot: true,
+    }
+  }, [isInitialPending, feedStatus, placesFreshness, lastFetchedAt])
 
   return (
     <div className="max-w-[1440px] w-full mx-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 animate-fadeIn">
@@ -470,15 +518,15 @@ export const CitizenMap = () => {
           <button
             type="button"
             onClick={() => fetchPlacesAndHazards(true)}
-            disabled={isLoadingPlaces}
+            disabled={isLoadingPlaces || isRefreshingPlaces}
             className="px-3 py-1.5 rounded-xl bg-salvus-surface border border-salvus-border hover:border-salvus-info text-salvus-text-secondary hover:text-salvus-text-primary text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
             title="Refresh nearby places around your GPS"
             aria-label="Refresh nearby facilities"
           >
-            <span className={isLoadingPlaces ? 'animate-spin' : ''}>
-              {isLoadingPlaces ? '⏳' : '🔄'}
+            <span className={isLoadingPlaces || isRefreshingPlaces ? 'animate-spin' : ''}>
+              {isLoadingPlaces || isRefreshingPlaces ? '⏳' : '🔄'}
             </span>
-            <span>{isLoadingPlaces ? 'Refreshing...' : 'Refresh'}</span>
+            <span>{isLoadingPlaces || isRefreshingPlaces ? 'Refreshing...' : 'Refresh'}</span>
           </button>
 
           {location.latitude && (
@@ -494,7 +542,11 @@ export const CitizenMap = () => {
             </button>
           )}
 
-          <StatusIndicator status="safe" label="Real-World Data" showDot={true} />
+          <StatusIndicator
+            status={statusTelemetry.status}
+            label={statusTelemetry.label}
+            showDot={statusTelemetry.showDot}
+          />
         </div>
       </div>
 
@@ -779,34 +831,44 @@ export const CitizenMap = () => {
             {!isLoadingPlaces && displayedPlaces.length === 0 && (
               <Card padding="lg" className="text-center py-8">
                 <span className="text-3xl mb-2 block" aria-hidden="true">
-                  {activeCategoryState.status === 'UNAVAILABLE' ? '⚠️' : '📍'}
+                  {!location.latitude
+                    ? '📍'
+                    : activeCategoryState.status === 'UNAVAILABLE'
+                      ? '⚠️'
+                      : '🔍'}
                 </span>
                 <h3 className="text-sm font-bold text-salvus-text-primary">
-                  {activeCategoryState.status === 'UNAVAILABLE'
-                    ? `${activeFilter !== 'all' ? activeFilter.toUpperCase() : 'Nearby'} data feed is temporarily unavailable.`
-                    : `No ${activeFilter !== 'all' ? activeFilter : ''} facilities found within ${searchRadiusMeters / 1000} km.`}
+                  {!location.latitude
+                    ? 'We need your location to find facilities near you.'
+                    : activeCategoryState.status === 'UNAVAILABLE'
+                      ? `${activeFilter !== 'all' ? ALL_CATEGORY_FILTERS.find((f) => f.id === activeFilter)?.label || activeFilter : 'Nearby'} data feed is temporarily unavailable.`
+                      : `No ${activeFilter !== 'all' ? ALL_CATEGORY_FILTERS.find((f) => f.id === activeFilter)?.label || activeFilter : 'nearby'} facilities found within ${searchRadiusMeters / 1000} km.`}
                 </h3>
-                <p className="text-xs text-salvus-text-secondary mt-1 max-w-sm mx-auto leading-relaxed">
-                  {activeCategoryState.status === 'UNAVAILABLE'
-                    ? 'Upstream map providers are experiencing high latency. Your GPS location and verified civil defense shelters remain active.'
-                    : 'Try expanding the geographic search radius or switching categories.'}
+                <p className="text-xs text-salvus-text-secondary mt-1.5 max-w-sm mx-auto leading-relaxed">
+                  {!location.latitude
+                    ? 'Enable browser GPS or select a nearby sector landmark from the dropdown above to discover verified facilities.'
+                    : activeCategoryState.status === 'UNAVAILABLE'
+                      ? 'Upstream map providers are experiencing latency. Your GPS coordinates and official Salvus civil defense shelters remain active.'
+                      : `No verified or mapped ${activeFilter !== 'all' ? activeFilter.toLowerCase() : 'emergency'} facilities were detected within a ${searchRadiusMeters / 1000} km radius.`}
                 </p>
 
                 <div className="mt-4 flex items-center justify-center gap-3 flex-wrap">
-                  {activeCategoryState.status === 'UNAVAILABLE' ? (
+                  {!location.latitude ? (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => requestLocation({ timeout: 10000 })}
+                      loading={isAcquiring}
+                    >
+                      {isAcquiring ? 'Acquiring GPS...' : 'Detect Location 🎯'}
+                    </Button>
+                  ) : activeCategoryState.status === 'UNAVAILABLE' ? (
                     <Button variant="primary" size="sm" onClick={() => fetchPlacesAndHazards(true)}>
                       Retry Data Feed 🔄
                     </Button>
-                  ) : searchRadiusMeters < 5000 ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSearchRadiusMeters(5000)
-                        fetchPlacesAndHazards(true, 5000)
-                      }}
-                    >
-                      Search wider area (5 km) →
+                  ) : activeFilter !== 'all' ? (
+                    <Button variant="outline" size="sm" onClick={() => setActiveFilter('all')}>
+                      View All Nearby Facilities
                     </Button>
                   ) : null}
                 </div>

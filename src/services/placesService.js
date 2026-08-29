@@ -349,6 +349,69 @@ export const hasMovedSignificantly = (prevCoords, newCoords, thresholdM = 150) =
 }
 
 /**
+ * Intelligent sorting of facilities based on category context.
+ *
+ * For 'all' (Nearby tab):
+ * - Emergency Relevance (Salvus Shelters > Hospitals & Emergency > Fire > Police > Community Shelters > Pharmacies > Other)
+ * - Proximity distance (closest first)
+ * - Confidence score (highest first)
+ *
+ * For specific category tabs (Hospitals, Pharmacies, Police, Fire, Safe Places):
+ * - Proximity distance (closest first)
+ * - Verified status (Salvus verified first)
+ * - Confidence score (highest first)
+ */
+export const getCategoryEmergencyPriority = (place) => {
+  if (!place) return 99
+  const isVerified = place.provenance === 'SALVUS_VERIFIED' || place.verified === true
+  const cat = normalizePlaceCategory(place.category)
+
+  if (cat === 'shelter' && isVerified) return 1
+  if (cat === 'hospital' || cat === 'emergency') return 2
+  if (cat === 'fire_station') return 3
+  if (cat === 'police') return 4
+  if (cat === 'shelter') return 5
+  if (cat === 'pharmacy') return 6
+  return 7
+}
+
+export const sortPlacesForCategory = (places, filterId = 'all') => {
+  if (!Array.isArray(places)) return []
+  const copy = [...places]
+
+  if (filterId === 'all') {
+    return copy.sort((a, b) => {
+      const pA = getCategoryEmergencyPriority(a)
+      const pB = getCategoryEmergencyPriority(b)
+      if (pA !== pB) return pA - pB
+
+      const distA = a.distance_meters != null ? a.distance_meters : Infinity
+      const distB = b.distance_meters != null ? b.distance_meters : Infinity
+      if (distA !== distB) return distA - distB
+
+      const confA = typeof a.confidence === 'number' ? a.confidence : 0.5
+      const confB = typeof b.confidence === 'number' ? b.confidence : 0.5
+      return confB - confA
+    })
+  }
+
+  // Specific category tab: strictly sort by proximity distance first
+  return copy.sort((a, b) => {
+    const distA = a.distance_meters != null ? a.distance_meters : Infinity
+    const distB = b.distance_meters != null ? b.distance_meters : Infinity
+    if (distA !== distB) return distA - distB
+
+    const verA = a.provenance === 'SALVUS_VERIFIED' || a.verified === true ? 1 : 0
+    const verB = b.provenance === 'SALVUS_VERIFIED' || b.verified === true ? 1 : 0
+    if (verA !== verB) return verB - verA
+
+    const confA = typeof a.confidence === 'number' ? a.confidence : 0.5
+    const confB = typeof b.confidence === 'number' ? b.confidence : 0.5
+    return confB - confA
+  })
+}
+
+/**
  * Load nearby places with client normalization and structured state.
  */
 export const loadNearbyPlaces = async ({
