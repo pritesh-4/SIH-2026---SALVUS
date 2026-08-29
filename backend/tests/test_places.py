@@ -1,21 +1,25 @@
-"""Unit and integration tests for Salvus Real-World Nearby Places Intelligence (Phase 2).
+"""Unit and integration tests for Salvus Real-World Nearby Places Intelligence (Phase 2 & 3).
 
-Covers all 15 Phase 2 requirements:
+Covers all Phase 2 & 3 requirements:
 1. Math & geometric distance calculations
 2. Coordinate grid cell snapping (~100m)
 3. Safe phone number normalization & null integrity
-4. Controlled PlaceCategory enum resolution
-5. Spatial-semantic deduplication (< 25m collocation merge)
+4. Controlled PlaceCategory enum resolution & expanded OSM taxonomy
+5. Spatial-semantic deduplication (< 25m collocation merge across nodes/ways/relations)
 6. Multi-factor emergency ranking (Hospitals / emergency services prioritized)
 7. Verified Salvus shelter priority over OSM mapped shelters
 8. Tiered caching with exact distance recalculation
 9. Stale-while-revalidate cache fallback on provider failure
-10. Total provider outage graceful fallback (UNAVAILABLE)
-11. GPS movement threshold sensitivity (> 150m)
-12. REST API /api/places/nearby validation & 422 error handling
-13. REST API /api/places/nearby freshness & category filtering
-14. On-demand turn-by-turn routing endpoint (/api/places/{place_id}/route)
-15. Cold vs cached performance benchmark
+10. Multi-source fallback: Overpass mirror failure -> Nominatim secondary provider
+11. Total provider outage graceful fallback (PROVIDER_UNAVAILABLE / UNAVAILABLE freshness)
+12. Truly empty area detection (status="EMPTY", freshness=FRESH, count=0)
+13. GPS movement threshold sensitivity (> 150m)
+14. REST API /api/places/nearby validation & 422 error handling
+15. REST API /api/places/nearby status propagation & category filtering
+16. On-demand turn-by-turn routing endpoint (/api/places/{place_id}/route)
+17. Cold vs cached performance benchmark
+18. Nominatim adapter bounding viewbox calculation and normalization
+19. Multiple geographic area validation (Rourkela, Sundargarh, Kolkata, Bhubaneswar)
 """
 
 import time
@@ -24,6 +28,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient, Response
 
+from app.adapters.nominatim import (
+    NominatimPlacesAdapter,
+    compute_viewbox,
+)
 from app.adapters.places import (
     deduplicate_places,
     format_distance,
@@ -43,6 +51,7 @@ from app.services.places_service import (
     get_nearby_places,
     get_place_route,
     has_moved_significantly,
+    normalize_osm_element,
     rank_places,
     snap_coordinate_to_grid,
 )
@@ -121,12 +130,77 @@ def test_place_category_parsing():
     assert PlaceCategory.from_str("unknown_xyz") == PlaceCategory.OTHER_RELEVANT
 
 
-def test_build_overpass_query_categories():
-    """Verify Overpass QL query construction with controlled category filters."""
-    query = build_overpass_query(22.5726, 88.3639, 2000, ["hospital", "pharmacy"])
-    assert "around:2000,22.5726,88.3639" in query
-    assert "hospital" in query
+def test_build_overpass_query_comprehensive_taxonomy():
+    """Verify Overpass QL query construction covers nodes, ways, relations, and expanded tags."""
+    query = build_overpass_query(
+        22.227, 84.853, 3000, ["hospital", "pharmacy", "police", "fire_station", "shelter"]
+    )
+    assert "around:3000,22.227,84.853" in query
+    # Geometry types
+    assert "node[" in query
+    assert "way[" in query
+    assert "relation[" in query
+    # Pharmacy / Chemist tags
+    assert "shop=chemist" in query or 'shop"="chemist"' in query
     assert "pharmacy" in query
+    # Police tags
+    assert "government=police" in query or 'government"="police"' in query
+    assert "police_outpost" in query
+    # Fire tags
+    assert "fire_station" in query
+    assert "fire_service" in query
+    # Shelter & Community tags
+    assert "community_centre" in query
+    assert "evacuation_centre" in query
+    assert "townhall" in query
+
+
+def test_normalize_osm_element_extended_taxonomy():
+    """Verify normalization of diverse real-world OSM tags into correct PlaceCategory."""
+    now_iso = "2026-08-29T10:00:00Z"
+
+    # Chemist shop -> PHARMACY
+    chemist_elem = {
+        "type": "node",
+        "id": 101,
+        "lat": 22.228,
+        "lon": 84.854,
+        "tags": {"name": "Apollo Pharmacy", "shop": "chemist", "dispensing": "yes"},
+    }
+    p_chemist = normalize_osm_element(chemist_elem, 22.227, 84.853, now_iso)
+    assert p_chemist is not None
+    assert p_chemist.category == PlaceCategory.PHARMACY
+    assert p_chemist.name == "Apollo Pharmacy"
+    assert "Prescription Dispensing" in p_chemist.amenities
+
+    # Police Outpost -> POLICE
+    police_elem = {
+        "type": "way",
+        "id": 202,
+        "center": {"lat": 22.235, "lon": 84.865},
+        "tags": {
+            "name": "Uditnagar Police Outpost",
+            "amenity": "police_outpost",
+            "office": "government",
+            "government": "police",
+        },
+    }
+    p_police = normalize_osm_element(police_elem, 22.227, 84.853, now_iso)
+    assert p_police is not None
+    assert p_police.category == PlaceCategory.POLICE
+    assert p_police.name == "Uditnagar Police Outpost"
+
+    # Community Centre / Townhall -> SHELTER
+    shelter_elem = {
+        "type": "relation",
+        "id": 303,
+        "center": {"lat": 22.250, "lon": 84.890},
+        "tags": {"name": "Sector 2 Community Hall", "amenity": "community_centre"},
+    }
+    p_shelter = normalize_osm_element(shelter_elem, 22.227, 84.853, now_iso)
+    assert p_shelter is not None
+    assert p_shelter.category == PlaceCategory.SHELTER
+    assert p_shelter.name == "Sector 2 Community Hall"
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +325,63 @@ def test_verified_vs_mapped_shelter_priority():
 
 
 # ---------------------------------------------------------------------------
-# 4. Tiered Caching, Stale-While-Revalidate & Fallback Tests
+# 4. Nominatim Adapter & Viewbox Bounding Tests
+# ---------------------------------------------------------------------------
+
+
+def test_compute_viewbox_bounding():
+    """Verify Nominatim bounding viewbox calculation from center coordinates and radius."""
+    viewbox = compute_viewbox(22.227, 84.853, 5000)
+    parts = [float(p) for p in viewbox.split(",")]
+    assert len(parts) == 4
+    min_lon, max_lat, max_lon, min_lat = parts
+    assert min_lon < 84.853 < max_lon
+    assert min_lat < 22.227 < max_lat
+
+
+def test_nominatim_adapter_normalization():
+    """Verify NominatimPlacesAdapter normalizes structured search results without fabrication."""
+    adapter = NominatimPlacesAdapter()
+    raw_item = {
+        "place_id": 987654,
+        "osm_type": "way",
+        "osm_id": 54321,
+        "lat": "22.2350",
+        "lon": "84.8650",
+        "name": "Rourkela Sector 19 Police Station",
+        "display_name": (
+            "Rourkela Sector 19 Police Station, Uditnagar, "
+            "Rourkela, Sundargarh, Odisha, 769012, India"
+        ),
+        "type": "police",
+        "category": "amenity",
+        "address": {
+            "amenity": "Rourkela Sector 19 Police Station",
+            "road": "Ring Road",
+            "suburb": "Uditnagar",
+            "city": "Rourkela",
+            "state": "Odisha",
+            "postcode": "769012",
+        },
+        "extratags": {
+            "phone": "+91 661 2501234",
+        },
+    }
+
+    place = adapter.normalize_item(
+        raw_item, 22.227, 84.853, PlaceCategory.POLICE, "2026-08-29T10:00:00Z"
+    )
+    assert place is not None
+    assert place.category == PlaceCategory.POLICE
+    assert place.name == "Rourkela Sector 19 Police Station"
+    assert place.phone == "+91 661 2501234"
+    assert "Uditnagar" in place.address
+    assert place.source == "OpenStreetMap (Nominatim)"
+    assert place.provenance == PlaceProvenance.OSM_MAPPED
+
+
+# ---------------------------------------------------------------------------
+# 5. Multi-Source Fallback, Caching & Error State Tests
 # ---------------------------------------------------------------------------
 
 
@@ -274,17 +404,19 @@ async def test_get_nearby_places_caching_and_recalculation():
         mock_post.return_value = mock_resp
 
         # 1. First fetch -> Cache Miss (FRESH)
-        places_1, is_cached_1, fresh_1 = await get_nearby_places(22.5726, 88.3639, 2000)
+        places_1, is_cached_1, fresh_1, status_1 = await get_nearby_places(22.5726, 88.3639, 2000)
         assert is_cached_1 is False
         assert fresh_1 == PlaceFreshness.FRESH
+        assert status_1 == "OK"
         assert len(places_1) >= 1
         assert mock_post.call_count == 1
         first_distance = places_1[0].distance_km
 
         # 2. Second fetch with shifted GPS (~20m) -> Cache Hit (FRESH)
-        places_2, is_cached_2, fresh_2 = await get_nearby_places(22.5727, 88.3640, 2000)
+        places_2, is_cached_2, fresh_2, status_2 = await get_nearby_places(22.5727, 88.3640, 2000)
         assert is_cached_2 is True
         assert fresh_2 == PlaceFreshness.FRESH
+        assert status_2 == "OK"
         assert len(places_2) >= 1
         assert mock_post.call_count == 1
         # Recalculated exact straight-line distance
@@ -292,8 +424,78 @@ async def test_get_nearby_places_caching_and_recalculation():
 
 
 @pytest.mark.asyncio
+async def test_multi_source_fallback_overpass_to_nominatim():
+    """Verify seamless fallback to secondary Nominatim adapter when Overpass fails."""
+    mock_nominatim_items = [
+        {
+            "place_id": 112233,
+            "osm_type": "node",
+            "osm_id": 9988,
+            "lat": "22.2300",
+            "lon": "84.8550",
+            "name": "Sundargarh District Fire Station",
+            "type": "fire_station",
+            "category": "amenity",
+            "address": {"road": "Main Road", "city": "Rourkela"},
+        }
+    ]
+
+    mock_nom_resp = Response(200, json=mock_nominatim_items)
+
+    with (
+        patch("httpx.AsyncClient.post", side_effect=Exception("Overpass 504 Gateway Timeout")),
+        patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
+    ):
+        mock_get.return_value = mock_nom_resp
+
+        places, is_cached, fresh, status = await get_nearby_places(
+            22.227, 84.853, 3000, categories=["fire_station"], include_verified=False
+        )
+
+        assert is_cached is False
+        assert fresh == PlaceFreshness.FRESH
+        assert status == "OK"
+        assert len(places) >= 1
+        assert places[0].category == PlaceCategory.FIRE_STATION
+        assert places[0].name == "Sundargarh District Fire Station"
+
+
+@pytest.mark.asyncio
+async def test_empty_area_detection_with_healthy_provider():
+    """Verify that a valid query returning zero facilities returns status='EMPTY' and count=0."""
+    mock_resp = Response(200, json={"elements": []})
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = mock_resp
+
+        places, is_cached, fresh, status = await get_nearby_places(
+            22.120, 84.030, 1000, categories=["fire_station"], include_verified=False
+        )
+        assert is_cached is False
+        assert fresh == PlaceFreshness.FRESH
+        assert status == "EMPTY"
+        assert len(places) == 0
+
+
+@pytest.mark.asyncio
+async def test_total_provider_outage_returns_unavailable():
+    """Verify PROVIDER_UNAVAILABLE state when external providers fail & no cache exists."""
+    with (
+        patch("httpx.AsyncClient.post", side_effect=Exception("All Overpass mirrors timed out")),
+        patch("httpx.AsyncClient.get", side_effect=Exception("Nominatim connection refused")),
+    ):
+        places, is_cached, fresh, status = await get_nearby_places(
+            22.5726, 88.3639, 2000, include_verified=False
+        )
+        assert is_cached is False
+        assert fresh == PlaceFreshness.UNAVAILABLE
+        assert status == "PROVIDER_UNAVAILABLE"
+        assert places == []
+
+
+@pytest.mark.asyncio
 async def test_stale_cache_fallback_on_provider_failure():
-    """Verify that stale cache is returned with STALE status when provider fails."""
+    """Verify that stale cache is returned with STALE status when providers fail."""
     mock_elements = [
         {
             "type": "node",
@@ -312,36 +514,24 @@ async def test_stale_cache_fallback_on_provider_failure():
         await get_nearby_places(22.5726, 88.3639, 2000, include_verified=False)
 
     # Simulate provider failure and expired fresh TTL
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.side_effect = Exception("Overpass 504 Gateway Timeout")
-
+    with (
+        patch("httpx.AsyncClient.post", side_effect=Exception("Overpass 504 Gateway Timeout")),
+        patch("httpx.AsyncClient.get", side_effect=Exception("Nominatim down")),
+    ):
         # Advance simulated time past 300s but before 1800s
         with patch("time.time", return_value=time.time() + 400.0):
-            places, is_cached, fresh = await get_nearby_places(
+            places, is_cached, fresh, status = await get_nearby_places(
                 22.5726, 88.3639, 2000, include_verified=False
             )
             assert is_cached is True
             assert fresh == PlaceFreshness.STALE
+            assert status == "OK"
             assert len(places) == 1
             assert places[0].name == "Apex Clinic"
 
 
-@pytest.mark.asyncio
-async def test_all_mirrors_outage_with_no_cache_returns_unavailable():
-    """Verify clean UNAVAILABLE state when provider fails and no cached data exists."""
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.side_effect = Exception("Network unreachable")
-
-        places, is_cached, fresh = await get_nearby_places(
-            22.5726, 88.3639, 2000, include_verified=False
-        )
-        assert is_cached is False
-        assert fresh == PlaceFreshness.UNAVAILABLE
-        assert places == []
-
-
 # ---------------------------------------------------------------------------
-# 5. On-Demand Turn-by-Turn Route Tests
+# 6. On-Demand Turn-by-Turn Route Tests
 # ---------------------------------------------------------------------------
 
 
@@ -427,7 +617,7 @@ async def test_on_demand_place_route_fallback_when_osrm_unreachable():
 
 
 # ---------------------------------------------------------------------------
-# 6. REST API Endpoint Integration Tests
+# 7. REST API Endpoint Integration Tests
 # ---------------------------------------------------------------------------
 
 
@@ -517,7 +707,7 @@ async def test_api_place_route_endpoint_verified_shelter():
 
 
 # ---------------------------------------------------------------------------
-# 7. Performance Benchmarks
+# 8. Performance Benchmarks
 # ---------------------------------------------------------------------------
 
 
@@ -541,26 +731,28 @@ async def test_performance_cold_vs_cached_query():
 
         # Cold query (populates cache)
         t0 = time.perf_counter()
-        places_cold, is_cached_cold, _ = await get_nearby_places(
+        places_cold, is_cached_cold, _, status_cold = await get_nearby_places(
             22.5726, 88.3639, 2000, include_verified=False
         )
         cold_time = time.perf_counter() - t0
         assert is_cached_cold is False
+        assert status_cold == "OK"
         assert len(places_cold) >= 1
 
         # Cached query
         t1 = time.perf_counter()
-        places_cached, is_cached_warm, _ = await get_nearby_places(
+        places_cached, is_cached_warm, _, status_warm = await get_nearby_places(
             22.57261, 88.36391, 2000, include_verified=False
         )
         cached_time = time.perf_counter() - t1
         assert is_cached_warm is True
+        assert status_warm == "OK"
         # Cached response should be fast in-memory execution
         assert cached_time <= cold_time or cached_time < 0.01
 
 
 # ---------------------------------------------------------------------------
-# 16. Reverse Geocoding Tests
+# 9. Reverse Geocoding Tests
 # ---------------------------------------------------------------------------
 
 

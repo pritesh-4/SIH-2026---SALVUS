@@ -105,7 +105,7 @@ async def get_nearby_places_endpoint(
 
     try:
         db = await get_database()
-        places, is_cached, freshness = await places_service.get_nearby_places(
+        places, is_cached, freshness, status = await places_service.get_nearby_places(
             lat=lat,
             lon=target_lon,
             radius=effective_radius_m,
@@ -117,7 +117,7 @@ async def get_nearby_places_endpoint(
 
         return PlacesResponse(
             success=True,
-            status="OK",
+            status=status,
             freshness=freshness,
             data=places,
             count=len(places),
@@ -204,7 +204,7 @@ async def get_place_route_endpoint(
         )
 
     # 2. Locate place via nearby search
-    places, _, _ = await places_service.get_nearby_places(
+    places, _, _, _ = await places_service.get_nearby_places(
         lat=origin_lat,
         lon=origin_lon,
         radius=radius,

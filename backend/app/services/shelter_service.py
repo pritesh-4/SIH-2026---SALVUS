@@ -298,7 +298,7 @@ async def get_recommended_shelters(
             from app.services import places_service
 
             query_radius_m = min(int(max_radius_km * 1000), 5000)
-            mapped_places, _, _ = await places_service.get_nearby_places(
+            mapped_places, _, _, _ = await places_service.get_nearby_places(
                 lat=latitude,
                 lon=longitude,
                 radius=query_radius_m,

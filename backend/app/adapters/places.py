@@ -11,6 +11,7 @@ Key Responsibilities:
 - Strict provenance attribution (`PlaceProvenance.OSM_MAPPED`, `source="OpenStreetMap"`)
 - Multi-stage deduplication: source+source_id & spatial-semantic collocation (< 25m)
 - Straight-line Haversine distance calculation and human formatting
+- Full geometry coverage across nodes, ways, and relations
 """
 
 from __future__ import annotations
@@ -42,12 +43,14 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 DEFAULT_OVERPASS_MIRRORS = [
-    "https://overpass-api.de/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ]
 
-DEFAULT_TIMEOUT_SECONDS = 4.5
+DEFAULT_TIMEOUT_SECONDS = 6.5
 
 
 def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -262,7 +265,7 @@ class OverpassPlacesAdapter(NearbyPlacesProvider):
         radius_m: int,
         categories: list[PlaceCategory] | None = None,
     ) -> str:
-        """Construct a compact Overpass QL query around center coordinate."""
+        """Construct a comprehensive Overpass QL query around center coordinate."""
         cat_set = set(categories) if categories else set(PlaceCategory)
 
         clauses: list[str] = []
@@ -270,28 +273,68 @@ class OverpassPlacesAdapter(NearbyPlacesProvider):
         if PlaceCategory.HOSPITAL in cat_set:
             clauses.append(f'node["amenity"="hospital"](around:{radius_m},{lat},{lon});')
             clauses.append(f'way["amenity"="hospital"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'relation["amenity"="hospital"](around:{radius_m},{lat},{lon});')
             clauses.append(f'node["healthcare"="hospital"](around:{radius_m},{lat},{lon});')
             clauses.append(f'way["healthcare"="hospital"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'relation["healthcare"="hospital"](around:{radius_m},{lat},{lon});')
 
         if PlaceCategory.CLINIC in cat_set:
             clauses.append(f'node["amenity"="clinic"](around:{radius_m},{lat},{lon});')
             clauses.append(f'way["amenity"="clinic"](around:{radius_m},{lat},{lon});')
-            clauses.append(f'node["healthcare"~"clinic|centre"](around:{radius_m},{lat},{lon});')
-            clauses.append(f'way["healthcare"~"clinic|centre"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'relation["amenity"="clinic"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["healthcare"="clinic"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["healthcare"="clinic"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["healthcare"="centre"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["healthcare"="centre"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["amenity"="doctors"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["amenity"="doctors"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["healthcare"="doctor"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["healthcare"="doctor"](around:{radius_m},{lat},{lon});')
 
         if PlaceCategory.PHARMACY in cat_set:
             clauses.append(f'node["amenity"="pharmacy"](around:{radius_m},{lat},{lon});')
             clauses.append(f'way["amenity"="pharmacy"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'relation["amenity"="pharmacy"](around:{radius_m},{lat},{lon});')
             clauses.append(f'node["healthcare"="pharmacy"](around:{radius_m},{lat},{lon});')
             clauses.append(f'way["healthcare"="pharmacy"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'relation["healthcare"="pharmacy"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["shop"="chemist"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["shop"="chemist"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'relation["shop"="chemist"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["shop"="pharmacy"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["shop"="pharmacy"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["shop"="medical_supply"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["shop"="medical_supply"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["amenity"="chemist"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["amenity"="chemist"](around:{radius_m},{lat},{lon});')
 
         if PlaceCategory.POLICE in cat_set:
             clauses.append(f'node["amenity"="police"](around:{radius_m},{lat},{lon});')
             clauses.append(f'way["amenity"="police"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'relation["amenity"="police"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["building"="police"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["building"="police"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["amenity"="police_outpost"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["amenity"="police_outpost"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["amenity"="police_station"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["amenity"="police_station"](around:{radius_m},{lat},{lon});')
+            clauses.append(
+                f'node["office"="government"]["government"="police"](around:{radius_m},{lat},{lon});'
+            )
+            clauses.append(
+                f'way["office"="government"]["government"="police"](around:{radius_m},{lat},{lon});'
+            )
 
         if PlaceCategory.FIRE_STATION in cat_set:
             clauses.append(f'node["amenity"="fire_station"](around:{radius_m},{lat},{lon});')
             clauses.append(f'way["amenity"="fire_station"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'relation["amenity"="fire_station"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["emergency"="fire_station"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["emergency"="fire_station"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["building"="fire_station"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["building"="fire_station"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["emergency"="fire_service"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["emergency"="fire_service"](around:{radius_m},{lat},{lon});')
 
         if PlaceCategory.EMERGENCY_SERVICE in cat_set:
             clauses.append(
@@ -300,8 +343,34 @@ class OverpassPlacesAdapter(NearbyPlacesProvider):
             clauses.append(
                 f'way["emergency"~"ambulance_station|disaster_response|emergency_ward_entrance"](around:{radius_m},{lat},{lon});'
             )
+            clauses.append(
+                f'relation["emergency"~"ambulance_station|disaster_response|emergency_ward_entrance"](around:{radius_m},{lat},{lon});'
+            )
 
         if PlaceCategory.SHELTER in cat_set:
+            clauses.append(f'node["emergency"="evacuation_centre"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["emergency"="evacuation_centre"](around:{radius_m},{lat},{lon});')
+            clauses.append(
+                f'relation["emergency"="evacuation_centre"](around:{radius_m},{lat},{lon});'
+            )
+            clauses.append(f'node["emergency"="shelter"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["emergency"="shelter"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'relation["emergency"="shelter"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["emergency"="assembly_point"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["emergency"="assembly_point"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["emergency"="disaster_response"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["emergency"="disaster_response"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["amenity"="community_centre"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["amenity"="community_centre"](around:{radius_m},{lat},{lon});')
+            clauses.append(
+                f'relation["amenity"="community_centre"](around:{radius_m},{lat},{lon});'
+            )
+            clauses.append(f'node["amenity"="townhall"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["amenity"="townhall"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["social_facility"="shelter"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["social_facility"="shelter"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'node["amenity"="civic_centre"](around:{radius_m},{lat},{lon});')
+            clauses.append(f'way["amenity"="civic_centre"](around:{radius_m},{lat},{lon});')
             clauses.append(f'node["amenity"="shelter"](around:{radius_m},{lat},{lon});')
             clauses.append(f'way["amenity"="shelter"](around:{radius_m},{lat},{lon});')
             clauses.append(f'node["building"="shelter"](around:{radius_m},{lat},{lon});')
@@ -310,19 +379,22 @@ class OverpassPlacesAdapter(NearbyPlacesProvider):
         if not clauses:
             # Fallback if other categories requested
             clauses.append(
-                f'node["amenity"~"hospital|clinic|pharmacy|police|fire_station|shelter"](around:{radius_m},{lat},{lon});'
+                f'node["amenity"~"hospital|clinic|pharmacy|police|fire_station|community_centre|shelter"](around:{radius_m},{lat},{lon});'
             )
             clauses.append(
-                f'way["amenity"~"hospital|clinic|pharmacy|police|fire_station|shelter"](around:{radius_m},{lat},{lon});'
+                f'way["amenity"~"hospital|clinic|pharmacy|police|fire_station|community_centre|shelter"](around:{radius_m},{lat},{lon});'
+            )
+            clauses.append(
+                f'relation["amenity"~"hospital|clinic|pharmacy|police|fire_station|community_centre|shelter"](around:{radius_m},{lat},{lon});'
             )
 
         body = "\n  ".join(clauses)
         query = f"""
-[out:json][timeout:5];
+[out:json][timeout:8];
 (
   {body}
 );
-out center tags 60;
+out center tags 80;
 """.strip()
         return query
 
@@ -333,12 +405,12 @@ out center tags 60;
         origin_lon: float,
         now_iso: str,
     ) -> PlaceModel | None:
-        """Normalize raw OpenStreetMap node/way element into project-owned PlaceModel."""
+        """Normalize raw OpenStreetMap node/way/relation element into project-owned PlaceModel."""
         elem_id = elem.get("id")
         elem_type = elem.get("type", "node")
         tags: dict[str, Any] = elem.get("tags") or {}
 
-        # Coordinate extraction (node has lat/lon; way has center {lat, lon})
+        # Coordinate extraction (node has lat/lon; way/relation has center {lat, lon})
         center_dict = elem.get("center") if isinstance(elem.get("center"), dict) else {}
         raw_lat = elem.get("lat") or center_dict.get("lat")
         raw_lon = elem.get("lon") or center_dict.get("lon")
@@ -364,26 +436,48 @@ out center tags 60;
         emergency = str(tags.get("emergency", "")).lower()
         healthcare = str(tags.get("healthcare", "")).lower()
         building = str(tags.get("building", "")).lower()
+        shop = str(tags.get("shop", "")).lower()
+        office = str(tags.get("office", "")).lower()
+        gov = str(tags.get("government", "")).lower()
+        social_facility = str(tags.get("social_facility", "")).lower()
 
         if amenity == "hospital" or healthcare == "hospital":
             category = PlaceCategory.HOSPITAL
             fallback_name = "Hospital / Medical Facility"
-        elif amenity == "clinic" or healthcare in ("clinic", "centre"):
+        elif amenity in ("clinic", "doctors") or healthcare in ("clinic", "centre", "doctor"):
             category = PlaceCategory.CLINIC
             fallback_name = "Health Clinic"
-        elif amenity == "pharmacy" or healthcare == "pharmacy":
+        elif (
+            amenity in ("pharmacy", "chemist")
+            or healthcare in ("pharmacy", "chemist")
+            or shop in ("chemist", "pharmacy", "medical_supply")
+        ):
             category = PlaceCategory.PHARMACY
             fallback_name = "Pharmacy / Chemist"
-        elif amenity == "police":
+        elif (
+            amenity in ("police", "police_station", "police_outpost")
+            or (office == "government" and gov == "police")
+            or building in ("police", "police_station")
+        ):
             category = PlaceCategory.POLICE
             fallback_name = "Police Station"
-        elif amenity == "fire_station":
+        elif (
+            amenity == "fire_station"
+            or emergency in ("fire_station", "fire_service")
+            or building == "fire_station"
+        ):
             category = PlaceCategory.FIRE_STATION
             fallback_name = "Fire & Rescue Station"
-        elif emergency in ("ambulance_station", "disaster_response", "emergency_ward_entrance"):
+        elif emergency in ("ambulance_station", "emergency_ward_entrance"):
             category = PlaceCategory.EMERGENCY_SERVICE
             fallback_name = "Emergency Response Facility"
-        elif amenity == "shelter" or building == "shelter":
+        elif (
+            emergency in ("evacuation_centre", "shelter", "assembly_point", "disaster_response")
+            or amenity
+            in ("community_centre", "townhall", "civic_centre", "social_facility", "shelter")
+            or social_facility in ("shelter", "community_centre")
+            or building in ("shelter", "community_centre")
+        ):
             category = PlaceCategory.SHELTER
             fallback_name = "Community Shelter (OSM Mapped)"
         else:
@@ -436,7 +530,7 @@ out center tags 60;
             amenities.append("Emergency Services")
         if tags.get("wheelchair") in ("yes", "designated"):
             amenities.append("Wheelchair Accessible")
-        if tags.get("dispensing") == "yes":
+        if tags.get("dispensing") == "yes" or shop == "chemist":
             amenities.append("Prescription Dispensing")
         if tags.get("healthcare:speciality"):
             amenities.append(str(tags["healthcare:speciality"]).replace(";", ", "))
@@ -484,16 +578,18 @@ out center tags 60;
             http_client = httpx.AsyncClient(timeout=self.timeout_seconds)
             should_close_client = True
 
+        headers = {
+            "User-Agent": "SalvusDisasterCoordination/2.0 (contact: info@salvus.rescue)",
+            "Accept": "application/json",
+        }
+
         try:
             for mirror_url in mirrors:
                 try:
                     resp = await http_client.post(
                         mirror_url,
                         data={"data": query},
-                        headers={
-                            "User-Agent": "SalvusDisasterCoordination/2.0 (https://github.com/salvus-rescue)",
-                            "Accept": "application/json",
-                        },
+                        headers=headers,
                     )
                     if resp.status_code == 200:
                         data = resp.json()

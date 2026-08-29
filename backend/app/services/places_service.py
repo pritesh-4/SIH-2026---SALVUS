@@ -1,13 +1,15 @@
-"""Salvus Places Service — Real-world nearby geographic context via OSM & Civil Defense (Phase 2).
+"""Salvus Places Service — Real-world nearby geographic context via OSM & Civil Defense.
 
 Key Architectural Pillars:
+- Multi-source external provider orchestration (Primary Overpass + Secondary Nominatim fallback)
 - Multi-factor emergency ranking (hospitals, emergency response, verified shelters prioritized)
 - Tiered location-bucketed caching with Stale-While-Revalidate fallback (300s fresh / 1800s stale)
 - On-demand single-target OSRM routing (straight-line distance on list queries, OSRM on selection)
 - Spatial-semantic deduplication (< 25m collocation merge)
 - GPS movement threshold checks (> 150m) and in-flight request deduplication
 - Strict provenance classification: `OSM_MAPPED` vs `SALVUS_VERIFIED`
-- Honest data integrity: null for missing contact or operational attributes
+- Honest data integrity: null for missing contact or operational attributes (zero fabrication)
+- Transparent status reporting: `OK`, `EMPTY`, `PARTIAL`, `PROVIDER_UNAVAILABLE`
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from typing import Any
 import aiosqlite
 import httpx
 
+from app.adapters.nominatim import NominatimPlacesAdapter
 from app.adapters.places import (
     NearbyPlacesProvider,
     OverpassPlacesAdapter,
@@ -36,6 +39,7 @@ from app.models import (
     PlaceProvenance,
     PlaceRouteResponse,
     RouteProfile,
+    SourceStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,8 +67,9 @@ CATEGORY_EMERGENCY_WEIGHTS: dict[PlaceCategory, float] = {
     PlaceCategory.OTHER_RELEVANT: 50.0,
 }
 
-# Default Provider Instance
+# Provider Instances
 _default_provider: NearbyPlacesProvider = OverpassPlacesAdapter()
+_secondary_provider: NearbyPlacesProvider = NominatimPlacesAdapter()
 
 # Tiered In-memory Cache: {cache_key: (places_list, fresh_until_timestamp, stale_until_timestamp)}
 _PLACES_CACHE: dict[
@@ -75,19 +80,30 @@ _PLACES_CACHE: dict[
 # In-flight request deduplication mapping
 _IN_FLIGHT_TASKS: dict[
     tuple[float, float, int, tuple[str, ...]],
-    asyncio.Task[list[PlaceModel]],
+    asyncio.Task[tuple[list[PlaceModel], str]],
 ] = {}
 
 
 def get_provider() -> NearbyPlacesProvider:
-    """Get the active nearby places provider adapter."""
+    """Get the active primary nearby places provider adapter."""
     return _default_provider
 
 
 def set_provider(provider: NearbyPlacesProvider) -> None:
-    """Override the active nearby places provider adapter (useful for testing)."""
+    """Override the active primary nearby places provider adapter (useful for testing)."""
     global _default_provider
     _default_provider = provider
+
+
+def get_secondary_provider() -> NearbyPlacesProvider:
+    """Get the active secondary nearby places provider adapter."""
+    return _secondary_provider
+
+
+def set_secondary_provider(provider: NearbyPlacesProvider) -> None:
+    """Override the active secondary nearby places provider adapter (useful for testing)."""
+    global _secondary_provider
+    _secondary_provider = provider
 
 
 def snap_coordinate_to_grid(coord: float, precision: int = 3) -> float:
@@ -179,7 +195,7 @@ def normalize_osm_element(
 
 
 # ---------------------------------------------------------------------------
-# Core Service API
+# Core Service Multi-Source Fetch API
 # ---------------------------------------------------------------------------
 
 
@@ -189,16 +205,64 @@ async def _execute_provider_fetch(
     radius_m: int,
     categories: list[PlaceCategory] | None = None,
     client: httpx.AsyncClient | None = None,
-) -> list[PlaceModel]:
-    """Execute provider fetch via the active provider adapter."""
-    provider = get_provider()
-    return await provider.fetch_nearby(
-        lat=lat,
-        lon=lon,
-        radius_m=radius_m,
-        categories=categories,
-        client=client,
-    )
+) -> tuple[list[PlaceModel], str]:
+    """Execute provider fetch via primary (Overpass) with fallback to secondary (Nominatim)."""
+    primary = get_provider()
+    try:
+        primary_places = await primary.fetch_nearby(
+            lat=lat,
+            lon=lon,
+            radius_m=radius_m,
+            categories=categories,
+            client=client,
+        )
+        if primary_places:
+            return primary_places, "OK"
+
+        # Check if primary failed or genuinely returned 0 items
+        primary_health = primary.get_health()
+        if primary_health.status == SourceStatus.FAILED:
+            logger.info(
+                "[PlacesService] Primary Overpass failed. Invoking secondary Nominatim adapter..."
+            )
+            sec_places = await _secondary_provider.fetch_nearby(
+                lat=lat,
+                lon=lon,
+                radius_m=radius_m,
+                categories=categories,
+                client=client,
+            )
+            if sec_places:
+                return sec_places, "OK"
+            sec_health = _secondary_provider.get_health()
+            if sec_health.status == SourceStatus.FAILED:
+                return [], "PROVIDER_UNAVAILABLE"
+            return [], "EMPTY"
+
+        return [], "EMPTY"
+
+    except Exception as exc:
+        logger.warning(
+            "[PlacesService] Primary provider failed (%s). Trying secondary Nominatim...",
+            exc,
+        )
+        try:
+            sec_places = await _secondary_provider.fetch_nearby(
+                lat=lat,
+                lon=lon,
+                radius_m=radius_m,
+                categories=categories,
+                client=client,
+            )
+            if sec_places:
+                return sec_places, "OK"
+            sec_health = _secondary_provider.get_health()
+            if sec_health.status == SourceStatus.FAILED:
+                return [], "PROVIDER_UNAVAILABLE"
+            return [], "EMPTY"
+        except Exception as sec_exc:
+            logger.warning("[PlacesService] Secondary Nominatim provider also failed: %s", sec_exc)
+            return [], "PROVIDER_UNAVAILABLE"
 
 
 async def get_nearby_places(
@@ -210,11 +274,13 @@ async def get_nearby_places(
     safe_places_priority: bool = False,
     db: aiosqlite.Connection | None = None,
     client: httpx.AsyncClient | None = None,
-) -> tuple[list[PlaceModel], bool, PlaceFreshness]:
-    """Retrieve nearby geographic places with caching, deduplication, and ranking.
+) -> tuple[list[PlaceModel], bool, PlaceFreshness, str]:
+    """Retrieve nearby places with fallback, caching, deduplication, and ranking.
 
     Returns:
-        tuple[list[PlaceModel], bool, PlaceFreshness]: (places_list, is_cached, freshness)
+        tuple[list[PlaceModel], bool, PlaceFreshness, str]:
+            (places_list, is_cached, freshness, status_code)
+            status_code is one of: "OK", "EMPTY", "PARTIAL", "PROVIDER_UNAVAILABLE"
     """
     # 1. Validate and clamp radius
     clamped_radius = max(MIN_QUERY_RADIUS_METERS, min(MAX_QUERY_RADIUS_METERS, radius))
@@ -241,6 +307,7 @@ async def get_nearby_places(
     now = time.time()
     is_cached = False
     freshness = PlaceFreshness.FRESH
+    status_code = "OK"
     osm_places: list[PlaceModel] = []
     stale_candidate: list[PlaceModel] | None = None
 
@@ -250,6 +317,7 @@ async def get_nearby_places(
         if now < fresh_until:
             is_cached = True
             freshness = PlaceFreshness.FRESH
+            status_code = "OK" if cached_places else "EMPTY"
             # Re-compute exact straight-line distances from actual GPS coordinates
             recalculated: list[PlaceModel] = []
             for p in cached_places:
@@ -273,28 +341,40 @@ async def get_nearby_places(
     if not is_cached:
         if cache_key in _IN_FLIGHT_TASKS:
             task = _IN_FLIGHT_TASKS[cache_key]
-            osm_places = await task
+            osm_places, status_code = await task
         else:
             task = asyncio.create_task(
                 _execute_provider_fetch(lat, lon, clamped_radius, parsed_categories, client=client)
             )
             _IN_FLIGHT_TASKS[cache_key] = task
             try:
-                fetched_places = await task
+                fetched_places, fetch_status = await task
                 if fetched_places:
                     osm_places = fetched_places
+                    status_code = "OK"
                     _PLACES_CACHE[cache_key] = (
                         osm_places,
                         now + FRESH_CACHE_TTL_SECONDS,
                         now + STALE_CACHE_TTL_SECONDS,
                     )
+                elif fetch_status == "EMPTY":
+                    osm_places = []
+                    status_code = "EMPTY"
+                    freshness = PlaceFreshness.FRESH
+                    _PLACES_CACHE[cache_key] = (
+                        [],
+                        now + FRESH_CACHE_TTL_SECONDS,
+                        now + STALE_CACHE_TTL_SECONDS,
+                    )
                 elif stale_candidate:
-                    # Fallback to stale cache when provider returns empty/failure
+                    # Fallback to stale cache when provider fails
                     is_cached = True
                     freshness = PlaceFreshness.STALE
+                    status_code = "OK"
                     osm_places = stale_candidate
                 else:
                     osm_places = []
+                    status_code = "PROVIDER_UNAVAILABLE"
                     freshness = PlaceFreshness.UNAVAILABLE
             except Exception as fetch_err:
                 logger.warning(
@@ -304,14 +384,17 @@ async def get_nearby_places(
                 if stale_candidate:
                     is_cached = True
                     freshness = PlaceFreshness.STALE
+                    status_code = "OK"
                     osm_places = stale_candidate
                 else:
                     osm_places = []
+                    status_code = "PROVIDER_UNAVAILABLE"
                     freshness = PlaceFreshness.UNAVAILABLE
             finally:
                 _IN_FLIGHT_TASKS.pop(cache_key, None)
 
     all_places: list[PlaceModel] = list(osm_places)
+    has_verified = False
 
     # 6. Merge official Salvus-verified shelters if requested
     if include_verified and (not parsed_categories or PlaceCategory.SHELTER in parsed_categories):
@@ -363,14 +446,19 @@ async def get_nearby_places(
                                 amenities=shelter_amenities,
                             )
                         )
+                        has_verified = True
         except Exception as err:
             logger.debug("[PlacesService] Verified shelter merge skipped: %s", err)
+
+    # Adjust status if verified places are available despite provider degradation
+    if has_verified and status_code == "PROVIDER_UNAVAILABLE":
+        status_code = "PARTIAL"
 
     # 7. Multi-stage deduplication & multi-factor emergency ranking
     deduped_all = deduplicate_places(all_places)
     ranked_places = rank_places(deduped_all, safe_places_priority=safe_places_priority)
 
-    return ranked_places, is_cached, freshness
+    return ranked_places, is_cached, freshness, status_code
 
 
 async def get_place_route(
@@ -452,9 +540,9 @@ async def reverse_geocode(
 
     try:
         if client:
-            resp = await client.get(url, params=params, headers=headers, timeout=3.5)
+            resp = await client.get(url, params=params, headers=headers, timeout=4.5)
         else:
-            async with httpx.AsyncClient(timeout=3.5) as http_c:
+            async with httpx.AsyncClient(timeout=4.5) as http_c:
                 resp = await http_c.get(url, params=params, headers=headers)
 
         if resp.status_code == 200:
