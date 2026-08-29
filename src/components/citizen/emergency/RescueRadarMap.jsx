@@ -1,10 +1,7 @@
 export const RescueRadarMap = ({
   currentState = 'SOS_ACTIVE',
   responderPos = { x: 22, y: 76 },
-  userLocation = {
-    address: 'Sector 12, Salt Lake, Kolkata',
-    coordinates: '22.5726° N, 88.3639° E',
-  },
+  userLocation = null,
   responder = {},
   distanceText = '1.8 km',
   etaMinutes = 7,
@@ -47,7 +44,9 @@ export const RescueRadarMap = ({
         </div>
 
         <div className="flex items-center gap-2 font-medium text-xs text-salvus-text-muted">
-          <span>{userLocation.address || 'Sector 12'}</span>
+          <span>
+            {userLocation?.address || userLocation?.coordinates || 'Live Emergency Telemetry'}
+          </span>
         </div>
       </div>
 

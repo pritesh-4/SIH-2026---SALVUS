@@ -92,14 +92,20 @@ export const useDispatchRecommendation = ({
     if (candidateList.length > 0) return candidateList
     if (!liveResponders.length) return []
 
-    const incLat = selectedIncident.latitude || 22.5726
-    const incLon = selectedIncident.longitude || 88.3639
+    const incLat = selectedIncident.latitude
+    const incLon = selectedIncident.longitude
+    const hasCoords = typeof incLat === 'number' && typeof incLon === 'number'
     const incType = (selectedIncident.type || '').toLowerCase()
 
     const list = liveResponders
       .filter((r) => r.status !== 'OFFLINE')
       .map((resp) => {
-        const distKm = calculateDistanceKm(incLat, incLon, resp.latitude, resp.longitude)
+        const hasRespCoords =
+          typeof resp.latitude === 'number' && typeof resp.longitude === 'number'
+        const distKm =
+          hasCoords && hasRespCoords
+            ? calculateDistanceKm(incLat, incLon, resp.latitude, resp.longitude)
+            : null
 
         let capScore = 15
         let matchReason = 'General Auxiliary Support'
@@ -131,7 +137,8 @@ export const useDispatchRecommendation = ({
         else if (resp.status === 'EN_ROUTE') availScore = 8
 
         const sevScore = selectedIncident.severity === 'CRITICAL' ? 20 : 15
-        const proxScore = distKm < 1 ? 15 : distKm < 3 ? 12 : distKm < 6 ? 8 : 4
+        const proxScore =
+          distKm !== null ? (distKm < 1 ? 15 : distKm < 3 ? 12 : distKm < 6 ? 8 : 4) : 0
         const loadPenalty = Math.round((resp.current_load / Math.max(1, resp.max_capacity)) * 10)
 
         const totalScore = Math.max(
@@ -142,7 +149,8 @@ export const useDispatchRecommendation = ({
         return {
           ...resp,
           distance_km: distKm,
-          eta_formatted: `${Math.max(1, Math.round((distKm / 35) * 60))} min`,
+          eta_formatted:
+            distKm !== null ? `${Math.max(1, Math.round((distKm / 35) * 60))} min` : 'Unknown',
           match_score: totalScore,
           match_reason: matchReason,
           is_recommended: false,

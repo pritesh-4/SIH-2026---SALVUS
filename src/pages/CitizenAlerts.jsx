@@ -102,11 +102,14 @@ export const CitizenAlerts = () => {
           lat = location.latitude
           lon = location.longitude
           maxDist = 25.0
-        } else if (isRegionalMode) {
-          // Regional view covers Greater Kolkata metropolitan area
-          lat = 22.5726
-          lon = 88.3639
-          maxDist = 50.0
+        } else if (hasCoordinates && isRegionalMode) {
+          lat = location.latitude
+          lon = location.longitude
+          maxDist = 75.0
+        } else {
+          lat = null
+          lon = null
+          maxDist = null
         }
 
         // Parallel requests across hazards, shelters, and area safety
@@ -175,10 +178,14 @@ export const CitizenAlerts = () => {
           lat = location.latitude
           lon = location.longitude
           maxDist = 25.0
-        } else if (isRegionalMode) {
-          lat = 22.5726
-          lon = 88.3639
-          maxDist = 50.0
+        } else if (hasCoordinates && isRegionalMode) {
+          lat = location.latitude
+          lon = location.longitude
+          maxDist = 75.0
+        } else {
+          lat = null
+          lon = null
+          maxDist = null
         }
 
         const [hazardsRes, sheltersRes, safetyRes] = await Promise.allSettled([
@@ -524,8 +531,8 @@ export const CitizenAlerts = () => {
           <div className="flex items-center gap-2 text-salvus-info-text">
             <span>🌐</span>
             <span>
-              <strong>Regional Overview Mode:</strong> Displaying all hazards for Greater Kolkata
-              Metropolitan Area.
+              <strong>Regional Overview Mode:</strong> Displaying all active regional disaster and
+              weather advisories.
             </span>
           </div>
           <div className="flex items-center gap-2">

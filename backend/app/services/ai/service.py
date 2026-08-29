@@ -19,6 +19,8 @@ logger = logging.getLogger("salvus.ai.service")
 
 def compute_triage_hash(sanitized: dict) -> str:
     """Compute deterministic SHA-256 hash of the sanitized incident payload."""
+    lat_val = sanitized.get("latitude")
+    lon_val = sanitized.get("longitude")
     payload_str = json.dumps(
         {
             "type": str(sanitized.get("type", "")).lower(),
@@ -26,8 +28,8 @@ def compute_triage_hash(sanitized: dict) -> str:
             "description": str(sanitized.get("description", "")).strip().lower(),
             "affected_count": int(sanitized.get("affected_count", 1)),
             "is_sos": bool(sanitized.get("is_sos", False)),
-            "latitude": round(float(sanitized.get("latitude", 0.0)), 4),
-            "longitude": round(float(sanitized.get("longitude", 0.0)), 4),
+            "latitude": round(float(lat_val), 4) if lat_val is not None else None,
+            "longitude": round(float(lon_val), 4) if lon_val is not None else None,
         },
         sort_keys=True,
     )

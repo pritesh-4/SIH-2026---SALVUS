@@ -36,8 +36,8 @@ async def list_shelters():
 
 @router.get("/recommendations", response_model=ShelterRecommendationListResponse)
 async def get_recommended_shelters(
-    lat: float = Query(default=22.5726, ge=-90, le=90, description="Latitude of user/incident"),
-    lon: float = Query(default=88.3639, ge=-180, le=180, description="Longitude of user/incident"),
+    lat: float = Query(..., ge=-90, le=90, description="Latitude of user/incident"),
+    lon: float = Query(..., ge=-180, le=180, description="Longitude of user/incident"),
     amenity: list[str] | None = Query(default=None, description="Optional required amenities"),
 ):
     """Retrieve ranked candidate safe evacuation shelters for an incident or citizen."""

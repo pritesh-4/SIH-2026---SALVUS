@@ -121,8 +121,8 @@ def sanitize_incident_for_ai(incident_data: dict) -> dict:
         "image_data": incident_data.get("image_data"),
         "hazard_context": incident_data.get("hazard_context")
         or "Standard Regional Flood/Weather Zone",
-        "latitude": incident_data.get("latitude", 22.5726),
-        "longitude": incident_data.get("longitude", 88.3639),
+        "latitude": incident_data.get("latitude"),
+        "longitude": incident_data.get("longitude"),
     }
 
 
@@ -131,8 +131,13 @@ def build_triage_prompt(sanitized: dict, image_data: str | None = None) -> str:
     desc = sanitized["description"]
     is_sos_txt = "YES" if sanitized["is_sos"] else "NO"
     img_txt = "YES" if (image_data or sanitized.get("has_image")) else "NO"
-    lat = sanitized["latitude"]
-    lon = sanitized["longitude"]
+    lat = sanitized.get("latitude")
+    lon = sanitized.get("longitude")
+    coords_txt = (
+        f"{lat:.4f}° N, {lon:.4f}° E"
+        if (isinstance(lat, (int, float)) and isinstance(lon, (int, float)))
+        else "Not provided / Unspecified"
+    )
     aff = sanitized["affected_count"]
     inc_type = sanitized["type"]
     hazard_ctx = sanitized.get("hazard_context", "Standard Regional Disaster Grid")
@@ -157,7 +162,7 @@ INCIDENT REPORT DATA:
 - Report Description: "{desc}"
 - Estimated Affected Persons: {aff}
 - Emergency SOS Beacon Active: {is_sos_txt}
-- Coordinates: {lat:.4f}° N, {lon:.4f}° E
+- Coordinates: {coords_txt}
 - Regional Hazard Context: {hazard_ctx}
 - Has Attached Imagery: {img_txt}
 {multimodal_instructions}

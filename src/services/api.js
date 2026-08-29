@@ -116,6 +116,12 @@ export const fetchIncidentById = async (incidentId) => {
  */
 export const createIncident = async (payload) => {
   try {
+    const lat = Number(payload.latitude)
+    const lon = Number(payload.longitude)
+    if (isNaN(lat) || isNaN(lon)) {
+      throw new Error('Valid geographic coordinates (latitude and longitude) are required.')
+    }
+
     const body = {
       type: payload.type || 'flood',
       severity: payload.severity || 'MEDIUM',
@@ -123,8 +129,8 @@ export const createIncident = async (payload) => {
         payload.description || (payload.is_sos ? 'SOS Distress Beacon' : 'Hazard Report'),
       reporter_name: payload.reporter_name || 'Citizen User',
       reporter_phone: payload.reporter_phone || null,
-      latitude: Number(payload.latitude) || 22.5726,
-      longitude: Number(payload.longitude) || 88.3639,
+      latitude: lat,
+      longitude: lon,
       affected_count: Number(payload.affected_count) || 1,
       is_sos: Boolean(payload.is_sos),
     }
@@ -651,7 +657,14 @@ export const fetchShelters = async () => {
 /**
  * Fetch ranked candidate recommended shelters for a location.
  */
-export const fetchRecommendedShelters = async (lat = 22.5726, lon = 88.3639, amenity = null) => {
+export const fetchRecommendedShelters = async (lat, lon, amenity = null) => {
+  if (lat == null || lon == null || typeof lat !== 'number' || typeof lon !== 'number') {
+    return {
+      success: true,
+      data: [],
+      count: 0,
+    }
+  }
   try {
     const params = { lat, lon }
     if (amenity) params.amenity = amenity

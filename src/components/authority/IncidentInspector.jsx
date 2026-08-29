@@ -116,7 +116,11 @@ export const IncidentInspector = ({
               Location
             </span>
             <strong className="text-salvus-text-primary truncate block mt-0.5 font-semibold">
-              {selectedIncident.location_name || 'Sector 12, Kolkata'}
+              {selectedIncident.location_name ||
+                (typeof selectedIncident.latitude === 'number' &&
+                typeof selectedIncident.longitude === 'number'
+                  ? `${selectedIncident.latitude.toFixed(4)}°N, ${selectedIncident.longitude.toFixed(4)}°E`
+                  : 'Location Not Specified')}
             </strong>
             <span className="text-salvus-text-muted text-[11px] block mt-0.5 font-mono">
               {selectedIncident.latitude?.toFixed(4)}°N, {selectedIncident.longitude?.toFixed(4)}°E

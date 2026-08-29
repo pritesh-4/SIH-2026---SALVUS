@@ -7,14 +7,7 @@ import { StatusIndicator } from '../../ui/StatusIndicator'
  * Reassuring Emergency Location & Status Banner (Master Prompt 2 - Step 6 & 15)
  */
 export const LocationStatusBanner = ({
-  location = {
-    address: 'Sector 12, Salt Lake, Kolkata',
-    coordinates: '22.5726° N, 88.3639° E',
-    accuracy: 'High Precision (±4m)',
-    accuracyLabel: 'High Precision (±4m)',
-    source: 'BROWSER',
-    status: 'ACTIVE',
-  },
+  location = null,
   locationStatus = 'ACTIVE',
   connectivityStatus = 'CONNECTED',
 }) => {

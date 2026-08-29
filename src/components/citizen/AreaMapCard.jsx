@@ -9,7 +9,7 @@ import { Badge } from '../ui/Badge'
  */
 export const AreaMapCard = ({
   badgeText = 'AREA MAP',
-  location = 'Sector 12 · Salt Lake, Kolkata',
+  location = 'Local Area Overview',
   userLocation = null,
   legend = [
     { label: 'You', colorClass: 'bg-salvus-info' },

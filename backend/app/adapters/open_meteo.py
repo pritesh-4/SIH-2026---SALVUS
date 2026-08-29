@@ -58,8 +58,11 @@ class OpenMeteoAdapter(BaseAlertAdapter):
         now = datetime.now(UTC)
         start_time = time.perf_counter()
 
-        target_lat = round(lat if lat is not None else 22.5726, 2)
-        target_lon = round(lon if lon is not None else 88.3639, 2)
+        if lat is None or lon is None:
+            return [], AlertProvenance.LIVE
+
+        target_lat = round(lat, 2)
+        target_lon = round(lon, 2)
         grid_key = (target_lat, target_lon)
 
         # Check grid cache

@@ -32,9 +32,14 @@ const normalizeIncident = (inc) => ({
     inc.aiTriage?.priorityReasoning ||
     inc.category ||
     'Disaster hazard report filed.',
-  location_name: inc.location_name || inc.location || 'Sector 12, Salt Lake',
-  latitude: typeof inc.latitude === 'number' ? inc.latitude : 22.5726,
-  longitude: typeof inc.longitude === 'number' ? inc.longitude : 88.3639,
+  location_name:
+    inc.location_name ||
+    inc.location ||
+    (typeof inc.latitude === 'number' && typeof inc.longitude === 'number'
+      ? `${inc.latitude.toFixed(4)}°N, ${inc.longitude.toFixed(4)}°E`
+      : 'Location Not Specified'),
+  latitude: typeof inc.latitude === 'number' ? inc.latitude : null,
+  longitude: typeof inc.longitude === 'number' ? inc.longitude : null,
   affected_count: inc.affected_count || inc.affectedCount || 1,
   is_sos: inc.is_sos !== undefined ? Boolean(inc.is_sos) : inc.severity === 'CRITICAL',
   reporter_name: inc.reporter_name || inc.reporter?.name || 'Citizen User',
@@ -132,8 +137,13 @@ export const useAuthorityIncidents = () => {
           description: payload.description || '',
           reporter_name: payload.reporter_name || 'Citizen User',
           reporter_phone: payload.reporter_phone || null,
-          latitude: payload.latitude || 22.5726,
-          longitude: payload.longitude || 88.3639,
+          latitude: typeof payload.latitude === 'number' ? payload.latitude : null,
+          longitude: typeof payload.longitude === 'number' ? payload.longitude : null,
+          location_name:
+            payload.location_name ||
+            (typeof payload.latitude === 'number' && typeof payload.longitude === 'number'
+              ? `${payload.latitude.toFixed(4)}°N, ${payload.longitude.toFixed(4)}°E`
+              : 'Location Not Specified'),
           affected_count: payload.affected_count || 1,
           is_sos: Boolean(payload.is_sos),
           status: payload.status || 'NEW',

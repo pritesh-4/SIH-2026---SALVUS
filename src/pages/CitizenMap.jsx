@@ -60,8 +60,19 @@ export const CitizenMap = () => {
   // Fetch real-world nearby places and normalized hazards from backend
   const fetchPlacesAndHazards = useCallback(
     async (force = false, radius = searchRadiusMeters) => {
-      const lat = location.latitude || 22.5726
-      const lon = location.longitude || 88.3639
+      const lat = location.latitude
+      const lon = location.longitude
+
+      if (lat == null || lon == null) {
+        setIsLoadingPlaces(false)
+        setNearbyPlaces([])
+        setPlacesError(
+          'Location access is off. Enable GPS or select an approximate landmark to discover nearby verified facilities.'
+        )
+        setPlacesFreshness('UNAVAILABLE')
+        return
+      }
+
       const currentCoords = { latitude: lat, longitude: lon }
 
       if (
@@ -139,8 +150,15 @@ export const CitizenMap = () => {
         return
       }
 
-      const userLat = location.latitude || 22.5726
-      const userLon = location.longitude || 88.3639
+      const userLat = location.latitude
+      const userLon = location.longitude
+
+      if (userLat == null || userLon == null) {
+        alert(
+          'Your device location is required to calculate turn-by-turn walking routes. Please enable location.'
+        )
+        return
+      }
 
       setIsCalculatingRoute(true)
 
@@ -260,7 +278,7 @@ export const CitizenMap = () => {
                 ? location.address
                 : isLandmarkFallback
                   ? `${location.landmarkName} (Approximate)`
-                  : 'Sector 12, Salt Lake'}
+                  : 'Location access off'}
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary tracking-tight mt-0.5">
@@ -482,9 +500,11 @@ export const CitizenMap = () => {
                 center={
                   location.latitude && location.longitude
                     ? [location.latitude, location.longitude]
-                    : [22.5726, 88.3639]
+                    : selectedPlace?.latitude && selectedPlace?.longitude
+                      ? [selectedPlace.latitude, selectedPlace.longitude]
+                      : [20.5937, 78.9629]
                 }
-                zoom={14}
+                zoom={location.latitude && location.longitude ? 14 : 5}
                 userLocation={location.latitude ? location : null}
                 recenterSignal={recenterSignal}
                 onRecenter={recenterMap}

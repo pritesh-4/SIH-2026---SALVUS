@@ -263,16 +263,12 @@ async def get_active_hazards(
     now = datetime.now(UTC)
     now_iso = now.isoformat()
 
-    # Target coordinates for regional context
-    target_lat = lat if lat is not None else 22.5726
-    target_lon = lon if lon is not None else 88.3639
-
     # Ingest in parallel with fault isolation across all 4 adapters
     results = await asyncio.gather(
-        sachet_adapter.fetch_alerts(lat=target_lat, lon=target_lon, client=client),
-        gdacs_adapter.fetch_alerts(lat=target_lat, lon=target_lon, client=client),
-        usgs_adapter.fetch_alerts(lat=target_lat, lon=target_lon, client=client),
-        open_meteo_adapter.fetch_alerts(lat=target_lat, lon=target_lon, client=client),
+        sachet_adapter.fetch_alerts(lat=lat, lon=lon, client=client),
+        gdacs_adapter.fetch_alerts(lat=lat, lon=lon, client=client),
+        usgs_adapter.fetch_alerts(lat=lat, lon=lon, client=client),
+        open_meteo_adapter.fetch_alerts(lat=lat, lon=lon, client=client),
         return_exceptions=True,
     )
 
@@ -303,11 +299,16 @@ async def get_active_hazards(
         logger.warning(f"Open-Meteo adapter execution error: {results[3]}")
 
     # Also check legacy cache if populated in tests
-    grid_key = (round(target_lat, 2), round(target_lon, 2))
-    if grid_key in _hazard_grid_cache:
-        cached_list, expire_dt = _hazard_grid_cache[grid_key]
-        if now < expire_dt:
-            raw_alerts.extend(cached_list)
+    if lat is not None and lon is not None:
+        grid_key = (round(lat, 2), round(lon, 2))
+        if grid_key in _hazard_grid_cache:
+            cached_list, expire_dt = _hazard_grid_cache[grid_key]
+            if now < expire_dt:
+                raw_alerts.extend(cached_list)
+    else:
+        for _grid_key, (cached_list, expire_dt) in _hazard_grid_cache.items():
+            if now < expire_dt:
+                raw_alerts.extend(cached_list)
 
     # Deduplicate across all active feeds
     authentic_alerts = deduplicate_alerts(raw_alerts)
@@ -315,7 +316,9 @@ async def get_active_hazards(
     # Strict isolation: Only append simulation alerts if explicitly requested
     all_hazards: list[NormalizedAlert] = list(authentic_alerts)
     if include_simulation:
-        all_hazards.extend(get_simulated_hazards(lat=target_lat, lon=target_lon))
+        sim_lat = lat if lat is not None else 22.5726
+        sim_lon = lon if lon is not None else 88.3639
+        all_hazards.extend(get_simulated_hazards(lat=sim_lat, lon=sim_lon))
 
     # TTL & Expiry enforcement: Filter out expired or inactive alerts
     active_hazards: list[NormalizedAlert] = []

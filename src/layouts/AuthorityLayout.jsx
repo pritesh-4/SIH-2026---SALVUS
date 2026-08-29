@@ -31,7 +31,7 @@ export const AuthorityLayout = () => {
               <span className="text-salvus-text-primary font-medium">Grid Online</span>
               <span className="text-salvus-text-muted">·</span>
               <span className="text-salvus-text-secondary text-[11px]">
-                Kolkata Central Hub — Sector 12
+                Central Operations Command Grid
               </span>
             </div>
           </div>

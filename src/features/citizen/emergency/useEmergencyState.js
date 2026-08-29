@@ -18,6 +18,7 @@ import {
   getCurrentLocation,
   createLocationModel,
   formatCoordinates,
+  INITIAL_LOCATION_STATE,
 } from '../../../lib/location'
 import { haversineDistanceKm } from '../../../services/routingService'
 
@@ -83,17 +84,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
   const [locationStatus, setLocationStatus] = useState('ACTIVE') // ACTIVE, ACQUIRING, RETRYING
   const [connectivityStatus, setConnectivityStatus] = useState('CONNECTED') // CONNECTED, LIMITED_CONNECTION, OFFLINE, RECONNECTING
-  const [userLocation, setUserLocation] = useState(() =>
-    createLocationModel({
-      latitude: emergencyFlowData.incident.userLocation?.latitude || 22.5726,
-      longitude: emergencyFlowData.incident.userLocation?.longitude || 88.3639,
-      accuracy: 4,
-      source: 'BROWSER',
-      permission: 'GRANTED',
-      address: emergencyFlowData.incident.userLocation?.address || 'Sector 12, Salt Lake, Kolkata',
-      status: 'ACTIVE',
-    })
-  )
+  const [userLocation, setUserLocation] = useState(() => INITIAL_LOCATION_STATE)
 
   const stopLocationWatchRef = useRef(null)
   const assignedResponderRef = useRef(assignedResponder)
@@ -119,15 +110,15 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
         const mappedState = STATUS_TO_STATE_MAP[result.data.status] || 'SOS_ACTIVE'
         setCurrentState(mappedState)
         if (result.data.latitude && result.data.longitude) {
-          setUserLocation((prev) =>
+          setUserLocation(
             createLocationModel({
-              ...prev,
               latitude: result.data.latitude,
               longitude: result.data.longitude,
               coordinates: formatCoordinates(result.data.latitude, result.data.longitude),
-              source: 'BROWSER',
+              source: 'INCIDENT',
               permission: 'GRANTED',
               status: 'ACTIVE',
+              address: result.data.location_name || 'Incident Scene',
             })
           )
         }

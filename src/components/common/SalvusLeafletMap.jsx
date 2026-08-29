@@ -10,8 +10,8 @@ import L from 'leaflet'
  * and automatic viewport resize handling.
  */
 
-const DEFAULT_CENTER = [22.5726, 88.3639]
-const DEFAULT_ZOOM = 13
+const DEFAULT_CENTER = [20.5937, 78.9629]
+const DEFAULT_ZOOM = 5
 
 export const SalvusLeafletMap = ({
   center = DEFAULT_CENTER,

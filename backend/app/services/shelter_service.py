@@ -136,10 +136,10 @@ async def get_recommended_shelters(
     if not shelters:
         return []
 
-    # Ingest active hazards to ensure shelter safety
+    # Ingest active hazards around location to ensure shelter safety
     from app.services.hazard_service import get_active_hazards
 
-    active_hazards = await get_active_hazards()
+    active_hazards = await get_active_hazards(lat=latitude, lon=longitude)
     critical_hazards = [hz for hz in active_hazards if hz.severity in ("CRITICAL", "WARNING")]
 
     recommendations: list[RecommendedShelterResponse] = []

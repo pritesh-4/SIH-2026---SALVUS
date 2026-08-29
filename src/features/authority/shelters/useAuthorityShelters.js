@@ -59,8 +59,8 @@ export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
       id: s.id,
       name: s.name,
       address: s.address,
-      lat: s.latitude || 22.568,
-      lng: s.longitude || 88.406,
+      lat: s.latitude,
+      lng: s.longitude,
       capacity: `${s.available_beds ?? 0} beds free (${s.occupancy_rate || '0%'} occ)`,
     }))
   }, [liveShelters])
@@ -68,22 +68,30 @@ export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
   const candidateShelters = useMemo(() => {
     if (!selectedIncident || !liveShelters.length) return []
 
-    const incLat = selectedIncident.latitude || 22.5726
-    const incLon = selectedIncident.longitude || 88.3639
+    const incLat = selectedIncident.latitude
+    const incLon = selectedIncident.longitude
+    const hasCoords = typeof incLat === 'number' && typeof incLon === 'number'
 
     return liveShelters
       .filter((s) => s.is_active && s.status !== 'CLOSED')
       .map((s) => {
-        const distKm = calculateDistanceKm(incLat, incLon, s.latitude, s.longitude)
-        const walkMin = Math.max(1, Math.ceil(distKm * 12))
+        const hasShelterCoords = typeof s.latitude === 'number' && typeof s.longitude === 'number'
+        const distKm =
+          hasCoords && hasShelterCoords
+            ? calculateDistanceKm(incLat, incLon, s.latitude, s.longitude)
+            : null
+        const walkMin = distKm !== null ? Math.max(1, Math.ceil(distKm * 12)) : null
         return {
           ...s,
           distanceKm: distKm,
           walkMin,
         }
       })
-      .sort((a, b) => a.distanceKm - b.distanceKm)
-      .slice(0, 2)
+      .sort((a, b) => {
+        if (a.distanceKm === null) return 1
+        if (b.distanceKm === null) return -1
+        return a.distanceKm - b.distanceKm
+      })
   }, [selectedIncident, liveShelters])
 
   // ---------------------------------------------------------------------------

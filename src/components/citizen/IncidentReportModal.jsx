@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createIncident, uploadIncidentAttachment } from '../../services/api'
 import { useLocation } from '../../hooks/useLocation'
-import { getCurrentLocation, createLandmarkLocation, LANDMARKS } from '../../lib/location'
+import {
+  getCurrentLocation,
+  createLandmarkLocation,
+  LANDMARKS,
+  INITIAL_LOCATION_STATE,
+} from '../../lib/location'
 import { validateAttachmentFile, formatFileSize, revokePreviewUrl } from '../../lib/attachmentUtils'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -47,10 +52,10 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     if (globalLocation && globalLocation.latitude) {
       return globalLocation
     }
-    return createLandmarkLocation(LANDMARKS[0], 'PROMPT')
+    return INITIAL_LOCATION_STATE
   })
   const [isAcquiringLocation, setIsAcquiringLocation] = useState(false)
-  const [selectedLandmarkName, setSelectedLandmarkName] = useState(LANDMARKS[0].name)
+  const [selectedLandmarkName, setSelectedLandmarkName] = useState('')
   const reportModalRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -123,10 +128,11 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     const result = await getCurrentLocation({ timeout: 8000 })
     if (result.success && result.model) {
       setLocationData(result.model)
-    } else {
-      // Fallback to currently selected landmark
-      const found = LANDMARKS.find((l) => l.name === selectedLandmarkName) || LANDMARKS[0]
-      setLocationData(createLandmarkLocation(found, 'DENIED'))
+    } else if (selectedLandmarkName) {
+      const found = LANDMARKS.find((l) => l.name === selectedLandmarkName)
+      if (found) {
+        setLocationData(createLandmarkLocation(found, 'DENIED'))
+      }
     }
     setIsAcquiringLocation(false)
   }, [selectedLandmarkName])
@@ -234,6 +240,14 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
 
     setSubmissionError(null)
     setPhotoUploadError(null)
+
+    if (locationData.latitude == null || locationData.longitude == null) {
+      setSubmissionPhase('ERROR')
+      setSubmissionError(
+        'Location access is required to submit a hazard report. Please enable device GPS or select an approximate landmark.'
+      )
+      return
+    }
 
     const selectedCat = categories.find((c) => c.id === category)
     const incidentType = selectedCat?.type || 'flood'

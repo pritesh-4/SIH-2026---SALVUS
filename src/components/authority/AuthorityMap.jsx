@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { SalvusLeafletMap } from '../common/SalvusLeafletMap'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
@@ -30,6 +31,25 @@ export const AuthorityMap = ({
   onSelectIncident,
   onClearRoute,
 }) => {
+  // Derive dynamic map center based on selected incident, first incident, or first responder
+  const dynamicCenter = useMemo(() => {
+    if (selectedIncident?.latitude && selectedIncident?.longitude) {
+      return [selectedIncident.latitude, selectedIncident.longitude]
+    }
+    const validInc = incidents.find((i) => i.latitude && i.longitude)
+    if (validInc) {
+      return [validInc.latitude, validInc.longitude]
+    }
+    const validResp = responderMapPoints.find((r) => r.latitude && r.longitude)
+    if (validResp) {
+      return [validResp.latitude, validResp.longitude]
+    }
+    const validShelter = shelterMapPoints.find((s) => s.lat && s.lng)
+    if (validShelter) {
+      return [validShelter.lat, validShelter.lng]
+    }
+    return [20.5937, 78.9629]
+  }, [selectedIncident, incidents, responderMapPoints, shelterMapPoints])
   return (
     <Card
       aria-label="Tactical Operations Map"
@@ -121,7 +141,7 @@ export const AuthorityMap = ({
       {/* Map Surface */}
       <div className="relative w-full h-[470px] rounded-xl border border-salvus-border overflow-hidden">
         <SalvusLeafletMap
-          center={[22.5726, 88.3639]}
+          center={dynamicCenter}
           zoom={13}
           incidents={incidents}
           responders={responderMapPoints}

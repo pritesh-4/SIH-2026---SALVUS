@@ -16,11 +16,11 @@ import { Button } from '../ui/Button'
  */
 export const ShelterPreviewCard = ({
   badgeText = 'RECOMMENDED SAFE PLACE',
-  name = 'Salt Lake Stadium Emergency Assembly Hub',
-  distance = '350m',
-  travelTime = '~4 min walk',
-  capacity = '420 beds available',
-  amenities = 'Medical Aid · Clean Water · Backup Power',
+  name = 'Safe Evacuation Facility',
+  distance = '--',
+  travelTime = '--',
+  capacity = 'Verified shelter',
+  amenities = 'Essential Medical Aid & Relief',
   actionText = 'Get Safe Route',
   onActionClick,
 }) => {

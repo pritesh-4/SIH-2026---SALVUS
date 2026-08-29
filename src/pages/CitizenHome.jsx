@@ -94,10 +94,16 @@ export const CitizenHome = () => {
         if (freshLoc?.latitude && freshLoc?.longitude) {
           locLat = freshLoc.latitude
           locLng = freshLoc.longitude
-        } else {
-          locLat = 22.5726
-          locLng = 88.3639
         }
+      }
+
+      if (!locLat || !locLng) {
+        setIsConfirmingSos(false)
+        setIsSubmittingSos(false)
+        alert(
+          'Location access is required to transmit your emergency SOS beacon. Please enable device GPS or select an approximate landmark.'
+        )
+        return
       }
 
       // Submit SOS Beacon to backend
@@ -105,8 +111,8 @@ export const CitizenHome = () => {
         type: 'flood',
         severity: 'CRITICAL',
         description: 'Immediate emergency SOS beacon activated by citizen.',
-        reporter_name: 'Aditi Roy',
-        reporter_phone: '+91 98301 24890',
+        reporter_name: 'Citizen User',
+        reporter_phone: null,
         latitude: locLat,
         longitude: locLng,
         affected_count: 1,
@@ -347,13 +353,17 @@ export const CitizenHome = () => {
               />
             ) : (
               <ShelterPreviewCard
-                badgeText="RECOMMENDED SAFE PLACE"
-                name="Salt Lake Stadium Emergency Assembly Hub"
-                distance="350m away"
-                travelTime="~4 min walk"
-                capacity="420 beds available"
+                badgeText="SAFE EVACUATION"
+                name={
+                  isLocationOff
+                    ? 'Enable location to find nearest shelter'
+                    : 'No verified shelters registered nearby'
+                }
+                distance={isLocationOff ? 'Location off' : '0 nearby'}
+                travelTime="Check tactical map"
+                capacity="Verified safe facilities"
                 amenities="Medical Aid · Clean Water · Backup Power"
-                actionText="Get Safe Route"
+                actionText="Open Tactical Map"
                 onActionClick={() => navigate('/citizen/map')}
               />
             )}
@@ -379,14 +389,14 @@ export const CitizenHome = () => {
                   ? 'GPS Active'
                   : isLandmark
                     ? 'Approximate Location'
-                    : 'Sector Overview'
+                    : 'Overview Mode'
               }
               location={
                 location.latitude
                   ? location.address
                   : isLandmark
                     ? `${location.landmarkName} (Approximate)`
-                    : 'Sector 12 · Salt Lake, Kolkata'
+                    : 'Location access off · Overview mode'
               }
               userLocation={location}
               legend={[

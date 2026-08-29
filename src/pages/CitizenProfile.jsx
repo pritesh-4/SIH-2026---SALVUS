@@ -113,7 +113,7 @@ export const CitizenProfile = () => {
                   </p>
                 ) : (
                   <p className="text-xs text-salvus-text-muted mt-1 font-mono">
-                    Sector 12, Salt Lake (••••••••)
+                    Registered Residence (••••••••)
                   </p>
                 )}
               </div>
