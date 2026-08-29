@@ -39,11 +39,24 @@ async def get_recommended_shelters(
     lat: float = Query(..., ge=-90, le=90, description="Latitude of user/incident"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude of user/incident"),
     amenity: list[str] | None = Query(default=None, description="Optional required amenities"),
+    max_radius_km: float = Query(default=25.0, ge=0.1, le=200.0, description="Search radius in km"),
+    demo: bool = Query(
+        default=False, description="Enable demo mode to include global demo shelters"
+    ),
+    include_mapped: bool = Query(
+        default=True, description="Include OSM mapped community facilities"
+    ),
 ):
     """Retrieve ranked candidate safe evacuation shelters for an incident or citizen."""
     db = await get_database()
     recommendations = await shelter_service.get_recommended_shelters(
-        db, latitude=lat, longitude=lon, required_amenities=amenity
+        db,
+        latitude=lat,
+        longitude=lon,
+        required_amenities=amenity,
+        max_radius_km=max_radius_km,
+        demo_mode=demo,
+        include_mapped=include_mapped,
     )
     return ShelterRecommendationListResponse(data=recommendations, count=len(recommendations))
 

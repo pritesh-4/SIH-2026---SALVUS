@@ -100,6 +100,55 @@ class HazardType(StrEnum):
     OTHER = "OTHER"
 
 
+class PlaceProvenance(StrEnum):
+    OSM_MAPPED = "OSM_MAPPED"
+    SALVUS_VERIFIED = "SALVUS_VERIFIED"
+    SEEDED_DEMO = "SEEDED_DEMO"
+
+
+class PlaceFreshness(StrEnum):
+    FRESH = "FRESH"
+    STALE = "STALE"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+class PlaceCategory(StrEnum):
+    HOSPITAL = "HOSPITAL"
+    CLINIC = "CLINIC"
+    PHARMACY = "PHARMACY"
+    POLICE = "POLICE"
+    FIRE_STATION = "FIRE_STATION"
+    EMERGENCY_SERVICE = "EMERGENCY_SERVICE"
+    SHELTER = "SHELTER"
+    OTHER_RELEVANT = "OTHER_RELEVANT"
+
+    @classmethod
+    def from_str(cls, val: str) -> PlaceCategory:
+        """Parse arbitrary input string into a controlled PlaceCategory enum."""
+        clean = val.strip().upper().replace(" ", "_").replace("-", "_")
+        if clean in ("HOSPITAL", "HOSPITALS"):
+            return cls.HOSPITAL
+        if clean in ("CLINIC", "CLINICS"):
+            return cls.CLINIC
+        if clean in ("PHARMACY", "PHARMACIES", "CHEMIST", "DRUGSTORE"):
+            return cls.PHARMACY
+        if clean in ("POLICE", "POLICE_STATION", "POLICE_STATIONS"):
+            return cls.POLICE
+        if clean in ("FIRE", "FIRE_STATION", "FIRE_STATIONS", "FIRE_DEPARTMENT"):
+            return cls.FIRE_STATION
+        if clean in (
+            "EMERGENCY_SERVICE",
+            "EMERGENCY_FACILITY",
+            "EMERGENCY",
+            "AMBULANCE",
+            "DISASTER_RESPONSE",
+        ):
+            return cls.EMERGENCY_SERVICE
+        if clean in ("SHELTER", "SHELTERS", "REFUGE", "EVACUATION_CENTER"):
+            return cls.SHELTER
+        return cls.OTHER_RELEVANT
+
+
 # ---------------------------------------------------------------------------
 # Incident Models
 # ---------------------------------------------------------------------------
@@ -763,22 +812,30 @@ class RecommendedShelterResponse(BaseModel):
 
     id: str
     name: str
-    address: str
+    address: str | None = None
     latitude: float
     longitude: float
-    total_beds: int
-    available_beds: int
-    occupancy_rate: str
-    supplies_status: str
-    status: str
-    distance_km: float
-    estimated_walk_min: int
-    suitability_score: int
-    recommendation_reason: str
-    amenities: list[str] = []
+    total_beds: int | None = None
+    available_beds: int | None = None
+    occupancy_rate: str | None = None
+    supplies_status: str | None = None
+    status: str | None = None
+    distance_km: float | None = None
+    distance_meters: float | None = None
+    distance_formatted: str | None = None
+    estimated_walk_min: int | None = None
+    suitability_score: int = 0
+    recommendation_reason: str = ""
+    amenities: list[str] = Field(default_factory=list)
+    contact_phone: str | None = None
+    provenance: PlaceProvenance = PlaceProvenance.SALVUS_VERIFIED
+    source: str = "Salvus Civil Defense"
+    source_id: str | None = None
     is_safe: bool = True
     safety_status: str = "SAFE"
     hazard_proximity_warning: str | None = None
+    is_recommended: bool = True
+    fetched_at: str | None = None
 
 
 class ShelterListResponse(BaseModel):
@@ -1102,54 +1159,6 @@ class SituationSummaryResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Real-World Nearby Places Models (Phase 2: Proximity, Routing, Cache & Trust)
 # ---------------------------------------------------------------------------
-
-
-class PlaceProvenance(StrEnum):
-    OSM_MAPPED = "OSM_MAPPED"
-    SALVUS_VERIFIED = "SALVUS_VERIFIED"
-
-
-class PlaceFreshness(StrEnum):
-    FRESH = "FRESH"
-    STALE = "STALE"
-    UNAVAILABLE = "UNAVAILABLE"
-
-
-class PlaceCategory(StrEnum):
-    HOSPITAL = "HOSPITAL"
-    CLINIC = "CLINIC"
-    PHARMACY = "PHARMACY"
-    POLICE = "POLICE"
-    FIRE_STATION = "FIRE_STATION"
-    EMERGENCY_SERVICE = "EMERGENCY_SERVICE"
-    SHELTER = "SHELTER"
-    OTHER_RELEVANT = "OTHER_RELEVANT"
-
-    @classmethod
-    def from_str(cls, val: str) -> PlaceCategory:
-        """Parse arbitrary input string into a controlled PlaceCategory enum."""
-        clean = val.strip().upper().replace(" ", "_").replace("-", "_")
-        if clean in ("HOSPITAL", "HOSPITALS"):
-            return cls.HOSPITAL
-        if clean in ("CLINIC", "CLINICS"):
-            return cls.CLINIC
-        if clean in ("PHARMACY", "PHARMACIES", "CHEMIST", "DRUGSTORE"):
-            return cls.PHARMACY
-        if clean in ("POLICE", "POLICE_STATION", "POLICE_STATIONS"):
-            return cls.POLICE
-        if clean in ("FIRE", "FIRE_STATION", "FIRE_STATIONS", "FIRE_DEPARTMENT"):
-            return cls.FIRE_STATION
-        if clean in (
-            "EMERGENCY_SERVICE",
-            "EMERGENCY_FACILITY",
-            "EMERGENCY",
-            "AMBULANCE",
-            "DISASTER_RESPONSE",
-        ):
-            return cls.EMERGENCY_SERVICE
-        if clean in ("SHELTER", "SHELTERS", "REFUGE", "EVACUATION_CENTER"):
-            return cls.SHELTER
-        return cls.OTHER_RELEVANT
 
 
 class PlaceModel(BaseModel):

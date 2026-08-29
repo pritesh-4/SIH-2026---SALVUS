@@ -360,41 +360,75 @@ export const CitizenHome = () => {
                 badgeText={
                   nearestShelter.safety_status === 'HAZARD_PROXIMITY_WARNING'
                     ? '⚠️ Proximity to Hazard'
-                    : 'RECOMMENDED SAFE PLACE'
+                    : nearestShelter.provenance === 'SALVUS_VERIFIED'
+                      ? 'RECOMMENDED SAFE PLACE'
+                      : nearestShelter.provenance === 'SEEDED_DEMO'
+                        ? 'DEMO SAFE PLACE'
+                        : 'NEARBY SAFE FACILITY'
                 }
+                badgeVariant={
+                  nearestShelter.safety_status === 'HAZARD_PROXIMITY_WARNING'
+                    ? 'warning'
+                    : nearestShelter.provenance === 'SALVUS_VERIFIED'
+                      ? 'safe'
+                      : nearestShelter.provenance === 'SEEDED_DEMO'
+                        ? 'warning'
+                        : 'neutral'
+                }
+                provenance={nearestShelter.provenance || 'SALVUS_VERIFIED'}
                 name={nearestShelter.name}
                 distance={
-                  nearestShelter.distance_km ? `${nearestShelter.distance_km} km away` : '350m away'
+                  nearestShelter.distance_formatted ||
+                  (nearestShelter.distance_km != null
+                    ? `${nearestShelter.distance_km.toFixed(1)} km away`
+                    : null)
                 }
                 travelTime={
                   nearestShelter.estimated_walk_min
                     ? `~${nearestShelter.estimated_walk_min} min walk`
-                    : '~4 min walk'
+                    : null
                 }
-                capacity={`${nearestShelter.available_beds} beds available`}
+                capacity={
+                  nearestShelter.available_beds != null
+                    ? `${nearestShelter.available_beds} beds available`
+                    : nearestShelter.total_beds != null
+                      ? `Capacity: ${nearestShelter.total_beds}`
+                      : null
+                }
+                operationalStatus={nearestShelter.status || null}
                 amenities={
                   Array.isArray(nearestShelter.amenities) && nearestShelter.amenities.length > 0
                     ? nearestShelter.amenities.slice(0, 2).join(' · ')
-                    : 'Medical Aid · Clean Water · Backup Power'
+                    : null
                 }
-                actionText="Get Safe Route"
+                actionText={
+                  nearestShelter.provenance === 'SALVUS_VERIFIED'
+                    ? 'Get Safe Route'
+                    : 'View Details'
+                }
+                actionVariant={
+                  nearestShelter.provenance === 'SALVUS_VERIFIED' ? 'safe' : 'secondary'
+                }
                 onActionClick={() =>
                   navigate(`/citizen/map?shelterId=${nearestShelter.id}&action=route`)
                 }
               />
             ) : (
               <ShelterPreviewCard
-                badgeText="SAFE EVACUATION"
+                badgeText={isLocationOff ? 'LOCATION REQUIRED' : 'SAFE EVACUATION'}
+                badgeVariant="neutral"
+                provenance={null}
                 name={
                   isLocationOff
                     ? 'Enable location to find nearest shelter'
                     : 'No verified shelters registered nearby'
                 }
-                distance={isLocationOff ? 'Location off' : '0 nearby'}
-                travelTime="Check tactical map"
-                capacity="Verified safe facilities"
-                amenities="Medical Aid · Clean Water · Backup Power"
+                distance={isLocationOff ? 'Location access off' : '0 in search radius'}
+                travelTime={null}
+                capacity={null}
+                amenities={null}
                 actionText="Open Tactical Map"
+                actionVariant="primary"
                 onActionClick={() => navigate('/citizen/map')}
               />
             )}

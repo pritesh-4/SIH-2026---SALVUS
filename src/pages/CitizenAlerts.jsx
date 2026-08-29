@@ -115,7 +115,12 @@ export const CitizenAlerts = () => {
         // Parallel requests across hazards, shelters, and area safety
         const [hazardsRes, sheltersRes, safetyRes] = await Promise.allSettled([
           fetchHazards(lat, lon, maxDist, isDemoMode),
-          lat && lon ? fetchRecommendedShelters(lat, lon) : Promise.resolve({ data: [] }),
+          lat && lon
+            ? fetchRecommendedShelters(lat, lon, null, {
+                maxRadiusKm: isRegionalMode ? 75.0 : 25.0,
+                demo: isDemoMode,
+              })
+            : Promise.resolve({ data: [] }),
           lat && lon ? fetchAreaSafetyStatus(lat, lon) : Promise.resolve(null),
         ])
 

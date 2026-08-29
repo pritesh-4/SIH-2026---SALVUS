@@ -36,12 +36,13 @@ export const citizenHomeData = {
     severity: 'warning',
   },
   nearestShelter: {
-    badgeText: 'Recommended Safe Place',
-    name: 'Salt Lake Stadium Assembly Hub',
-    distance: '350m · 4 min walk',
+    badgeText: 'Simulation Demo Shelter',
+    name: 'Salt Lake Stadium Assembly Hub (Demo)',
+    distance: 'Approx. 350 m',
     capacity: '420 beds available',
     amenities: 'Emergency Medical Triage · Clean Water Tanker',
     actionText: 'Get Safe Route',
+    provenance: 'SEEDED_DEMO',
   },
   report: {
     badgeText: 'Community report',

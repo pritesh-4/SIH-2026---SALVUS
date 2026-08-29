@@ -181,9 +181,14 @@ export const loadCitizenLocationContext = async ({ location, force = false }) =>
 
   try {
     // Parallel fetch with graceful failure handling
+    const isDemo = Boolean(location?.isDemoMode || location?.demo)
     const [hazardsRes, sheltersRes, safetyRes] = await Promise.allSettled([
-      fetchHazards(location.latitude, location.longitude, 15.0),
-      fetchRecommendedShelters(location.latitude, location.longitude),
+      fetchHazards(location.latitude, location.longitude, 15.0, isDemo),
+      fetchRecommendedShelters(location.latitude, location.longitude, null, {
+        maxRadiusKm: 25.0,
+        demo: isDemo,
+        includeMapped: true,
+      }),
       fetchAreaSafetyStatus(location.latitude, location.longitude),
     ])
 

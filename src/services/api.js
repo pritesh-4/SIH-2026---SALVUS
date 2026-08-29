@@ -657,7 +657,12 @@ export const fetchShelters = async () => {
 /**
  * Fetch ranked candidate recommended shelters for a location.
  */
-export const fetchRecommendedShelters = async (lat, lon, amenity = null) => {
+export const fetchRecommendedShelters = async (
+  lat,
+  lon,
+  amenity = null,
+  { maxRadiusKm = 25.0, demo = false, includeMapped = true } = {}
+) => {
   if (lat == null || lon == null || typeof lat !== 'number' || typeof lon !== 'number') {
     return {
       success: true,
@@ -666,7 +671,13 @@ export const fetchRecommendedShelters = async (lat, lon, amenity = null) => {
     }
   }
   try {
-    const params = { lat, lon }
+    const params = {
+      lat,
+      lon,
+      max_radius_km: maxRadiusKm,
+      demo: Boolean(demo),
+      include_mapped: Boolean(includeMapped),
+    }
     if (amenity) params.amenity = amenity
     const response = await apiClient.get('/api/shelters/recommendations', { params })
     return {

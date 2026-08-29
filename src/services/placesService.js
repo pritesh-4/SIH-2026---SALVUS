@@ -32,6 +32,12 @@ export const PROVENANCE_LABELS = {
     variant: 'neutral',
     description: 'Real-world geographic place from OpenStreetMap.',
   },
+  SEEDED_DEMO: {
+    label: 'Simulation demo',
+    shortLabel: 'Demo',
+    variant: 'warning',
+    description: 'Seeded scenario facility for simulation mode.',
+  },
 }
 
 export const getCategoryInfo = (category) => {
@@ -60,6 +66,9 @@ export const getCategoryInfo = (category) => {
 export const getProvenanceBadge = (provenance) => {
   if (provenance === 'SALVUS_VERIFIED') {
     return PROVENANCE_LABELS.SALVUS_VERIFIED
+  }
+  if (provenance === 'SEEDED_DEMO') {
+    return PROVENANCE_LABELS.SEEDED_DEMO
   }
   return PROVENANCE_LABELS.OSM_MAPPED
 }

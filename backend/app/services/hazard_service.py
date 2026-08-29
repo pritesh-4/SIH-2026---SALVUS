@@ -462,7 +462,9 @@ async def evaluate_area_safety(
         try:
             from app.services.shelter_service import get_recommended_shelters
 
-            rec_shelters = await get_recommended_shelters(db, latitude=lat, longitude=lon)
+            rec_shelters = await get_recommended_shelters(
+                db, latitude=lat, longitude=lon, max_radius_km=25.0
+            )
             if rec_shelters:
                 nearest_shelter = rec_shelters[0]
         except Exception as e:
