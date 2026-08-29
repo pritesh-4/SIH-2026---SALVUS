@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLocation } from '../hooks/useLocation'
 import { SafetyStatusCard } from '../components/citizen/SafetyStatusCard'
@@ -9,7 +9,7 @@ import { ReportIncidentCard } from '../components/citizen/ReportIncidentCard'
 import { AreaMapCard } from '../components/citizen/AreaMapCard'
 import { EmergencyConfirmationModal } from '../components/citizen/emergency/EmergencyConfirmationModal'
 import { IncidentReportModal } from '../components/citizen/IncidentReportModal'
-import { createIncident } from '../services/api'
+import { createIncident, reverseGeocode } from '../services/api'
 import {
   loadCitizenLocationContext,
   formatRelativeFreshness,
@@ -23,6 +23,20 @@ export const CitizenHome = () => {
   const [isConfirmingSos, setIsConfirmingSos] = useState(false)
   const [isReportingIncident, setIsReportingIncident] = useState(false)
   const [isSubmittingSos, setIsSubmittingSos] = useState(false)
+  const [reverseGeocodedName, setReverseGeocodedName] = useState(null)
+
+  const displayAreaName = useMemo(() => {
+    if (location?.landmarkName) return location.landmarkName
+    if (reverseGeocodedName) return reverseGeocodedName
+    if (
+      location?.address &&
+      location.address !== 'Location not set' &&
+      location.address !== 'Current Device Location'
+    ) {
+      return location.address
+    }
+    return null
+  }, [location?.landmarkName, location?.address, reverseGeocodedName])
 
   // Location Intelligence state
   const [intelData, setIntelData] = useState({
@@ -53,7 +67,7 @@ export const CitizenHome = () => {
     return () => clearInterval(timer)
   }, [])
 
-  // Load location context whenever location state updates
+  // Load location context & reverse geocode whenever location state updates
   useEffect(() => {
     let isCancelled = false
     loadCitizenLocationContext({ location, force: false }).then((data) => {
@@ -62,6 +76,15 @@ export const CitizenHome = () => {
         setIsLoadingIntel(false)
       }
     })
+
+    if (location?.latitude && location?.longitude && location.source === 'BROWSER') {
+      reverseGeocode(location.latitude, location.longitude).then((res) => {
+        if (!isCancelled && isMountedRef.current && res?.area_name) {
+          setReverseGeocodedName(res.area_name)
+        }
+      })
+    }
+
     return () => {
       isCancelled = true
     }
@@ -190,11 +213,19 @@ export const CitizenHome = () => {
 
           <h1 className="text-xl sm:text-2xl font-extrabold text-salvus-text-primary tracking-tight">
             {location.latitude
-              ? location.address
+              ? displayAreaName || location.address || 'Current Device Location'
               : isLandmark
                 ? `${location.landmarkName} (Approximate)`
-                : 'Location Access Off · Sector 12 Overview'}
+                : 'Location Access Off · Regional Overview'}
           </h1>
+          {location.latitude && (
+            <p className="text-xs text-salvus-text-secondary mt-1">
+              You are currently near <strong>{displayAreaName || 'your detected location'}</strong>{' '}
+              · {intelData.shelters.length} verified shelter
+              {intelData.shelters.length === 1 ? '' : 's'} · {intelData.hazards.length} active
+              advisory{intelData.hazards.length === 1 ? '' : 'ies'} nearby
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">

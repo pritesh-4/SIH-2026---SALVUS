@@ -45,6 +45,7 @@ class OpenMeteoAdapter(BaseAlertAdapter):
 
     def clear_cache(self) -> None:
         """Reset cached weather telemetry for testing."""
+        super().clear_cache()
         self._grid_cache.clear()
 
     async def fetch_alerts(

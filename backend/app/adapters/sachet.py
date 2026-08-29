@@ -47,6 +47,7 @@ class SachetAdapter(BaseAlertAdapter):
 
     def clear_cache(self) -> None:
         """Reset cached feed and ETag state for testing."""
+        super().clear_cache()
         self._etag = None
         self._last_modified = None
         self._cached_alerts = []

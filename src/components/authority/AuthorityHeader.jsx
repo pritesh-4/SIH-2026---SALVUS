@@ -38,7 +38,7 @@ export const AuthorityHeader = ({ hub, dataProvenance = 'LIVE' }) => {
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-sm font-bold text-salvus-text-primary tracking-tight">
-              {hub.name || 'Central Command Hub'} · Sector 12 District
+              {hub.name || 'Central Command Hub'} · Regional Operations District
             </h1>
             <StatusIndicator status="safe" label="System Operational" showDot={true} size="sm" />
             <Badge variant="neutral" isMono={true} size="sm">

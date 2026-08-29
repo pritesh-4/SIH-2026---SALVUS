@@ -323,7 +323,7 @@ export const CitizenAlerts = () => {
       sourceType: hz.source_type,
       sourcesMatched: hz.sources_matched || [hz.source],
       sourceUrl: hz.source_url || null,
-      affectedArea: hz.affected_area || 'Sector 12 & Metropolitan Corridor',
+      affectedArea: hz.affected_area || 'Regional Disaster Corridor',
       radiusKm: hz.radius_km || hz.affected_radius_km || null,
       nearestShelter: nearestSafeShelter,
     }

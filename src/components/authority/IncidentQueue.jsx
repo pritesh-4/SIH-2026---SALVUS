@@ -163,7 +163,11 @@ export const IncidentQueue = ({
 
                 <div className="flex items-center justify-between text-xs text-salvus-text-muted mt-2 pt-1.5 border-t border-salvus-border">
                   <span className="truncate max-w-[140px]">
-                    📍 {inc.location_name || 'Sector 12'}
+                    📍{' '}
+                    {inc.location_name ||
+                      (inc.latitude
+                        ? `${inc.latitude.toFixed(3)}°, ${inc.longitude.toFixed(3)}°`
+                        : 'Location Unspecified')}
                   </span>
                   <span>
                     {inc.created_at

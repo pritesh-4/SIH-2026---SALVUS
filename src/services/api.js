@@ -690,6 +690,36 @@ export const fetchRecommendedShelters = async (lat, lon, amenity = null) => {
 }
 
 /**
+ * Reverse geocode latitude and longitude to human-readable neighborhood/locality/city.
+ */
+export const reverseGeocode = async (lat, lon) => {
+  if (lat == null || lon == null || typeof lat !== 'number' || typeof lon !== 'number') {
+    return { success: false, area_name: 'Location unavailable' }
+  }
+  try {
+    const response = await apiClient.get('/api/places/reverse', {
+      params: { lat, lon },
+      timeout: 3500,
+    })
+    return (
+      response.data || {
+        success: true,
+        area_name: `${lat.toFixed(3)}° N, ${lon.toFixed(3)}° E`,
+        latitude: lat,
+        longitude: lon,
+      }
+    )
+  } catch {
+    return {
+      success: true,
+      area_name: `${lat.toFixed(3)}° N, ${lon.toFixed(3)}° E`,
+      latitude: lat,
+      longitude: lon,
+    }
+  }
+}
+
+/**
  * Update shelter bed occupancy or status.
  */
 export const updateShelterOccupancy = async (

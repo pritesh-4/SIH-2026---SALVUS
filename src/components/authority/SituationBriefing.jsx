@@ -21,7 +21,7 @@ export const SituationBriefing = ({
   const activeCount = computedMetrics.active ?? computedMetrics.activeIncidents ?? 0
   const criticalCount = computedMetrics.critical ?? computedMetrics.criticalThreats ?? 0
 
-  const fallbackBriefing = `Flooding remains concentrated around Sector 12 basin. ${
+  const fallbackBriefing = `Active situation monitoring across operational grid. ${
     criticalCount > 0
       ? `${criticalCount} critical incident${criticalCount > 1 ? 's require' : ' requires'} immediate response.`
       : 'All monitored sectors are currently stable.'

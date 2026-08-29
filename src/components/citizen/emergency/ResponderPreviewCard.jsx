@@ -32,7 +32,7 @@ export const ResponderPreviewCard = ({
             : 'Matching Nearest Rescue Team...'}
         </h3>
         <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 max-w-sm leading-relaxed">
-          Alerting active emergency rescue teams and boats in Sector 12 and surrounding districts.
+          Alerting active emergency rescue teams and specialized units in your operational area.
         </p>
         <div className="mt-4">
           <Badge variant="warning" dot={true}>

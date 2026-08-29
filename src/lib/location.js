@@ -142,6 +142,7 @@ export const INITIAL_LOCATION_STATE = {
   accuracyBadgeClass: 'bg-slate-800 text-slate-400 border-slate-700',
   coordinates: 'Coordinates unavailable',
   address: 'Location not set',
+  areaName: null,
   landmarkName: null,
   isFallback: false,
   error: null,
@@ -191,6 +192,7 @@ export const createLocationModel = (params = {}) => {
     coordinates: formatCoordinates(latitude, longitude),
     address:
       params.address || (source === 'BROWSER' ? 'Current Device Location' : 'Unknown location'),
+    areaName: params.areaName || params.landmarkName || null,
     landmarkName: params.landmarkName || null,
     isFallback: source === 'LANDMARK',
     error: params.error || null,
@@ -216,6 +218,7 @@ export const createLandmarkLocation = (landmark, currentPermission = 'DENIED') =
     accuracyBadgeClass: 'bg-amber-950/60 text-amber-300 border-amber-500/40',
     coordinates: formatCoordinates(landmark.latitude, landmark.longitude),
     address: `${landmark.name}, ${landmark.address}`,
+    areaName: landmark.name,
     landmarkName: landmark.name,
     isFallback: true,
     error: null,

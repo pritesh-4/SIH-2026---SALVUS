@@ -47,6 +47,11 @@ class BaseAlertAdapter(ABC):
         """Return the current health telemetry report for this adapter."""
         return self._health.model_copy()
 
+    def clear_cache(self) -> None:
+        """Reset cached state and restore healthy status."""
+        self._health.status = SourceStatus.AVAILABLE
+        self._health.last_error = None
+
     def update_health(
         self,
         status: SourceStatus,

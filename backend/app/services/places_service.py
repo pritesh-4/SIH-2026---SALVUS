@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import aiosqlite
@@ -420,7 +420,118 @@ async def get_place_route(
     )
 
 
+_REVERSE_GEOCODE_CACHE: dict[tuple[float, float], tuple[dict[str, Any], datetime]] = {}
+
+
+async def reverse_geocode(
+    lat: float,
+    lon: float,
+    client: httpx.AsyncClient | None = None,
+) -> dict[str, Any]:
+    """Reverse geocode coordinates into a human-readable area name using OSM Nominatim."""
+    grid_key = (round(lat, 3), round(lon, 3))
+    now = datetime.now(UTC)
+
+    if grid_key in _REVERSE_GEOCODE_CACHE:
+        cached_data, expire_dt = _REVERSE_GEOCODE_CACHE[grid_key]
+        if now < expire_dt:
+            return cached_data
+
+    url = "https://nominatim.openstreetmap.org/reverse"
+    params = {
+        "format": "jsonv2",
+        "lat": lat,
+        "lon": lon,
+        "zoom": 14,
+        "addressdetails": 1,
+    }
+    headers = {
+        "User-Agent": "Salvus-Disaster-Response/1.0 (Emergency Situational Awareness)",
+        "Accept": "application/json",
+    }
+
+    try:
+        if client:
+            resp = await client.get(url, params=params, headers=headers, timeout=3.5)
+        else:
+            async with httpx.AsyncClient(timeout=3.5) as http_c:
+                resp = await http_c.get(url, params=params, headers=headers)
+
+        if resp.status_code == 200:
+            data = resp.json()
+            addr = data.get("address", {})
+
+            suburb = (
+                addr.get("suburb")
+                or addr.get("neighbourhood")
+                or addr.get("residential")
+                or addr.get("commercial")
+                or addr.get("road")
+                or ""
+            )
+            city = (
+                addr.get("city")
+                or addr.get("town")
+                or addr.get("municipality")
+                or addr.get("county")
+                or addr.get("state_district")
+                or ""
+            )
+            state = addr.get("state", "")
+            country = addr.get("country", "")
+
+            if suburb and city:
+                area_name = f"{suburb}, {city}"
+            elif suburb:
+                area_name = f"{suburb}, {state}" if state else suburb
+            elif city:
+                area_name = f"{city}, {state}" if state else city
+            else:
+                area_name = (
+                    data.get("name") or data.get("display_name", "").split(",")[0] or "Local Area"
+                )
+
+            display_address = data.get("display_name") or area_name
+
+            result = {
+                "success": True,
+                "area_name": area_name,
+                "suburb": suburb,
+                "city": city,
+                "state": state,
+                "country": country,
+                "display_address": display_address,
+                "latitude": lat,
+                "longitude": lon,
+                "source": "OpenStreetMap Nominatim",
+                "fetched_at": now.isoformat(),
+            }
+
+            _REVERSE_GEOCODE_CACHE[grid_key] = (result, now + timedelta(hours=2))
+            return result
+
+    except Exception as exc:
+        logger.warning(f"Reverse geocode lookup failed for ({lat}, {lon}): {exc}")
+
+    # Fallback to coarse coordinate area
+    fallback_result = {
+        "success": True,
+        "area_name": f"{lat:.3f}° N, {lon:.3f}° E",
+        "suburb": None,
+        "city": None,
+        "state": None,
+        "country": None,
+        "display_address": f"{lat:.4f}° N, {lon:.4f}° E",
+        "latitude": lat,
+        "longitude": lon,
+        "source": "Coordinate Fallback",
+        "fetched_at": now.isoformat(),
+    }
+    return fallback_result
+
+
 def clear_places_cache() -> None:
     """Clear in-memory places cache (useful for testing)."""
     _PLACES_CACHE.clear()
     _IN_FLIGHT_TASKS.clear()
+    _REVERSE_GEOCODE_CACHE.clear()

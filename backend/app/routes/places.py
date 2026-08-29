@@ -230,3 +230,27 @@ async def get_place_route_endpoint(
         place=target_place,
         profile=profile,
     )
+
+
+@router.get("/api/places/reverse")
+async def reverse_geocode_endpoint(
+    lat: float = Query(..., ge=-90.0, le=90.0, description="Latitude to reverse geocode"),
+    lon: float | None = Query(
+        None, ge=-180.0, le=180.0, description="Longitude to reverse geocode"
+    ),
+    lng: float | None = Query(None, ge=-180.0, le=180.0, description="Longitude alias"),
+) -> dict:
+    """Reverse geocode coordinates into a human-readable area / neighborhood / city."""
+    target_lon = lon if lon is not None else lng
+    if target_lon is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "MISSING_LONGITUDE",
+                    "message": "Longitude query parameter ('lon' or 'lng') is required.",
+                },
+            },
+        )
+    return await places_service.reverse_geocode(lat=lat, lon=target_lon)

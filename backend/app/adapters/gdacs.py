@@ -45,6 +45,7 @@ class GDACSAdapter(BaseAlertAdapter):
 
     def clear_cache(self) -> None:
         """Reset cached GDACS alerts for testing."""
+        super().clear_cache()
         self._cached_alerts = []
         self._last_fetch_time = None
 

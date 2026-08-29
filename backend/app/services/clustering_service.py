@@ -73,8 +73,17 @@ def cluster_incidents(
         type_counts = Counter(m.type for m in member_list)
         primary_type = type_counts.most_common(1)[0][0] if type_counts else "hazard"
 
-        # Determine cluster name
-        area_name = "Sector 12" if mean_lon < 88.40 else "Salt Lake East"
+        # Determine cluster name from member location names or coordinates
+        named_members = [
+            getattr(m, "location_name", None)
+            for m in member_list
+            if getattr(m, "location_name", None)
+        ]
+        if named_members:
+            area_name = named_members[0]
+        else:
+            area_name = f"Zone ({mean_lat:.3f}°, {mean_lon:.3f}°)"
+
         cluster_name = f"{area_name} {primary_type.title()} Cluster"
         if count == 1:
             cluster_name = f"{area_name} Isolated {primary_type.title()} Report"
