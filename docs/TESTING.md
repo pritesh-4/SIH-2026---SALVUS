@@ -48,13 +48,14 @@ npm run build
 
 ---
 
-## 2. Verified Backend Test Suite Breakdown (390 Tests)
+## 2. Verified Backend Test Suite Breakdown (399 Tests)
 
-The backend test suite executes 390 automated tests across 30 specialized modules with 100% passing status:
+The backend test suite executes 399 automated tests across 31 specialized modules with 100% passing status:
 
 | Test Module                                                                             | Test Count | Domain Coverage                                                                                                                             |
 | :-------------------------------------------------------------------------------------- | :--------: | :------------------------------------------------------------------------------------------------------------------------------------------ |
 | [`test_auth_foundation.py`](../backend/tests/test_auth_foundation.py)                   |   **16**   | Real credential validation, citizen/authority logins, 401 generic failures, inactive users, JWT claims, bcrypt hashing, idempotent seeding. |
+| [`test_role_routing_backend.py`](../backend/tests/test_role_routing_backend.py)         |   **9**    | Backend RBAC endpoint protection, 403 Forbidden on role mismatch, profile caller binding, unauthenticated 401 guards.                       |
 | [`test_state_machine.py`](../backend/tests/test_state_machine.py)                       |   **64**   | Exhaustive finite state machine matrix, forward transitions, terminal state immutability, role permissions.                                 |
 | [`test_profile_api.py`](../backend/tests/test_profile_api.py)                           |   **7**    | Citizen profile GET/PATCH endpoints, JWT subject binding, system-managed field protection, medical info preservation.                       |
 | [`test_emergency_readiness_api.py`](../backend/tests/test_emergency_readiness_api.py)   |   **5**    | Contact CRUD, single-primary enforcement, priority ranking, automatic promotion on deletion, locked safety settings.                        |
@@ -75,20 +76,23 @@ The backend test suite executes 390 automated tests across 30 specialized module
 | [`test_assignment_flow.py`](../backend/tests/test_assignment_flow.py)                   |   **4**    | Transactional consistency across incident, assignment, and responder state commits.                                                         |
 | [`test_realtime_dispatch_loop.py`](../backend/tests/test_realtime_dispatch_loop.py)     |   **3**    | End-to-end realtime dispatch cycle from creation to verification and resolution.                                                            |
 | _Other Domain Test Suites_                                                              |  **172**   | Evidence lightbox, photo validation, places clustering, weather parsing, and mock feeds.                                                    |
-| **TOTAL**                                                                               |  **390**   | **100% Passed (0 Failures, 0 Errors, 0 Regressions)**                                                                                       |
+| **TOTAL**                                                                               |  **399**   | **100% Passed (0 Failures, 0 Errors, 0 Regressions)**                                                                                       |
 
 ---
 
-## 3. Frontend Unit & Integration Tests (14 Tests)
+## 3. Frontend Unit & Integration Tests (36 Tests)
 
 Salvus uses the native Node.js test runner for blazingly fast, dependency-free frontend domain verification:
 
-| Frontend Test Suite                                                                         | Test Count | Domain Coverage                                                                                                                                              |
-| :------------------------------------------------------------------------------------------ | :--------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`emergencyReadinessPhase3.test.js`](../src/lib/__tests__/emergencyReadinessPhase3.test.js) |   **4**    | Deterministic readiness calculation (`READY` vs `SETUP INCOMPLETE`), pass staleness math, cache purge on toggle off, Web Audio siren fallback safety.        |
-| [`emergencyReadiness.test.js`](../src/lib/__tests__/emergencyReadiness.test.js)             |   **5**    | Single-primary contact enforcement, primary promotion upon deletion, medical bounds sanitization, locked location sharing, offline pass schema verification. |
-| [`profileService.test.js`](../src/lib/__tests__/profileService.test.js)                     |   **5**    | Server profile fetching, profile PATCH mutations, non-mocking error transparency, form state preservation on rejection, protected fields immutability.       |
-| **TOTAL**                                                                                   |   **14**   | **100% Passed (0 Failures, 0 Errors)**                                                                                                                       |
+| Frontend Test Suite                                                                                     | Test Count | Domain Coverage                                                                                                                                              |
+| :------------------------------------------------------------------------------------------------------ | :--------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`loginExperience.test.js`](../src/lib/__tests__/loginExperience.test.js)                               |   **6**    | Email regex validation, error state categorization, demo credential structure, password show/hide toggle, emergency cache detection, role clarity.           |
+| [`protectedRouting.test.js`](../src/lib/__tests__/protectedRouting.test.js)                             |   **6**    | Role-based route guard authorization rules, cross-role redirection, token clearing, realtime socket cleanup, return URL preservation.                        |
+| [`realtimeMultiTabReconciliation.test.js`](../src/lib/__tests__/realtimeMultiTabReconciliation.test.js) |   **10**   | Disconnect/reconnect state preservation, monotonic ranking, multi-tab broadcast sync, concurrent SOS submission race safeguards.                             |
+| [`emergencyReadinessPhase3.test.js`](../src/lib/__tests__/emergencyReadinessPhase3.test.js)             |   **4**    | Deterministic readiness calculation (`READY` vs `SETUP INCOMPLETE`), pass staleness math, cache purge on toggle off, Web Audio siren fallback safety.        |
+| [`emergencyReadiness.test.js`](../src/lib/__tests__/emergencyReadiness.test.js)                         |   **5**    | Single-primary contact enforcement, primary promotion upon deletion, medical bounds sanitization, locked location sharing, offline pass schema verification. |
+| [`profileService.test.js`](../src/lib/__tests__/profileService.test.js)                                 |   **5**    | Server profile fetching, profile PATCH mutations, non-mocking error transparency, form state preservation on rejection, protected fields immutability.       |
+| **TOTAL**                                                                                               |   **36**   | **100% Passed (0 Failures, 0 Errors)**                                                                                                                       |
 
 ---
 

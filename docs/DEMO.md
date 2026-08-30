@@ -20,8 +20,13 @@ Salvus uses real credential-validated authentication. The following demo account
 ## 1. Demo Setup & Preparation (30 Seconds Pre-Demo)
 
 1. Open your browser and navigate to `http://localhost:5173/login`.
-2. **For Citizen window**: Sign in with `citizen@salvus.demo` / `Salvus@Citizen2026`. You will be routed to the Citizen Safety Console.
-3. **For Authority window**: Open a second browser window, navigate to `http://localhost:5173/login`, sign in with `authority@salvus.demo` / `Salvus@Authority2026`. You will be routed to the Authority Command Center.
+2. **For Citizen window**:
+   - Click **👤 Demo Citizen** (or enter `citizen@salvus.demo` / `Salvus@Citizen2026`).
+   - The real `POST /api/auth/login` request validates against bcrypt records and securely routes you to the Citizen Safety Console (`/citizen`).
+3. **For Authority window**:
+   - Open a second browser window, navigate to `http://localhost:5173/login`.
+   - Click **🛡️ Demo Authority** (or enter `authority@salvus.demo` / `Salvus@Authority2026`).
+   - The real `POST /api/auth/login` request validates and securely routes you to the Authority Command Center (`/authority`).
 4. Arrange both windows side-by-side.
 5. In the Authority window, confirm the bottom-right connection status badge displays `LIVE` (green dot).
 6. If needed, click `🛠️ DEV DEMO CONTROLS` → **⚡ Seed Demo Data** to ensure baseline fleet and shelter records are present.

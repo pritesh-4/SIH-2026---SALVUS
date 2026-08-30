@@ -2,8 +2,11 @@ import { Outlet, Link } from 'react-router-dom'
 import { DevDemoControls } from '../components/common/DevDemoControls'
 import { GlobalNotificationBanner } from '../components/common/GlobalNotificationBanner'
 import { AuthorityThemeToggle } from '../components/ui'
+import { useAuth } from '../hooks/useAuth'
 
 export const AuthorityLayout = () => {
+  const { user, logout } = useAuth()
+
   return (
     <div className="min-h-screen bg-salvus-bg text-salvus-text-primary flex flex-col selection:bg-salvus-info selection:text-white transition-colors duration-200">
       {/* System Notifications */}
@@ -44,7 +47,7 @@ export const AuthorityLayout = () => {
             <span className="font-medium">Flash Flood Surge in Progress</span>
           </div>
 
-          {/* Right Action: Clock, Theme Switcher & Citizen Portal Switcher */}
+          {/* Right Action: Clock, Theme Switcher & Operator Profile / Sign Out */}
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-1.5 text-xs text-salvus-text-secondary bg-salvus-surface-elevated border border-salvus-border px-2.5 py-1 rounded">
               <span className="text-salvus-text-muted">Sys:</span>
@@ -54,14 +57,22 @@ export const AuthorityLayout = () => {
             {/* Quiet Theme Toggle */}
             <AuthorityThemeToggle />
 
-            <Link
-              to="/citizen"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-salvus-surface-elevated hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-primary text-xs font-semibold transition-colors cursor-pointer tracking-wide"
-              title="Switch to Citizen Safety Console"
-            >
-              <span className="text-xs">👤</span>
-              <span className="hidden xs:inline">Citizen Portal</span>
-            </Link>
+            {/* Authenticated Operator Badge & Logout */}
+            {user && (
+              <div className="flex items-center gap-2 pl-2 border-l border-salvus-border">
+                <span className="hidden xl:inline text-[11px] font-medium text-salvus-text-secondary">
+                  {user.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-salvus-surface-elevated hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-secondary hover:text-salvus-critical text-xs font-semibold transition-colors cursor-pointer tracking-wide"
+                  title="Sign out of Salvus Command"
+                >
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>

@@ -35,17 +35,24 @@ export const loginUser = async (email, password) => {
       },
     }
   } catch (error) {
-    const message =
-      error.response?.data?.detail?.error?.message ||
-      error.response?.data?.detail?.message ||
-      error.message ||
-      'Authentication failed. Please try again.'
+    let message = 'Salvus is temporarily unable to sign you in.'
+    let code = 'SERVER_ERROR'
+    const status = error.response?.status
 
-    const code = error.response?.data?.detail?.error?.code || error.code || 'AUTH_ERROR'
+    if (!error.response) {
+      code = 'NETWORK_ERROR'
+      message = 'Salvus is temporarily unable to reach the server. Please check your connection.'
+    } else if (status === 401) {
+      code = 'INVALID_CREDENTIALS'
+      message = 'Email or password is incorrect.'
+    } else if (status >= 500) {
+      code = 'SERVER_ERROR'
+      message = 'Salvus is temporarily experiencing service interruptions. Please try again.'
+    }
 
     return {
       success: false,
-      error: { message, code, status: error.response?.status },
+      error: { message, code, status },
     }
   }
 }

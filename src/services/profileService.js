@@ -1,19 +1,13 @@
-import { apiClient, fetchRoleToken, getAuthToken } from './api'
+import { apiClient } from './api'
 
 const OFFLINE_PASS_KEY = 'salvus_offline_emergency_pass'
 const OFFLINE_PROFILE_SNAPSHOT_KEY = 'salvus_profile_snapshot_local'
 
 /**
  * Fetch the authenticated citizen's persistent profile from the backend.
- * Automatically provisions a citizen identity session if unauthenticated.
  */
 export const fetchCitizenProfile = async () => {
   try {
-    let token = getAuthToken()
-    if (!token) {
-      token = await fetchRoleToken('CITIZEN', 'Citizen User')
-    }
-
     const response = await apiClient.get('/api/profile/me')
     if (response.data?.success && response.data?.data) {
       return {

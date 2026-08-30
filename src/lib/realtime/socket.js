@@ -1,7 +1,9 @@
 import { io } from 'socket.io-client'
-import { getAuthToken } from '../../services/api'
+import { getAuthToken } from '../../services/api.js'
 
-const SOCKET_URL = import.meta.env.VITE_WS_URL || window.location.origin
+const SOCKET_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_WS_URL) ||
+  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000')
 
 let socketInstance = null
 const connectionListeners = new Set()
@@ -89,6 +91,27 @@ export const disconnectSocket = () => {
   if (socketInstance) {
     socketInstance.disconnect()
   }
+}
+
+/**
+ * Clean up all realtime resources on user logout.
+ * Leaves all active rooms, disconnects socket, and resets the singleton instance.
+ */
+export const cleanupSocketOnLogout = () => {
+  if (socketInstance) {
+    try {
+      activeRooms.forEach((room) => {
+        socketInstance.emit('leave_room', { room })
+      })
+    } catch {
+      // Socket may already be disconnected
+    }
+    activeRooms.clear()
+    socketInstance.removeAllListeners()
+    socketInstance.disconnect()
+    socketInstance = null
+  }
+  notifyStatus('DISCONNECTED')
 }
 
 /**

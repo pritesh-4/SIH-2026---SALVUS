@@ -155,3 +155,17 @@ This document formally records foundational architectural decisions, rationale, 
 - **Why:** Eliminates fake authentication, secures API endpoints, guarantees repeatable hackathon judge evaluation, and establishes a production-grade session layer.
 - **Trade-offs:** Stateless JWT tokens are cleared client-side on logout (server-side token blacklists deferred to post-hackathon).
 - **Status:** **Active / Implemented ✅**
+
+---
+
+## ADR-016: Two-Tier Role-Based Route Guards & Session Lifecycle Separation
+
+- **Context:** Applications with multi-role portals (e.g. Citizen vs. Authority Dispatcher) require strict boundary enforcement to prevent cross-role URL tampering, token manipulation, and orphaned WebSocket/telemetry sessions after logout.
+- **Decision:**
+  1. Implement a reusable `<ProtectedRoute allowedRoles={[...]}>` component in React Router wrapping distinct role portal hierarchies.
+  2. Implement an explicit 4-state authentication lifecycle (`INITIALIZING`, `AUTHENTICATED`, `UNAUTHENTICATED`, `AUTHENTICATION_ERROR`) ensuring zero dashboard flickering during session restoration.
+  3. Enforce deterministic cross-role redirection (Citizen attempting `/authority` $\rightarrow$ redirected to `/citizen`; Authority attempting `/citizen` $\rightarrow$ redirected to `/authority`) with loop prevention.
+  4. Implement comprehensive logout teardown: purges tokens, disconnects Socket.IO, emits room exit events, and resets identity state.
+- **Why:** Separates UX routing guards from backend RBAC security while guaranteeing that neither role can access the other's domain or leak realtime telemetry.
+- **Trade-offs:** Requires route wrapping and location state preservation for post-login return paths.
+- **Status:** **Active / Implemented ✅**

@@ -1,10 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import {
-  fetchIncidents,
-  updateIncidentStatus,
-  fetchRoleToken,
-  getAuthToken,
-} from '../../../services/api'
+import { fetchIncidents, updateIncidentStatus } from '../../../services/api'
 import { authorityData } from '../../../data/authority/authorityMock'
 import {
   joinRoom,
@@ -82,9 +77,6 @@ export const useAuthorityIncidents = () => {
     let isMounted = true
 
     const initAuthority = async () => {
-      if (!getAuthToken()) {
-        await fetchRoleToken('AUTHORITY', 'Dispatcher Mukherjee')
-      }
       const result = await fetchIncidents()
       if (!isMounted) return
       if (result.success && result.data && result.data.length > 0) {

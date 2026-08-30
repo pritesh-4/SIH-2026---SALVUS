@@ -389,7 +389,26 @@ async def seed_database(db) -> dict:
                 }
             ),
             "is_verified": 1,
-        }
+        },
+        {
+            "id": "user-citizen-demo",
+            "emergency_id": "SLV-CIT-DEMO",
+            "full_name": "Aditi Mukherjee",
+            "phone": "+91 98301 23456",
+            "email": "citizen@salvus.demo",
+            "registered_address": "Flat 4B, Greenwood Apts, Sector 12, Salt Lake, Kolkata",
+            "blood_group": "O+",
+            "avatar_initials": "AM",
+            "avatar_url": None,
+            "medical_info": json.dumps(
+                {
+                    "conditions": ["Mild Asthma (Carries Inhaler)"],
+                    "allergies": ["Penicillin Allergy"],
+                    "mobilityNote": "Fully Mobile / Ambulatory",
+                }
+            ),
+            "is_verified": 1,
+        },
     ]
 
     for prof in SEED_CITIZEN_PROFILES:
@@ -441,6 +460,26 @@ async def seed_database(db) -> dict:
         {
             "id": "ec-102",
             "user_id": "cit-default",
+            "name": "Priya Das",
+            "relationship": "Sister / Neighbor",
+            "phone": "+91 98311 44556",
+            "priority": 2,
+            "is_primary": 0,
+            "notify_on_sos": 1,
+        },
+        {
+            "id": "ec-demo-101",
+            "user_id": "user-citizen-demo",
+            "name": "Dr. Sourav Mukherjee",
+            "relationship": "Father",
+            "phone": "+91 98300 11223",
+            "priority": 1,
+            "is_primary": 1,
+            "notify_on_sos": 1,
+        },
+        {
+            "id": "ec-demo-102",
+            "user_id": "user-citizen-demo",
             "name": "Priya Das",
             "relationship": "Sister / Neighbor",
             "phone": "+91 98311 44556",

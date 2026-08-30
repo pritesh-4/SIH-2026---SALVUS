@@ -1,7 +1,10 @@
 import { NavLink, Link } from 'react-router-dom'
 import { CitizenThemeToggle } from '../ui'
+import { useAuth } from '../../hooks/useAuth'
 
 export const Navbar = ({ unreadAlertsCount = 0 }) => {
+  const { user, logout } = useAuth()
+
   const navItems = [
     { id: 'home', label: 'Home', path: '/citizen', end: true },
     { id: 'map', label: 'Map', path: '/citizen/map' },
@@ -63,7 +66,7 @@ export const Navbar = ({ unreadAlertsCount = 0 }) => {
           ))}
         </nav>
 
-        {/* Right Section: Theme Toggle, Live Status & Authority Switcher */}
+        {/* Right Section: Theme Toggle, Live Status & User Profile / Logout */}
         <div className="flex items-center gap-2.5 sm:gap-3.5 text-xs">
           {/* Theme Toggle for Citizens */}
           <CitizenThemeToggle />
@@ -74,16 +77,26 @@ export const Navbar = ({ unreadAlertsCount = 0 }) => {
             <span className="text-[11px] tracking-wide">LIVE</span>
           </div>
 
-          <Link
-            to="/authority"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-salvus-surface hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-primary text-xs font-semibold transition-colors shadow-xs cursor-pointer"
-            title="Open Authority Command Center"
-          >
-            <span>🛡️</span>
-            <span className="hidden xs:inline">Authority Center</span>
-          </Link>
+          {/* Authenticated Citizen Badge & Logout Button */}
+          {user && (
+            <div className="flex items-center gap-2 pl-2 border-l border-salvus-border">
+              <span className="hidden lg:inline text-[11px] font-medium text-salvus-text-secondary">
+                {user.name}
+              </span>
+              <button
+                type="button"
+                onClick={logout}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-salvus-surface hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-secondary hover:text-salvus-critical text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+                title="Sign out of Salvus"
+              >
+                <span>Sign Out</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>
   )
 }
+
+export default Navbar
