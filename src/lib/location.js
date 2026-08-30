@@ -245,15 +245,22 @@ export const checkLocationPermission = async () => {
   }
 }
 
+let inFlightLocationPromise = null
+
 /**
  * Acquire one-off user coordinates via browser Geolocation API.
  * Preferred for normal map browsing & reporting.
  * Handles permission denied, timeout, unavailable gracefully without throwing.
+ * Deduplicates in-flight requests to prevent concurrent redundant calls.
  *
- * @param {Object} options - GeolocationOptions override
+ * @param {Object} options - GeolocationOptions override (options.force to bypass in-flight)
  * @returns {Promise<{ success: boolean, model: Object, error: string | null }>}
  */
 export const getCurrentLocation = async (options = {}) => {
+  if (inFlightLocationPromise && !options.force) {
+    return inFlightLocationPromise
+  }
+
   if (typeof window === 'undefined' || !navigator?.geolocation) {
     const errorMsg = 'Your browser cannot provide location right now.'
     return {
@@ -271,7 +278,7 @@ export const getCurrentLocation = async (options = {}) => {
     }
   }
 
-  return new Promise((resolve) => {
+  const promise = new Promise((resolve) => {
     let resolved = false
 
     const timeoutTimer = setTimeout(() => {
@@ -394,6 +401,12 @@ export const getCurrentLocation = async (options = {}) => {
       }
     )
   })
+
+  inFlightLocationPromise = promise.finally(() => {
+    inFlightLocationPromise = null
+  })
+
+  return inFlightLocationPromise
 }
 
 /**

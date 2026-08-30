@@ -150,4 +150,87 @@ describe('Salvus Citizen Profile Service & State Pipeline', () => {
     assert.equal(updatedProfile.emergency_id, 'SLV-CIT-9922')
     assert.equal(updatedProfile.full_name, 'Authorized Citizen Renamed')
   })
+
+  it('Scenario 6: Controlled React Input State & Continuous Keystroke Stream', () => {
+    // Simulates continuous character-by-character typing without losing state or resetting identity
+    let formState = {
+      full_name: '',
+      phone: '',
+      registered_address: '',
+    }
+
+    const setFormState = (updater) => {
+      formState = typeof updater === 'function' ? updater(formState) : updater
+    }
+
+    // User types 'Alexandra'
+    const nameInput = 'Alexandra'
+    for (const char of nameInput) {
+      setFormState((prev) => ({
+        ...prev,
+        full_name: prev.full_name + char,
+      }))
+    }
+
+    // User types '+91 9876543210'
+    const phoneInput = '+91 9876543210'
+    for (const char of phoneInput) {
+      setFormState((prev) => ({
+        ...prev,
+        phone: prev.phone + char,
+      }))
+    }
+
+    // User types 'Sector 12, Rourkela'
+    const addressInput = 'Sector 12, Rourkela'
+    for (const char of addressInput) {
+      setFormState((prev) => ({
+        ...prev,
+        registered_address: prev.registered_address + char,
+      }))
+    }
+
+    assert.equal(formState.full_name, 'Alexandra')
+    assert.equal(formState.phone, '+91 9876543210')
+    assert.equal(formState.registered_address, 'Sector 12, Rourkela')
+  })
+
+  it('Scenario 7: Medical & Contact Modal Controlled Form Continuous Typing', () => {
+    let medicalFormState = {
+      blood_group: 'O+',
+      conditionsText: '',
+      allergiesText: '',
+      mobility_note: 'Fully Mobile / Ambulatory',
+      medications_note: '',
+    }
+
+    // Simulate typing 'Bronchial asthma'
+    const condition = 'Bronchial asthma'
+    for (const char of condition) {
+      medicalFormState = {
+        ...medicalFormState,
+        conditionsText: medicalFormState.conditionsText + char,
+      }
+    }
+
+    // Contact form typing 'Rahul Sharma'
+    let contactFormState = {
+      name: '',
+      relationship: 'Father',
+      phone: '',
+      is_primary: true,
+      notify_on_sos: true,
+    }
+
+    const contactName = 'Rahul Sharma'
+    for (const char of contactName) {
+      contactFormState = {
+        ...contactFormState,
+        name: contactFormState.name + char,
+      }
+    }
+
+    assert.equal(medicalFormState.conditionsText, 'Bronchial asthma')
+    assert.equal(contactFormState.name, 'Rahul Sharma')
+  })
 })

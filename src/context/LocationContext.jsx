@@ -3,6 +3,7 @@ import { createContext, useState, useEffect, useCallback, useRef } from 'react'
 import {
   INITIAL_LOCATION_STATE,
   getCurrentLocation,
+  createLocationModel,
   createLandmarkLocation,
   watchEmergencyLocation,
   checkLocationPermission,
@@ -20,6 +21,13 @@ export const LocationProvider = ({ children }) => {
 
   const stopEmergencyWatchRef = useRef(null)
   const isMountedRef = useRef(true)
+  const locationRef = useRef(location)
+  const isAcquiringRef = useRef(false)
+  const inFlightRequestRef = useRef(null)
+
+  useEffect(() => {
+    locationRef.current = location
+  }, [location])
 
   useEffect(() => {
     isMountedRef.current = true
@@ -32,83 +40,168 @@ export const LocationProvider = ({ children }) => {
     }
   }, [])
 
-  // Check initial browser permission on mount without triggering an annoying prompt
-  useEffect(() => {
-    checkLocationPermission().then((perm) => {
-      if (isMountedRef.current) {
-        setLocation((prev) => {
-          if (prev.source === 'UNKNOWN' && prev.latitude === null) {
-            return {
-              ...prev,
-              permission: perm,
-              status: perm === 'DENIED' ? 'DENIED' : 'IDLE',
-              error: perm === 'DENIED' ? 'Location access is off.' : null,
-            }
-          }
-          return prev
-        })
-      }
-    })
-  }, [])
-
   /**
    * Request one-off browser device coordinates.
    * Safe, non-throwing, returns normalized location model.
+   * Deduplicates in-flight calls and maintains stable callback identity.
    */
-  const requestLocation = useCallback(
-    async (options = {}) => {
-      if (isAcquiring) return location
+  const requestLocation = useCallback(async (options = {}) => {
+    // Join active in-flight request if already running
+    if (inFlightRequestRef.current && !options.force) {
+      return inFlightRequestRef.current
+    }
 
-      setIsAcquiring(true)
-      setError(null)
+    if (isAcquiringRef.current && !options.force) {
+      return locationRef.current
+    }
 
-      const result = await getCurrentLocation(options)
+    isAcquiringRef.current = true
+    setIsAcquiring(true)
+    setError(null)
 
-      if (isMountedRef.current) {
-        setIsAcquiring(false)
-        if (result.success && result.model) {
-          setLocation(result.model)
-          setError(null)
-          // Trigger map recenter on successful initial location lock
-          setRecenterSignal((s) => s + 1)
-          return result.model
-        } else {
-          const fallbackModel = result.model || INITIAL_LOCATION_STATE
-          setLocation(fallbackModel)
-          setError(result.error || 'Location access is off.')
-          return fallbackModel
+    const requestPromise = (async () => {
+      try {
+        const result = await getCurrentLocation(options)
+        if (isMountedRef.current) {
+          if (result.success && result.model) {
+            locationRef.current = result.model
+            setLocation(result.model)
+            setError(null)
+            // Trigger map recenter on successful initial location lock
+            setRecenterSignal((s) => s + 1)
+            return result.model
+          } else {
+            const fallbackModel = result.model || INITIAL_LOCATION_STATE
+            locationRef.current = fallbackModel
+            setLocation(fallbackModel)
+            setError(result.error || 'Location access is off.')
+            return fallbackModel
+          }
         }
+        return locationRef.current
+      } catch {
+        const fallbackModel = createLocationModel({
+          latitude: null,
+          longitude: null,
+          permission: 'UNAVAILABLE',
+          source: 'UNKNOWN',
+          error: "Couldn't determine your location.",
+          status: 'ERROR',
+        })
+        if (isMountedRef.current) {
+          locationRef.current = fallbackModel
+          setLocation(fallbackModel)
+          setError("Couldn't determine your location.")
+        }
+        return fallbackModel
+      } finally {
+        if (isMountedRef.current) {
+          setIsAcquiring(false)
+        }
+        isAcquiringRef.current = false
+        inFlightRequestRef.current = null
       }
-      return location
-    },
-    [isAcquiring, location]
-  )
+    })()
+
+    inFlightRequestRef.current = requestPromise
+    return requestPromise
+  }, [])
+
+  // Check initial browser permission on mount and auto-acquire if already GRANTED
+  useEffect(() => {
+    let permissionStatusObj = null
+
+    checkLocationPermission().then((perm) => {
+      if (!isMountedRef.current) return
+
+      setLocation((prev) => {
+        if (prev.source === 'UNKNOWN' && prev.latitude === null) {
+          return {
+            ...prev,
+            permission: perm,
+            status: perm === 'DENIED' ? 'DENIED' : 'IDLE',
+            error: perm === 'DENIED' ? 'Location access is off.' : null,
+          }
+        }
+        return prev
+      })
+
+      // If browser permission is already GRANTED, automatically acquire location
+      if (perm === 'GRANTED') {
+        requestLocation()
+      }
+    })
+
+    // Listen for permission changes (e.g. user toggles in browser settings)
+    if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'geolocation' })
+        .then((status) => {
+          if (!isMountedRef.current) return
+          permissionStatusObj = status
+          status.onchange = () => {
+            if (!isMountedRef.current) return
+            const newPerm =
+              status.state === 'granted'
+                ? 'GRANTED'
+                : status.state === 'denied'
+                  ? 'DENIED'
+                  : 'PROMPT'
+
+            setLocation((prev) => {
+              if (newPerm === 'DENIED' && prev.source === 'UNKNOWN') {
+                return {
+                  ...prev,
+                  permission: 'DENIED',
+                  status: 'DENIED',
+                  error: 'Location access is off.',
+                }
+              }
+              return {
+                ...prev,
+                permission: newPerm,
+              }
+            })
+
+            if (newPerm === 'GRANTED' && locationRef.current.latitude === null) {
+              requestLocation()
+            }
+          }
+        })
+        .catch(() => {
+          // Permissions API query not supported / failed
+        })
+    }
+
+    return () => {
+      if (permissionStatusObj) {
+        permissionStatusObj.onchange = null
+      }
+    }
+  }, [requestLocation])
 
   /**
    * Explicitly select a landmark fallback location.
    * Sets source to 'LANDMARK' and isFallback to true.
    */
-  const selectLandmark = useCallback(
-    (landmarkOrName) => {
-      let landmarkObj
-      if (typeof landmarkOrName === 'string') {
-        landmarkObj =
-          LANDMARKS.find((l) => l.name.toLowerCase() === landmarkOrName.toLowerCase()) ||
-          LANDMARKS[0]
-      } else if (landmarkOrName && typeof landmarkOrName.latitude === 'number') {
-        landmarkObj = landmarkOrName
-      } else {
-        landmarkObj = LANDMARKS[0]
-      }
+  const selectLandmark = useCallback((landmarkOrName) => {
+    let landmarkObj
+    if (typeof landmarkOrName === 'string') {
+      landmarkObj =
+        LANDMARKS.find((l) => l.name.toLowerCase() === landmarkOrName.toLowerCase()) || LANDMARKS[0]
+    } else if (landmarkOrName && typeof landmarkOrName.latitude === 'number') {
+      landmarkObj = landmarkOrName
+    } else {
+      landmarkObj = LANDMARKS[0]
+    }
 
-      const landmarkModel = createLandmarkLocation(landmarkObj, location.permission)
-      setLocation(landmarkModel)
-      setError(null)
-      setRecenterSignal((s) => s + 1)
-      return landmarkModel
-    },
-    [location.permission]
-  )
+    const landmarkModel = createLandmarkLocation(landmarkObj, locationRef.current.permission)
+    locationRef.current = landmarkModel
+    setLocation(landmarkModel)
+    setError(null)
+    setRecenterSignal((s) => s + 1)
+    return landmarkModel
+  }, [])
 
   /**
    * Recenter map on current location signal

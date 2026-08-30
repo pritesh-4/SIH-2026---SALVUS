@@ -51,14 +51,30 @@ export const CitizenMap = () => {
   const prevCoordsRef = useRef(null)
   const initialUrlHandledRef = useRef(false)
   const fetchSeqRef = useRef(0)
+  const autoRequestAttemptedRef = useRef(false)
 
-  // Request location on map mount if not yet requested
+  // Automatically request location on map mount if not yet acquired and permission allows
   useEffect(() => {
+    if (autoRequestAttemptedRef.current) return
+
+    // If location is already known, do not re-request
+    if (location.latitude != null) {
+      autoRequestAttemptedRef.current = true
+      return
+    }
+
+    // If permission is denied or unavailable, do not auto-request or trigger repeated prompts
+    if (location.permission === 'DENIED' || location.permission === 'UNAVAILABLE') {
+      autoRequestAttemptedRef.current = true
+      return
+    }
+
+    // For PROMPT or GRANTED states on initial entry, auto-acquire coordinates
     if (
-      location.source === 'UNKNOWN' &&
-      location.latitude === null &&
-      location.permission !== 'DENIED'
+      (location.source === 'UNKNOWN' || location.latitude === null) &&
+      (location.permission === 'PROMPT' || location.permission === 'GRANTED')
     ) {
+      autoRequestAttemptedRef.current = true
       requestLocation()
     }
   }, [location.source, location.latitude, location.permission, requestLocation])
@@ -73,10 +89,12 @@ export const CitizenMap = () => {
         setIsLoadingPlaces(false)
         setIsRefreshingPlaces(false)
         setNearbyPlaces([])
-        setFeedStatus('UNAVAILABLE')
-        setPlacesError(
-          'Location access is off. Enable GPS or select an approximate landmark to discover nearby verified facilities.'
-        )
+        if (location.permission === 'DENIED' || location.permission === 'UNAVAILABLE') {
+          setFeedStatus('UNAVAILABLE')
+        } else {
+          setFeedStatus('IDLE')
+        }
+        setPlacesError(null)
         setPlacesFreshness('UNAVAILABLE')
         return
       }
@@ -191,7 +209,13 @@ export const CitizenMap = () => {
         }
       }
     },
-    [location.latitude, location.longitude, searchRadiusMeters, nearbyPlaces.length]
+    [
+      location.latitude,
+      location.longitude,
+      location.permission,
+      searchRadiusMeters,
+      nearbyPlaces.length,
+    ]
   )
 
   // Refetch when citizen location becomes available or moves
@@ -313,8 +337,18 @@ export const CitizenMap = () => {
     return liveHazards
   }, [liveHazards, activeFilter])
 
+  const isPermissionDenied = location.permission === 'DENIED' || location.status === 'DENIED'
+  const isLocationUnavailable =
+    location.permission === 'UNAVAILABLE' || location.status === 'UNAVAILABLE'
+  const isLandmarkFallback = location.source === 'LANDMARK' || location.isFallback
+
   const isInitialPending =
-    (isLoadingPlaces || isAcquiring || feedStatus === 'IDLE') && nearbyPlaces.length === 0
+    (isLoadingPlaces ||
+      isAcquiring ||
+      (feedStatus === 'IDLE' && !isPermissionDenied && !isLocationUnavailable)) &&
+    nearbyPlaces.length === 0 &&
+    !location.latitude &&
+    !isLandmarkFallback
 
   // Per-category state evaluation (LOADING, SUCCESS, EMPTY, UNAVAILABLE, PARTIAL)
   const categoryStates = useMemo(() => {
@@ -429,11 +463,6 @@ export const CitizenMap = () => {
     status: 'SUCCESS',
     displayBadge: String(displayedPlaces.length),
   }
-
-  const isPermissionDenied = location.permission === 'DENIED' || location.status === 'DENIED'
-  const isLocationUnavailable =
-    location.permission === 'UNAVAILABLE' || location.status === 'UNAVAILABLE'
-  const isLandmarkFallback = location.source === 'LANDMARK' || location.isFallback
 
   const handleMyLocationClick = () => {
     requestLocation({ timeout: 10000 })

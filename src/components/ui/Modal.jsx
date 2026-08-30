@@ -19,7 +19,12 @@ export const Modal = ({
 }) => {
   const modalRef = useRef(null)
   const previousFocusRef = useRef(null)
+  const onCloseRef = useRef(onClose)
   const uniqueId = useId()
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   // Focus trapping: keep Tab cycling within the modal
   const handleTabTrap = useCallback((e) => {
@@ -55,7 +60,7 @@ export const Modal = ({
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        onClose?.()
+        onCloseRef.current?.()
         return
       }
       handleTabTrap(e)
@@ -66,20 +71,20 @@ export const Modal = ({
     const originalOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
-    // Auto-focus the modal container
-    if (modalRef.current) {
+    // Auto-focus the modal container ONLY once on initial mount if focus is not already inside
+    if (modalRef.current && !modalRef.current.contains(document.activeElement)) {
       modalRef.current.focus()
     }
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       document.body.style.overflow = originalOverflow
-      // Restore focus to previously focused element
+      // Restore focus to previously focused element on close
       if (previousFocusRef.current && typeof previousFocusRef.current.focus === 'function') {
         previousFocusRef.current.focus()
       }
     }
-  }, [isOpen, onClose, handleTabTrap])
+  }, [isOpen, handleTabTrap])
 
   if (!isOpen) return null
 

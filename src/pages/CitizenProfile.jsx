@@ -313,6 +313,25 @@ export const CitizenProfile = () => {
   }
 
   // -------------------------------------------------------------------------
+  // Modal Visibility Handlers
+  // -------------------------------------------------------------------------
+  const handleCloseMedicalModal = useCallback(() => {
+    setIsMedicalModalOpen(false)
+  }, [])
+
+  const handleCloseContactModal = useCallback(() => {
+    setIsContactModalOpen(false)
+  }, [])
+
+  const handleCloseDeleteConfirm = useCallback(() => {
+    setDeleteConfirmContact(null)
+  }, [])
+
+  const handleCloseOfflinePassModal = useCallback(() => {
+    setIsOfflinePassModalOpen(false)
+  }, [])
+
+  // -------------------------------------------------------------------------
   // Medical Handlers
   // -------------------------------------------------------------------------
   const handleOpenMedicalModal = () => {
@@ -1302,7 +1321,7 @@ export const CitizenProfile = () => {
       {/* ===================================================================== */}
       <Modal
         isOpen={isMedicalModalOpen}
-        onClose={() => setIsMedicalModalOpen(false)}
+        onClose={handleCloseMedicalModal}
         title="Edit Emergency Medical Profile"
         description="This critical data assists rescue teams and paramedics during evacuation triage."
         size="lg"
@@ -1419,7 +1438,7 @@ export const CitizenProfile = () => {
       {/* ===================================================================== */}
       <Modal
         isOpen={isContactModalOpen}
-        onClose={() => setIsContactModalOpen(false)}
+        onClose={handleCloseContactModal}
         title={editingContactId ? 'Edit Emergency Contact' : 'Add Emergency Contact'}
         description="Designated contacts are notified during emergency SOS activations."
         size="md"
@@ -1510,7 +1529,7 @@ export const CitizenProfile = () => {
               type="button"
               variant="quiet"
               size="sm"
-              onClick={() => setIsContactModalOpen(false)}
+              onClick={handleCloseContactModal}
               disabled={contactSaveStatus === 'saving'}
             >
               Cancel
@@ -1536,7 +1555,7 @@ export const CitizenProfile = () => {
       {/* ===================================================================== */}
       <Modal
         isOpen={Boolean(deleteConfirmContact)}
-        onClose={() => setDeleteConfirmContact(null)}
+        onClose={handleCloseDeleteConfirm}
         title="Remove Emergency Contact?"
         description="Are you sure you want to remove this contact from your emergency dispatch roster?"
         size="sm"
@@ -1554,7 +1573,7 @@ export const CitizenProfile = () => {
               type="button"
               variant="quiet"
               size="sm"
-              onClick={() => setDeleteConfirmContact(null)}
+              onClick={handleCloseDeleteConfirm}
               disabled={isDeletingContact}
             >
               Cancel
@@ -1577,7 +1596,7 @@ export const CitizenProfile = () => {
       {/* ===================================================================== */}
       <Modal
         isOpen={isOfflinePassModalOpen}
-        onClose={() => setIsOfflinePassModalOpen(false)}
+        onClose={handleCloseOfflinePassModal}
         title="Offline Emergency Pass"
         description="Saved locally to your device memory. Valid for intake triage at zero connectivity."
         size="lg"

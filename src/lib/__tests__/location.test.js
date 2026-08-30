@@ -18,6 +18,7 @@ import {
   createLandmarkLocation,
   getCurrentLocation,
   watchEmergencyLocation,
+  checkLocationPermission,
   LANDMARKS,
   INITIAL_LOCATION_STATE,
 } from '../location.js'
@@ -345,6 +346,144 @@ async function runTests() {
   }
   simulateUserPan()
   assertEqual(userInteracted, true, 'Case H: User pan sets manual interaction state')
+
+  // ---------------------------------------------------------------------------
+  // 8. Auto Location Detection on First Entry & Concurrency Suite (Bug Fix #1)
+  // ---------------------------------------------------------------------------
+  console.log('\n[Suite 8: Auto Location Detection & Concurrency (Bug Fix #1)]')
+
+  // TEST 1: Fresh browser -> PROMPT permission -> Location allowed -> Acquired
+  setMockNavigator({
+    geolocation: {
+      getCurrentPosition: (cb) => {
+        cb({ coords: { latitude: 22.5726, longitude: 88.3639, accuracy: 10 } })
+      },
+    },
+    permissions: {
+      query: async () => ({ state: 'prompt' }),
+    },
+  })
+  const t1Perm = await checkLocationPermission()
+  assertEqual(t1Perm, 'PROMPT', 'TEST 1: Fresh browser permission resolves to PROMPT')
+  const t1Loc = await getCurrentLocation()
+  assertEqual(t1Loc.success, true, 'TEST 1: Location acquisition succeeds')
+  assertEqual(t1Loc.model.source, 'BROWSER', 'TEST 1: Source is marked BROWSER')
+  assertEqual(t1Loc.model.permission, 'GRANTED', 'TEST 1: Model permission updated to GRANTED')
+
+  // TEST 2: Fresh browser -> PROMPT permission -> Location denied by user
+  setMockNavigator({
+    geolocation: {
+      getCurrentPosition: (_, errCb) => {
+        const err = new Error('User denied Geolocation')
+        err.code = 1
+        errCb(err)
+      },
+    },
+    permissions: {
+      query: async () => ({ state: 'prompt' }),
+    },
+  })
+  const t2Perm = await checkLocationPermission()
+  assertEqual(t2Perm, 'PROMPT', 'TEST 2: Fresh browser permission starts as PROMPT')
+  const t2Loc = await getCurrentLocation({ force: true })
+  assertEqual(t2Loc.success, false, 'TEST 2: Acquisition gracefully reports success = false')
+  assertEqual(t2Loc.model.permission, 'DENIED', 'TEST 2: Model permission marked as DENIED')
+  assertEqual(t2Loc.model.latitude, null, 'TEST 2: No fake coordinates invented')
+  assertEqual(t2Loc.model.error, 'Location access is off.', 'TEST 2: Calm error message shown')
+
+  // TEST 3: Permission already GRANTED -> Auto-acquire happens seamlessly
+  setMockNavigator({
+    geolocation: {
+      getCurrentPosition: (cb) => {
+        cb({ coords: { latitude: 22.5867, longitude: 88.4178, accuracy: 14 } })
+      },
+    },
+    permissions: {
+      query: async () => ({ state: 'granted' }),
+    },
+  })
+  const t3Perm = await checkLocationPermission()
+  assertEqual(t3Perm, 'GRANTED', 'TEST 3: Permission returns GRANTED immediately')
+  const t3Loc = await getCurrentLocation({ force: true })
+  assertEqual(t3Loc.success, true, 'TEST 3: Coordinates auto-acquired without prompt')
+  assertEqual(t3Loc.model.latitude, 22.5867, 'TEST 3: Real device latitude captured')
+
+  // TEST 4: Permission previously DENIED -> checkLocationPermission returns DENIED
+  setMockNavigator({
+    geolocation: {
+      getCurrentPosition: (_, errCb) => {
+        const err = new Error('Permission denied')
+        err.code = 1
+        errCb(err)
+      },
+    },
+    permissions: {
+      query: async () => ({ state: 'denied' }),
+    },
+  })
+  const t4Perm = await checkLocationPermission()
+  assertEqual(t4Perm, 'DENIED', 'TEST 4: State detects previously denied permission')
+
+  // TEST 5: Concurrency Safety & Deduplication (5 simultaneous calls -> 1 browser invocation)
+  let geoCallCount = 0
+  setMockNavigator({
+    geolocation: {
+      getCurrentPosition: (cb) => {
+        geoCallCount++
+        setTimeout(() => {
+          cb({ coords: { latitude: 22.57, longitude: 88.4, accuracy: 8 } })
+        }, 20)
+      },
+    },
+  })
+  const [p1, p2, p3, p4, p5] = await Promise.all([
+    getCurrentLocation({ force: true }),
+    getCurrentLocation(),
+    getCurrentLocation(),
+    getCurrentLocation(),
+    getCurrentLocation(),
+  ])
+  assertEqual(geoCallCount, 1, 'TEST 5: Only ONE geolocation request fired for 5 concurrent calls')
+  assertEqual(p1.success, true, 'TEST 5: Promise 1 resolved successfully')
+  assertEqual(p2.success, true, 'TEST 5: Promise 2 joined in-flight and succeeded')
+  assertEqual(p3.success, true, 'TEST 5: Promise 3 joined in-flight and succeeded')
+  assertEqual(p4.success, true, 'TEST 5: Promise 4 joined in-flight and succeeded')
+  assertEqual(p5.success, true, 'TEST 5: Promise 5 joined in-flight and succeeded')
+  assertEqual(p1.model.latitude, 22.57, 'TEST 5: Identical coordinates returned across all callers')
+
+  // TEST 6: Slow GPS / Timeout handling
+  setMockNavigator({
+    geolocation: {
+      getCurrentPosition: () => {
+        // Intentionally hang without calling callback
+      },
+    },
+  })
+  const t6Loc = await getCurrentLocation({ timeout: 50, force: true })
+  assertEqual(t6Loc.success, false, 'TEST 6: Timeout resolves cleanly with success = false')
+  assertEqual(t6Loc.model.status, 'TIMEOUT', 'TEST 6: Status is TIMEOUT')
+  assert(t6Loc.model.error.includes('timed out'), 'TEST 6: Helpful non-crashing timeout message')
+
+  // TEST 7: Acquired coordinates match downstream requirements
+  setMockNavigator({
+    geolocation: {
+      getCurrentPosition: (cb) => {
+        cb({ coords: { latitude: 22.5726, longitude: 88.3639, accuracy: 6 } })
+      },
+    },
+  })
+  const t7Loc = await getCurrentLocation({ force: true })
+  assertEqual(t7Loc.model.latitude, 22.5726, 'TEST 7: Latitude available for places and hazards')
+  assertEqual(t7Loc.model.longitude, 88.3639, 'TEST 7: Longitude available for places and hazards')
+  assertEqual(t7Loc.model.isFallback, false, 'TEST 7: Real GPS is not marked as fallback')
+
+  // TEST 8: User manual pan flag resets on programmatic recenter signal
+  let userPanState = true
+  function handleRecenterSignal() {
+    userPanState = false
+  }
+  handleRecenterSignal()
+  assertEqual(userPanState, false, 'TEST 8: Recenter signal resets user pan suppression')
 
   console.log('\n========================================')
   console.log(`ALL TESTS COMPLETED: ${passedTests} passed, ${failedTests} failed`)

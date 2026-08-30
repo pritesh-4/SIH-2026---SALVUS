@@ -21,7 +21,12 @@ export const Drawer = ({
 }) => {
   const drawerRef = useRef(null)
   const previousFocusRef = useRef(null)
+  const onCloseRef = useRef(onClose)
   const uniqueId = useId()
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   const handleTabTrap = useCallback((e) => {
     if (e.key !== 'Tab' || !drawerRef.current) return
@@ -55,7 +60,7 @@ export const Drawer = ({
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        onClose?.()
+        onCloseRef.current?.()
         return
       }
       handleTabTrap(e)
@@ -65,7 +70,7 @@ export const Drawer = ({
     const originalOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
-    if (drawerRef.current) {
+    if (drawerRef.current && !drawerRef.current.contains(document.activeElement)) {
       drawerRef.current.focus()
     }
 
@@ -76,7 +81,7 @@ export const Drawer = ({
         previousFocusRef.current.focus()
       }
     }
-  }, [isOpen, onClose, handleTabTrap])
+  }, [isOpen, handleTabTrap])
 
   if (!isOpen) return null
 
