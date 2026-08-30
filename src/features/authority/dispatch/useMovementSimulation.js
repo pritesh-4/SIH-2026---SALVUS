@@ -107,7 +107,7 @@ export const useMovementSimulation = ({
       simStepIndexRef.current = 0
       setIsSimulatingMovement(true)
       if (onStatusMessage) {
-        onStatusMessage(`▶ GPS Telemetry Simulation Started (${simulationSpeedMultiplier}x)`)
+        onStatusMessage(`▶ Simulated Telemetry Started (${simulationSpeedMultiplier}x)`)
       }
     }
   }, [isSimulatingMovement, simulationSpeedMultiplier, onStatusMessage])

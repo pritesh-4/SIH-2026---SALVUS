@@ -40,9 +40,11 @@ export const AuthorityMap = ({
     if (validInc) {
       return [validInc.latitude, validInc.longitude]
     }
-    const validResp = responderMapPoints.find((r) => r.latitude && r.longitude)
+    const validResp = responderMapPoints.find(
+      (r) => (r.lat && r.lng) || (r.latitude && r.longitude)
+    )
     if (validResp) {
-      return [validResp.latitude, validResp.longitude]
+      return [validResp.lat || validResp.latitude, validResp.lng || validResp.longitude]
     }
     const validShelter = shelterMapPoints.find((s) => s.lat && s.lng)
     if (validShelter) {

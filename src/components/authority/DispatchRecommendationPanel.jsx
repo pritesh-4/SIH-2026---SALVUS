@@ -317,7 +317,9 @@ export const DispatchRecommendationPanel = ({
             </span>
             <div className="flex items-center gap-1 font-bold text-salvus-info font-mono mt-0.5">
               <Clock className="h-3 w-3 text-salvus-info shrink-0" />
-              <span>{topCandidate.eta_formatted || topCandidate.etaFormatted || '5 min'}</span>
+              <span>
+                {topCandidate.eta_formatted || topCandidate.etaFormatted || 'Calculating…'}
+              </span>
             </div>
           </div>
 

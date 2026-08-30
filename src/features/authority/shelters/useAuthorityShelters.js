@@ -8,6 +8,9 @@ import { isDemoModeActive } from '../incidents/useAuthorityIncidents'
 export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
   const [liveShelters, setLiveShelters] = useState([])
   const [isLoadingShelters, setIsLoadingShelters] = useState(true)
+  const [shelterDataMode, setShelterDataMode] = useState(() =>
+    isDemoModeActive() ? 'SIMULATED' : 'LIVE'
+  )
 
   // ---------------------------------------------------------------------------
   // 1. Initial Load & Refresh (Enforce Server Truth)
@@ -18,10 +21,13 @@ export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
     const result = await fetchShelters()
     if (result.success && Array.isArray(result.data)) {
       setLiveShelters(result.data)
+      setShelterDataMode(isDemo ? 'SIMULATED' : 'LIVE')
     } else if (isDemo) {
       setLiveShelters(authorityData.shelters || [])
+      setShelterDataMode('SIMULATED')
     } else {
       setLiveShelters([])
+      setShelterDataMode('UNAVAILABLE')
     }
     setIsLoadingShelters(false)
   }, [])
@@ -59,14 +65,17 @@ export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
   )
 
   const shelterMapPoints = useMemo(() => {
-    return liveShelters.map((s) => ({
-      id: s.id,
-      name: s.name,
-      address: s.address,
-      lat: s.latitude,
-      lng: s.longitude,
-      capacity: `${s.available_beds ?? 0} beds free (${s.occupancy_rate || '0%'} occ)`,
-    }))
+    return liveShelters
+      .filter((s) => typeof s.latitude === 'number' && typeof s.longitude === 'number')
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        address: s.address,
+        lat: s.latitude,
+        lng: s.longitude,
+        capacity: `${s.available_beds ?? 0} beds free (${s.occupancy_rate || '0%'} occ)`,
+        locationAvailable: true,
+      }))
   }, [liveShelters])
 
   const candidateShelters = useMemo(() => {
@@ -116,6 +125,7 @@ export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
     liveShelters,
     setLiveShelters,
     isLoadingShelters,
+    shelterDataMode,
     totalBedsAvailable,
     shelterMapPoints,
     candidateShelters,

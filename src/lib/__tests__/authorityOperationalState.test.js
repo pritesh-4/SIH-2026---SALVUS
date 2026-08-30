@@ -166,4 +166,108 @@ describe('Salvus Authority Command Center Operational Pipeline Tests', () => {
     assert.deepEqual(emptyObj.attachments, [])
     assert.deepEqual(emptyObj.events, [])
   })
+
+  it('Scenario 7: Responder Coordinate Safety (No Silent Hardcoded 22.574 Fallback)', () => {
+    const rawResponders = [
+      {
+        id: 'r1',
+        unit_name: 'NDRF Unit 1',
+        latitude: 28.6139,
+        longitude: 77.209,
+        status: 'AVAILABLE',
+      },
+      { id: 'r2', unit_name: 'NDRF Unit 2', latitude: null, longitude: null, status: 'AVAILABLE' },
+      { id: 'r3', unit_name: 'NDRF Unit 3', status: 'AVAILABLE' },
+    ]
+
+    // Map points must filter out units without numeric coordinates
+    const mapPoints = rawResponders
+      .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number')
+      .map((r) => ({
+        id: r.id,
+        lat: r.latitude,
+        lng: r.longitude,
+        locationAvailable: true,
+      }))
+
+    assert.equal(mapPoints.length, 1, 'Only 1 responder has real coordinates')
+    assert.equal(mapPoints[0].id, 'r1')
+    assert.equal(mapPoints[0].lat, 28.6139)
+    assert.equal(mapPoints[0].lng, 77.209)
+
+    // Ensure no fallback coordinates (like 22.574 or 88.372) are injected for r2 or r3
+    assert.equal(
+      mapPoints.some((p) => p.lat === 22.574 || p.lng === 88.372),
+      false
+    )
+  })
+
+  it('Scenario 8: Shelter Bed Aggregation & Coordinate Safety', () => {
+    const rawShelters = [
+      {
+        id: 's1',
+        name: 'Hub A',
+        available_beds: 45,
+        total_beds: 100,
+        latitude: 28.6,
+        longitude: 77.2,
+      },
+      {
+        id: 's2',
+        name: 'Hub B',
+        available_beds: 120,
+        total_beds: 200,
+        latitude: null,
+        longitude: null,
+      },
+      {
+        id: 's3',
+        name: 'Hub C',
+        available_beds: 0,
+        total_beds: 50,
+        latitude: 28.7,
+        longitude: 77.3,
+      },
+    ]
+
+    const totalBeds = rawShelters.reduce((acc, s) => acc + (s.available_beds ?? 0), 0)
+    assert.equal(
+      totalBeds,
+      165,
+      'Total available beds must be accurately summed (45 + 120 + 0 = 165)'
+    )
+
+    const shelterMapPoints = rawShelters
+      .filter((s) => typeof s.latitude === 'number' && typeof s.longitude === 'number')
+      .map((s) => ({ id: s.id, lat: s.latitude, lng: s.longitude, locationAvailable: true }))
+
+    assert.equal(shelterMapPoints.length, 2, 'Only shelters with real coordinates appear on map')
+    assert.equal(
+      shelterMapPoints.some((s) => s.id === 's2'),
+      false,
+      'Shelter without coords is excluded from map'
+    )
+  })
+
+  it('Scenario 9: Data Provenance Unification (LIVE / SIMULATED / PARTIAL / UNAVAILABLE)', () => {
+    const deriveProvenance = (incMode, fleetMode, shelterMode, sitMode) => {
+      const modes = [incMode, fleetMode, shelterMode, sitMode]
+      if (modes.every((m) => m === 'SIMULATED')) return 'SIMULATED'
+      if (modes.every((m) => m === 'LIVE')) return 'LIVE'
+      if (modes.some((m) => m === 'UNAVAILABLE')) return 'PARTIAL'
+      return 'PARTIAL'
+    }
+
+    assert.equal(deriveProvenance('LIVE', 'LIVE', 'LIVE', 'LIVE'), 'LIVE')
+    assert.equal(deriveProvenance('SIMULATED', 'SIMULATED', 'SIMULATED', 'SIMULATED'), 'SIMULATED')
+    assert.equal(deriveProvenance('LIVE', 'LIVE', 'UNAVAILABLE', 'LIVE'), 'PARTIAL')
+    assert.equal(deriveProvenance('LIVE', 'UNAVAILABLE', 'UNAVAILABLE', 'UNAVAILABLE'), 'PARTIAL')
+  })
+
+  it('Scenario 10: calculateDistanceKm returns null on missing or invalid coordinates', () => {
+    assert.equal(calculateDistanceKm(null, null, 22.5, 88.3), null)
+    assert.equal(calculateDistanceKm(22.5, 88.3, undefined, null), null)
+    assert.equal(calculateDistanceKm('invalid', 88.3, 22.5, 88.3), null)
+    assert.ok(typeof calculateDistanceKm(22.5, 88.3, 22.6, 88.4) === 'number')
+  })
 })

@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { authorityData } from '../data/authority/authorityMock'
 import { assignResponder, reassignResponder } from '../services/api'
 import {
   useAuthorityIncidents,
@@ -25,8 +24,6 @@ import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 
 export const AuthorityCommandCenter = () => {
-  const { hub } = authorityData
-
   const {
     incidents,
     selectedIncident,
@@ -57,6 +54,7 @@ export const AuthorityCommandCenter = () => {
     liveResponders,
     setLiveResponders,
     isLoadingFleet,
+    fleetDataMode,
     fleetCapabilityFilter,
     setFleetCapabilityFilter,
     fleetStatusFilter,
@@ -78,6 +76,7 @@ export const AuthorityCommandCenter = () => {
   const {
     liveShelters,
     totalBedsAvailable,
+    shelterDataMode,
     shelterMapPoints,
     candidateShelters,
     adjustBeds,
@@ -279,15 +278,49 @@ export const AuthorityCommandCenter = () => {
     loadSituationIntelligence()
   }
 
+  // ---------------------------------------------------------------------------
+  // 6. Unified Data Provenance
+  // ---------------------------------------------------------------------------
+  const unifiedProvenance = useMemo(() => {
+    const modes = [dataMode, fleetDataMode, shelterDataMode, dataProvenance]
+    const isAllLive = modes.every((m) => m === 'LIVE')
+    const isAllSimulated = modes.every((m) => m === 'SIMULATED')
+    const isAnyUnavailable = modes.some((m) => m === 'UNAVAILABLE')
+
+    if (isAllSimulated) return 'SIMULATED'
+    if (isAllLive) return 'LIVE'
+    if (isAnyUnavailable) return 'PARTIAL'
+    return dataMode || 'LIVE'
+  }, [dataMode, fleetDataMode, shelterDataMode, dataProvenance])
+
+  const domainProvenance = useMemo(
+    () => ({
+      Incidents: dataMode,
+      Fleet: fleetDataMode,
+      Shelters: shelterDataMode,
+      Situation: dataProvenance,
+    }),
+    [dataMode, fleetDataMode, shelterDataMode, dataProvenance]
+  )
+
   return (
     <div className="space-y-3 pb-8 animate-fadeIn">
       {/* Top Operational Command Header */}
       <AuthorityHeader
-        hub={hub}
-        dataProvenance={dataMode || dataProvenance}
+        dataProvenance={unifiedProvenance}
         connectivityStatus={connectivityStatus}
-        onToggleDemoMode={toggleDemoMode}
+        domainProvenance={domainProvenance}
+        computedMetrics={computedMetrics}
+        totalResponders={liveResponders.length}
+        totalBeds={totalBedsAvailable}
+        onToggleDemoMode={async (enable) => {
+          await toggleDemoMode(enable)
+          loadFleet()
+          loadShelters()
+          loadSituationIntelligence()
+        }}
         onResetDemo={resetDemoState}
+        onSyncAll={handleSyncAll}
       />
 
       {/* Level 1: Priority Alert Strip (Conditional for Critical threats) */}

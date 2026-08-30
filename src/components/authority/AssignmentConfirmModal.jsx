@@ -64,8 +64,8 @@ export const AssignmentConfirmModal = ({
 
   const unitName = candidate.unit_name || candidate.unitName || 'Response Unit'
   const capability = candidate.capability?.replace('_', ' ') || 'General Rescue'
-  const distanceKm = candidate.distance_km ?? candidate.distanceKm ?? 1.2
-  const etaFormatted = candidate.eta_formatted || candidate.etaFormatted || '5 min'
+  const distanceKm = candidate.distance_km ?? candidate.distanceKm ?? null
+  const etaFormatted = candidate.eta_formatted || candidate.etaFormatted || 'ETA unavailable'
   const status = candidate.status || 'AVAILABLE'
 
   return (

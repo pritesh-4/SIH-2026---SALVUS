@@ -37,8 +37,13 @@ export const AiTriageAssessmentCard = ({
   const triage = incident.ai_triage
   const hasAssessment = Boolean(triage)
 
-  const confidence = typeof triage?.confidence === 'number' ? triage.confidence : 0.88
-  const confidencePct = Math.round(confidence * 100)
+  const confidence =
+    typeof triage?.confidence === 'number'
+      ? triage.confidence
+      : typeof triage?.confidence === 'string' && triage.confidence.includes('%')
+        ? parseFloat(triage.confidence) / 100
+        : null
+  const confidencePct = confidence !== null ? Math.round(confidence * 100) : null
   const isVerified = [
     'VERIFIED',
     'ASSIGNED',
@@ -82,6 +87,18 @@ export const AiTriageAssessmentCard = ({
     )
   }
 
+  const hazardLabel = triage?.hazard_type || triage?.hazardType || incident.type || 'Incident'
+  const severityFit =
+    triage?.severity || triage?.recommended_severity || incident.severity || 'MEDIUM'
+  const requiredUnit = (
+    triage?.recommended_capability ||
+    triage?.recommendedUnit ||
+    triage?.recommendedCapability ||
+    'Rescue Unit'
+  ).replace('_', ' ')
+  const reasoningText =
+    triage?.priority_reasoning || triage?.priorityReasoning || triage?.summary || null
+
   return (
     <Card padding="sm" className="space-y-3 shadow-2xs">
       {/* Header */}
@@ -101,9 +118,17 @@ export const AiTriageAssessmentCard = ({
             <Badge variant="warning" size="sm">
               Adjusted
             </Badge>
-          ) : (
+          ) : confidencePct !== null ? (
             <Badge variant="info" size="sm">
               {confidencePct}% Confidence
+            </Badge>
+          ) : hasAssessment ? (
+            <Badge variant="neutral" size="sm">
+              Rule-Based
+            </Badge>
+          ) : (
+            <Badge variant="warning" size="sm">
+              Pending
             </Badge>
           )}
         </div>
@@ -114,29 +139,29 @@ export const AiTriageAssessmentCard = ({
         <div>
           <span className="text-[10px] text-salvus-text-muted uppercase block">Classification</span>
           <strong className="text-salvus-text-primary truncate block mt-0.5 font-medium">
-            {triage?.hazard_type || incident.type || 'Flash Flood'}
+            {hazardLabel}
           </strong>
         </div>
 
         <div>
           <span className="text-[10px] text-salvus-text-muted uppercase block">Severity Fit</span>
           <strong className="text-salvus-critical truncate block mt-0.5 font-bold font-mono">
-            {triage?.recommended_severity || incident.severity || 'HIGH'}
+            {severityFit}
           </strong>
         </div>
 
         <div>
           <span className="text-[10px] text-salvus-text-muted uppercase block">Required Unit</span>
           <strong className="text-salvus-info truncate block mt-0.5 font-medium">
-            {triage?.recommended_capability || 'Rescue Craft'}
+            {requiredUnit}
           </strong>
         </div>
       </div>
 
       {/* Rationale */}
-      {triage?.summary && (
+      {reasoningText && (
         <div className="text-xs text-salvus-text-secondary leading-relaxed bg-salvus-muted/20 p-2.5 rounded-lg border border-salvus-border font-medium">
-          {triage.summary}
+          {reasoningText}
         </div>
       )}
 

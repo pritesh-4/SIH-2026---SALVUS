@@ -264,7 +264,7 @@ export const IncidentInspector = ({
                   {currentlyAssignedResponder.unit_name}
                 </strong>
                 <span className="text-xs text-salvus-text-muted font-mono font-medium">
-                  VHF: {currentlyAssignedResponder.radio_channel || 'Ch. 04'}
+                  VHF: {currentlyAssignedResponder.radio_channel || '—'}
                 </span>
               </div>
               <p className="text-xs text-salvus-text-secondary">
@@ -272,8 +272,10 @@ export const IncidentInspector = ({
                 {currentlyAssignedResponder.vehicle_type}
               </p>
               <div className="flex items-center justify-between text-xs text-salvus-info pt-1 border-t border-salvus-border font-semibold font-mono">
-                <span>Distance: {activeRoute?.distanceKm || '1.2'} km</span>
-                <span>ETA: {activeRoute?.etaFormatted || '4 min'}</span>
+                <span>
+                  Distance: {activeRoute?.distanceKm ?? '—'} {activeRoute?.distanceKm ? 'km' : ''}
+                </span>
+                <span>ETA: {activeRoute?.etaFormatted || 'Calculating…'}</span>
               </div>
             </div>
 
@@ -334,7 +336,7 @@ export const IncidentInspector = ({
                     onClick={onToggleMovementSimulation}
                     className="text-xs font-medium"
                   >
-                    {isSimulatingMovement ? '⏸ Pause GPS' : '▶ Simulate GPS'}
+                    {isSimulatingMovement ? '⏸ Pause Telemetry' : '▶ Simulated Telemetry'}
                   </Button>
                 </div>
 

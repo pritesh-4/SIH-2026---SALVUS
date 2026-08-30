@@ -157,8 +157,10 @@ export const ResponderPanel = ({
                 Coordinates
               </span>
               <span className="font-mono text-salvus-text-primary text-[11px]">
-                {selectedResponderDetail.latitude?.toFixed(4)}°N,{' '}
-                {selectedResponderDetail.longitude?.toFixed(4)}°E
+                {typeof selectedResponderDetail.latitude === 'number' &&
+                typeof selectedResponderDetail.longitude === 'number'
+                  ? `${selectedResponderDetail.latitude.toFixed(4)}°N, ${selectedResponderDetail.longitude.toFixed(4)}°E`
+                  : 'Location unavailable'}
               </span>
             </div>
             <div>

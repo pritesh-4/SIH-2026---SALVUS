@@ -11,6 +11,9 @@ import { isDemoModeActive } from '../incidents/useAuthorityIncidents'
 export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch = null } = {}) => {
   const [liveResponders, setLiveResponders] = useState([])
   const [isLoadingFleet, setIsLoadingFleet] = useState(true)
+  const [fleetDataMode, setFleetDataMode] = useState(() =>
+    isDemoModeActive() ? 'SIMULATED' : 'LIVE'
+  )
   const [fleetCapabilityFilter, setFleetCapabilityFilter] = useState('all')
   const [fleetStatusFilter, setFleetStatusFilter] = useState('all')
   const [selectedResponderDetail, setSelectedResponderDetail] = useState(null)
@@ -24,10 +27,13 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
     const result = await fetchResponders()
     if (result.success && Array.isArray(result.data)) {
       setLiveResponders(result.data)
+      setFleetDataMode(isDemo ? 'SIMULATED' : 'LIVE')
     } else if (isDemo) {
       setLiveResponders(authorityData.responders || [])
+      setFleetDataMode('SIMULATED')
     } else {
       setLiveResponders([])
+      setFleetDataMode('UNAVAILABLE')
     }
     setIsLoadingFleet(false)
   }, [])
@@ -110,13 +116,16 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
   )
 
   const responderMapPoints = useMemo(() => {
-    return liveResponders.map((r) => ({
-      id: r.id,
-      name: `${r.unit_name || r.unitName || 'NDRF Unit'} (${r.team_lead || r.lead || 'Team'})`,
-      vessel: `${r.vehicle_type || r.vehicle || 'Rescue Vehicle'} · ${r.status || 'AVAILABLE'}`,
-      lat: r.latitude || 22.574,
-      lng: r.longitude || 88.372,
-    }))
+    return liveResponders
+      .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number')
+      .map((r) => ({
+        id: r.id,
+        name: `${r.unit_name || r.unitName || 'Unit'} (${r.team_lead || r.lead || 'Team'})`,
+        vessel: `${r.vehicle_type || r.vehicle || 'Rescue Vehicle'} · ${r.status || 'AVAILABLE'}`,
+        lat: r.latitude,
+        lng: r.longitude,
+        locationAvailable: true,
+      }))
   }, [liveResponders])
 
   const currentlyAssignedResponder = useMemo(() => {
@@ -162,6 +171,7 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
     liveResponders,
     setLiveResponders,
     isLoadingFleet,
+    fleetDataMode,
     fleetCapabilityFilter,
     setFleetCapabilityFilter,
     fleetStatusFilter,
