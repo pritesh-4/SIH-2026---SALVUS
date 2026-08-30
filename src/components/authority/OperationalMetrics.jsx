@@ -2,16 +2,16 @@ import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 
 /**
- * 4-Metric Primary Operational KPI Row (Master Prompt 3 - Step 4)
+ * 4-Metric Primary Operational KPI Row
  *
  * Maximum 4 primary metrics for immediate cognitive grasp:
- * 1. Critical Threats (Priority)
- * 2. Active Incidents (Total active)
- * 3. Response Units Deployed (Fleet capacity)
- * 4. Available Shelter Beds (Civil refuge)
+ * 1. Critical Threats (Priority SOS & Critical)
+ * 2. Active Incidents (Total unresolved distress calls)
+ * 3. Fleet Deployed (Active units / Total fleet)
+ * 4. Shelter Capacity (Available beds on grid)
  */
 export const OperationalMetrics = ({
-  computedMetrics = { active: 0, critical: 0, resolved: 0 },
+  computedMetrics = { active: 0, critical: 0, resolved: 0, triagePending: 0 },
   activeRespondersCount = 0,
   totalRespondersCount = 0,
   totalBedsAvailable = 0,
@@ -19,66 +19,93 @@ export const OperationalMetrics = ({
   const critical = computedMetrics.critical ?? computedMetrics.criticalThreats ?? 0
   const active = computedMetrics.active ?? computedMetrics.activeIncidents ?? 0
   const resolved = computedMetrics.resolved ?? computedMetrics.resolvedCount ?? 0
+  const pendingTriage = computedMetrics.triagePending ?? 0
 
   return (
-    <section aria-label="Operational Metrics" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <section aria-label="Operational Metrics" className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
       {/* 1. Critical Threats */}
-      <Card variant="critical" padding="sm" className="flex flex-col justify-between shadow-xs">
-        <div className="flex items-center justify-between gap-1 mb-1">
-          <span className="text-xs font-bold text-salvus-critical uppercase tracking-wide">
+      <Card
+        variant={critical > 0 ? 'critical' : 'neutral'}
+        padding="sm"
+        className={`flex flex-col justify-between shadow-xs transition-colors ${
+          critical > 0 ? 'bg-salvus-critical-bg/25 border-salvus-critical-border' : ''
+        }`}
+      >
+        <div className="flex items-center justify-between gap-1 mb-0.5">
+          <span className="text-[11px] font-bold text-salvus-critical uppercase tracking-wider">
             Critical Threats
           </span>
-          <Badge variant="critical" size="sm" dot={true}>
-            Priority
+          <Badge variant={critical > 0 ? 'critical' : 'neutral'} size="sm" dot={critical > 0}>
+            {critical > 0 ? 'Priority' : 'Nominal'}
           </Badge>
         </div>
-        <span className="text-2xl sm:text-3xl font-extrabold text-salvus-critical font-mono">
-          {critical}
-        </span>
+        <div className="flex items-baseline justify-between mt-1">
+          <span className="text-2xl sm:text-3xl font-extrabold text-salvus-critical font-mono">
+            {critical}
+          </span>
+          <span className="text-[11px] text-salvus-text-muted">
+            {pendingTriage > 0 ? `${pendingTriage} awaiting triage` : 'Triage up to date'}
+          </span>
+        </div>
       </Card>
 
       {/* 2. Active Incidents */}
       <Card padding="sm" className="flex flex-col justify-between shadow-xs">
-        <div className="flex items-center justify-between gap-1 mb-1">
-          <span className="text-xs font-bold text-salvus-text-primary uppercase tracking-wide">
+        <div className="flex items-center justify-between gap-1 mb-0.5">
+          <span className="text-[11px] font-bold text-salvus-text-primary uppercase tracking-wider">
             Active Incidents
+          </span>
+          <Badge variant={active > 0 ? 'warning' : 'safe'} size="sm">
+            {active > 0 ? 'Active' : 'Clear'}
+          </Badge>
+        </div>
+        <div className="flex items-baseline justify-between mt-1">
+          <span className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary font-mono">
+            {active}
           </span>
           <span className="text-[11px] text-salvus-text-muted">{resolved} resolved</span>
         </div>
-        <span className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary font-mono">
-          {active}
-        </span>
       </Card>
 
       {/* 3. Fleet Deployed */}
       <Card variant="info" padding="sm" className="flex flex-col justify-between shadow-xs">
-        <div className="flex items-center justify-between gap-1 mb-1">
-          <span className="text-xs font-bold text-salvus-info uppercase tracking-wide">
+        <div className="flex items-center justify-between gap-1 mb-0.5">
+          <span className="text-[11px] font-bold text-salvus-info uppercase tracking-wider">
             Fleet Deployed
           </span>
-          <span className="text-[11px] text-salvus-info/80">{totalRespondersCount} total</span>
-        </div>
-        <span className="text-2xl sm:text-3xl font-extrabold text-salvus-info font-mono">
-          {activeRespondersCount}{' '}
-          <span className="text-xs font-normal text-salvus-text-muted">
-            / {totalRespondersCount}
+          <span className="text-[11px] text-salvus-info/90 font-semibold font-mono">
+            {totalRespondersCount} Total Units
           </span>
-        </span>
+        </div>
+        <div className="flex items-baseline justify-between mt-1">
+          <span className="text-2xl sm:text-3xl font-extrabold text-salvus-info font-mono">
+            {activeRespondersCount}{' '}
+            <span className="text-sm font-normal text-salvus-text-muted">
+              / {totalRespondersCount}
+            </span>
+          </span>
+          <span className="text-[11px] text-salvus-text-muted">
+            {Math.max(0, totalRespondersCount - activeRespondersCount)} available
+          </span>
+        </div>
       </Card>
 
       {/* 4. Shelter Capacity */}
       <Card variant="safe" padding="sm" className="flex flex-col justify-between shadow-xs">
-        <div className="flex items-center justify-between gap-1 mb-1">
-          <span className="text-xs font-bold text-salvus-safe uppercase tracking-wide">
+        <div className="flex items-center justify-between gap-1 mb-0.5">
+          <span className="text-[11px] font-bold text-salvus-safe uppercase tracking-wider">
             Available Beds
           </span>
           <Badge variant="safe" size="sm">
-            Stable
+            {totalBedsAvailable > 50 ? 'Stable' : 'Limited'}
           </Badge>
         </div>
-        <span className="text-2xl sm:text-3xl font-extrabold text-salvus-safe font-mono">
-          {totalBedsAvailable}
-        </span>
+        <div className="flex items-baseline justify-between mt-1">
+          <span className="text-2xl sm:text-3xl font-extrabold text-salvus-safe font-mono">
+            {totalBedsAvailable}
+          </span>
+          <span className="text-[11px] text-salvus-text-muted">Civil Evacuation</span>
+        </div>
       </Card>
     </section>
   )

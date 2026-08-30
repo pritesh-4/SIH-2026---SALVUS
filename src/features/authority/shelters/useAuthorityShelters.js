@@ -3,21 +3,25 @@ import { fetchShelters, updateShelterOccupancy } from '../../../services/api'
 import { authorityData } from '../../../data/authority/authorityMock'
 import { subscribeToEvent } from '../../../lib/realtime/socket'
 import { calculateDistanceKm } from '../incidents/incidentUtils'
+import { isDemoModeActive } from '../incidents/useAuthorityIncidents'
 
 export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
   const [liveShelters, setLiveShelters] = useState([])
   const [isLoadingShelters, setIsLoadingShelters] = useState(true)
 
   // ---------------------------------------------------------------------------
-  // 1. Initial Load & Refresh
+  // 1. Initial Load & Refresh (Enforce Server Truth)
   // ---------------------------------------------------------------------------
   const loadShelters = useCallback(async () => {
     setIsLoadingShelters(true)
+    const isDemo = isDemoModeActive()
     const result = await fetchShelters()
-    if (result.success && result.data && result.data.length > 0) {
+    if (result.success && Array.isArray(result.data)) {
       setLiveShelters(result.data)
-    } else {
+    } else if (isDemo) {
       setLiveShelters(authorityData.shelters || [])
+    } else {
+      setLiveShelters([])
     }
     setIsLoadingShelters(false)
   }, [])

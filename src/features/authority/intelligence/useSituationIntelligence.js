@@ -1,19 +1,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import { fetchHazards, fetchIncidentClusters, fetchSituationSummary } from '../../../services/api'
+import { isDemoModeActive } from '../incidents/useAuthorityIncidents'
 
 export const useSituationIntelligence = () => {
   const [situationSummary, setSituationSummary] = useState(null)
   const [liveHazards, setLiveHazards] = useState([])
   const [incidentClusters, setIncidentClusters] = useState([])
   const [isRefreshingSituation, setIsRefreshingSituation] = useState(false)
-  const [dataProvenance, setDataProvenance] = useState('LIVE')
+  const [dataProvenance, setDataProvenance] = useState(() =>
+    isDemoModeActive() ? 'SIMULATED' : 'LIVE'
+  )
 
   const loadSituationIntelligence = useCallback(async () => {
     setIsRefreshingSituation(true)
-    const isDemo =
-      typeof window !== 'undefined' &&
-      (window.location.search.includes('demo=true') ||
-        localStorage.getItem('salvus_demo_mode') === 'true')
+    const isDemo = isDemoModeActive()
 
     if (isDemo) {
       setDataProvenance('SIMULATED')
@@ -26,18 +26,35 @@ export const useSituationIntelligence = () => {
         fetchIncidentClusters(),
       ])
 
+      const allSuccess = sitRes.success && hzRes.success && clRes.success
+      const anySuccess = sitRes.success || hzRes.success || clRes.success
+
       if (sitRes.success && sitRes.data) {
         setSituationSummary(sitRes.data)
-        if (!isDemo) setDataProvenance('LIVE')
-      } else if (!isDemo) {
-        setDataProvenance('CACHED')
+      } else {
+        setSituationSummary(null)
       }
 
-      if (hzRes.success && hzRes.data) {
+      if (hzRes.success && Array.isArray(hzRes.data)) {
         setLiveHazards(hzRes.data)
+      } else {
+        setLiveHazards([])
       }
-      if (clRes.success && clRes.data) {
+
+      if (clRes.success && Array.isArray(clRes.data)) {
         setIncidentClusters(clRes.data)
+      } else {
+        setIncidentClusters([])
+      }
+
+      if (isDemo) {
+        setDataProvenance('SIMULATED')
+      } else if (allSuccess) {
+        setDataProvenance('LIVE')
+      } else if (anySuccess) {
+        setDataProvenance('PARTIAL')
+      } else {
+        setDataProvenance('UNAVAILABLE')
       }
     } finally {
       setIsRefreshingSituation(false)

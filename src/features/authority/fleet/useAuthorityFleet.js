@@ -6,6 +6,7 @@ import {
 } from '../../../services/api'
 import { authorityData } from '../../../data/authority/authorityMock'
 import { subscribeToEvent } from '../../../lib/realtime/socket'
+import { isDemoModeActive } from '../incidents/useAuthorityIncidents'
 
 export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch = null } = {}) => {
   const [liveResponders, setLiveResponders] = useState([])
@@ -15,15 +16,18 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
   const [selectedResponderDetail, setSelectedResponderDetail] = useState(null)
 
   // ---------------------------------------------------------------------------
-  // 1. Initial Load & Refresh
+  // 1. Initial Load & Refresh (Enforce Server Truth)
   // ---------------------------------------------------------------------------
   const loadFleet = useCallback(async () => {
     setIsLoadingFleet(true)
+    const isDemo = isDemoModeActive()
     const result = await fetchResponders()
-    if (result.success && result.data && result.data.length > 0) {
+    if (result.success && Array.isArray(result.data)) {
       setLiveResponders(result.data)
-    } else {
+    } else if (isDemo) {
       setLiveResponders(authorityData.responders || [])
+    } else {
+      setLiveResponders([])
     }
     setIsLoadingFleet(false)
   }, [])

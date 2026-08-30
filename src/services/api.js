@@ -1265,3 +1265,5 @@ export const resetDevIncidents = async () => {
     return { success: false, error: error.message }
   }
 }
+
+export const resetDevDatabase = resetDevIncidents

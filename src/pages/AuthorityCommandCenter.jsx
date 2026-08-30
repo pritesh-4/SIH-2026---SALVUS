@@ -27,20 +27,20 @@ import { Button } from '../components/ui/Button'
 export const AuthorityCommandCenter = () => {
   const { hub } = authorityData
 
-  // ---------------------------------------------------------------------------
-  // 1. Domain Feature Hooks
-  // ---------------------------------------------------------------------------
   const {
     incidents,
     selectedIncident,
     setSelectedIncident,
     isLoading: isLoadingIncidents,
     error: incidentError,
+    dataMode,
     newlyArrivedId,
     changeStatus,
     isUpdatingStatus,
     computedMetrics,
     connectivityStatus,
+    toggleDemoMode,
+    resetDemoState,
     refetch: refetchIncidents,
   } = useAuthorityIncidents()
 
@@ -235,13 +235,31 @@ export const AuthorityCommandCenter = () => {
   }
 
   return (
-    <div className="space-y-3.5 pb-8 animate-fadeIn">
-      {/* Top District Header */}
+    <div className="space-y-3 pb-8 animate-fadeIn">
+      {/* Top Operational Command Header */}
       <AuthorityHeader
         hub={hub}
-        dataProvenance={dataProvenance}
+        dataProvenance={dataMode || dataProvenance}
         connectivityStatus={connectivityStatus}
+        onToggleDemoMode={toggleDemoMode}
+        onResetDemo={resetDemoState}
       />
+
+      {/* Level 1: Priority Alert Strip (Conditional for Critical threats) */}
+      {computedMetrics.critical > 0 && (
+        <div className="bg-salvus-critical-bg/50 border border-salvus-critical-border px-3.5 py-1.5 rounded-xl flex items-center justify-between gap-2 text-xs text-salvus-critical animate-pulse shadow-xs">
+          <div className="flex items-center gap-2 font-bold">
+            <span aria-hidden="true">🚨</span>
+            <span>
+              IMMEDIATE ATTENTION: {computedMetrics.critical} Critical Threat
+              {computedMetrics.critical > 1 ? 's' : ''} Active on Grid
+            </span>
+          </div>
+          <span className="text-[11px] font-medium hidden sm:inline text-salvus-critical/90">
+            Triage & Rapid Deployment Urged
+          </span>
+        </div>
+      )}
 
       {/* 4-KPI Operational Strip */}
       <OperationalMetrics
@@ -257,9 +275,6 @@ export const AuthorityCommandCenter = () => {
         liveHazards={liveHazards}
         incidentClusters={incidentClusters}
         computedMetrics={computedMetrics}
-        activeRespondersCount={activeRespondersCount}
-        totalRespondersCount={liveResponders.length}
-        totalBedsAvailable={totalBedsAvailable}
         isRefreshingSituation={isRefreshingSituation}
         onRefreshSituation={loadSituationIntelligence}
       />

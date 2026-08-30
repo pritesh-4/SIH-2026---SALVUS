@@ -12,12 +12,12 @@ const INCIDENT_FILTERS = [
 ]
 
 /**
- * Action-Oriented Operational Incident Queue (Master Prompt 3 - Step 5)
+ * Action-Oriented Operational Incident Queue
  *
  * Prioritizes operational urgency:
  * - SOS & Critical threats highlighted prominently
  * - Grouped & filterable by operational phase
- * - Clear sans-serif labels with monospace IDs
+ * - Clear sans-serif labels with monospace IDs & photo evidence count
  */
 export const IncidentQueue = ({
   incidents = [],
@@ -68,10 +68,10 @@ export const IncidentQueue = ({
     <Card
       aria-label="Incident Triage Queue"
       padding="sm"
-      className="lg:col-span-4 xl:col-span-3 flex flex-col space-y-3 min-h-[580px]"
+      className="lg:col-span-4 xl:col-span-3 flex flex-col space-y-2.5 min-h-[580px]"
     >
       {/* Queue Header */}
-      <div className="flex items-center justify-between pb-2 border-b border-salvus-border">
+      <div className="flex items-center justify-between pb-1.5 border-b border-salvus-border">
         <div className="flex items-center gap-2">
           <h2 className="text-xs font-bold text-salvus-text-primary uppercase tracking-wider">
             Incident Queue
@@ -83,7 +83,7 @@ export const IncidentQueue = ({
       </div>
 
       {/* Action Filters */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar">
+      <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
         {INCIDENT_FILTERS.map((f) => (
           <button
             key={f.id}
@@ -102,40 +102,50 @@ export const IncidentQueue = ({
 
       {/* Content Feed */}
       {isLoading ? (
-        <div className="py-16 text-center text-xs text-salvus-text-muted space-y-2">
-          <span className="inline-block animate-spin">⏳</span>
-          <p>Updating incident feed...</p>
+        <div className="py-20 text-center text-xs text-salvus-text-muted space-y-2">
+          <span className="inline-block animate-spin text-lg">⏳</span>
+          <p>Connecting to operational incident stream...</p>
         </div>
       ) : error && incidents.length === 0 ? (
-        <div className="py-6 text-center text-xs text-salvus-warning bg-salvus-warning-bg border border-salvus-warning-border rounded-xl p-3">
-          <span>⚠️ {error}</span>
+        <div className="py-8 text-center text-xs text-salvus-warning bg-salvus-warning-bg border border-salvus-warning-border rounded-xl p-3 space-y-1">
+          <span className="font-bold block">⚠️ Feed Unavailable</span>
+          <p className="text-salvus-text-secondary text-[11px]">{error}</p>
         </div>
       ) : sortedIncidents.length === 0 ? (
-        <div className="py-16 text-center text-xs text-salvus-text-muted">
-          No active incidents in this filter.
+        <div className="py-20 text-center text-xs text-salvus-text-muted space-y-1.5 px-3">
+          <span className="text-2xl block" aria-hidden="true">
+            🛡️
+          </span>
+          <p className="font-semibold text-salvus-text-primary">All Sectors Clear</p>
+          <p className="text-salvus-text-secondary text-[11px] max-w-xs mx-auto">
+            {activeIncidentFilter === 'all'
+              ? 'No active distress calls or hazard reports on grid.'
+              : `No incidents matching '${activeIncidentFilter}' filter.`}
+          </p>
         </div>
       ) : (
-        <div className="space-y-2 max-h-[540px] overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
           {sortedIncidents.map((inc) => {
             const isSelected = selectedIncident?.id === inc.id
             const isNew = newlyArrivedId === inc.id
             const isSos = Boolean(inc.is_sos)
             const sev = getSeverityBadge(inc.severity)
             const stat = getStatusBadge(inc.status)
+            const attachmentCount = inc.attachments?.length || 0
 
             return (
               <div
                 key={inc.id}
                 onClick={() => onSelectIncident?.(inc)}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
                   isSelected
                     ? 'bg-salvus-surface-elevated border-salvus-text-primary ring-1 ring-salvus-text-primary shadow-xs'
                     : isSos
-                      ? 'bg-salvus-critical-bg/40 border-salvus-critical-border hover:border-salvus-critical'
+                      ? 'bg-salvus-critical-bg/30 border-salvus-critical-border hover:border-salvus-critical'
                       : 'bg-salvus-muted/30 border-salvus-border hover:border-salvus-border-strong hover:bg-salvus-surface-hover'
                 } ${isNew ? 'ring-2 ring-salvus-critical animate-pulse' : ''}`}
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1.5">
                     <span className="font-bold text-salvus-text-primary text-xs font-mono">
                       #{inc.ticket_id || `SV-${(inc.id || '').slice(-4)}`}
@@ -147,7 +157,7 @@ export const IncidentQueue = ({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     <Badge variant={sev.variant} dot={sev.dot} size="sm">
                       {sev.label}
                     </Badge>
@@ -161,22 +171,29 @@ export const IncidentQueue = ({
                   {inc.description}
                 </p>
 
-                <div className="flex items-center justify-between text-xs text-salvus-text-muted mt-2 pt-1.5 border-t border-salvus-border">
-                  <span className="truncate max-w-[140px]">
+                <div className="flex items-center justify-between text-xs text-salvus-text-muted mt-2 pt-1.5 border-t border-salvus-border text-[11px]">
+                  <span className="truncate max-w-[130px] font-mono">
                     📍{' '}
                     {inc.location_name ||
                       (inc.latitude
                         ? `${inc.latitude.toFixed(3)}°, ${inc.longitude.toFixed(3)}°`
-                        : 'Location Unspecified')}
+                        : 'GPS Pending')}
                   </span>
-                  <span>
-                    {inc.created_at
-                      ? new Date(inc.created_at).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      : 'Live'}
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {attachmentCount > 0 && (
+                      <span className="text-[10px] text-salvus-info font-bold flex items-center gap-0.5">
+                        📷 {attachmentCount}
+                      </span>
+                    )}
+                    <span>
+                      {inc.created_at
+                        ? new Date(inc.created_at).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : 'Live'}
+                    </span>
+                  </div>
                 </div>
               </div>
             )
