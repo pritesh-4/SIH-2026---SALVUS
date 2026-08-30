@@ -606,6 +606,7 @@ async def get_candidate_responders_for_incident(
     db: aiosqlite.Connection,
     incident_id: str,
     include_routes: bool = True,
+    required_capability: str | None = None,
 ) -> list[CandidateResponderResponse]:
     """Retrieve ranked candidate responders for an active emergency incident with
 
@@ -619,7 +620,9 @@ async def get_candidate_responders_for_incident(
     if not responders:
         return []
 
-    candidates = rank_and_explain_candidates(incident, responders)
+    candidates = rank_and_explain_candidates(
+        incident, responders, required_capability=required_capability
+    )
 
     # If requested, enrich top candidates (up to top 4) with real OSRM route geometry
     if include_routes and candidates:

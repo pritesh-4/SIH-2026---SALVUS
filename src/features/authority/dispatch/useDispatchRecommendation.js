@@ -15,6 +15,11 @@ export const useDispatchRecommendation = ({
   const [activeRoute, setActiveRoute] = useState(null)
   const [previewRoute, setPreviewRoute] = useState(null)
   const [recommendationShift, setRecommendationShift] = useState(null)
+  const [calculationMetadata, setCalculationMetadata] = useState({
+    calculationId: null,
+    calculatedAt: null,
+    calculationVersion: 1,
+  })
 
   const lastRouteKeyRef = useRef(null)
   const latestRequestIdRef = useRef(0)
@@ -28,72 +33,79 @@ export const useDispatchRecommendation = ({
   useEffect(() => {
     let isMounted = true
 
-    if (!selectedIncident) {
-      return () => {
-        isMounted = false
-      }
-    }
-
-    const incidentKey = `${selectedIncident.id}_${selectedIncident.status}_${selectedIncident.severity}`
-    const isIncidentChange = lastIncidentKeyRef.current !== incidentKey
-    const now = Date.now()
-    const elapsedSinceLastEval = now - lastEvaluatedTimeRef.current
-
-    // Check if any responder had meaningful movement (>= 200m) or status change
-    let hasMeaningfulTelemetryShift = false
-    const currentCoordsMap = new Map()
-
-    for (const resp of liveResponders) {
-      if (!resp.latitude || !resp.longitude) continue
-      currentCoordsMap.set(resp.id, {
-        lat: resp.latitude,
-        lon: resp.longitude,
-        status: resp.status,
-      })
-
-      const prev = lastEvaluatedCoordsRef.current.get(resp.id)
-      if (!prev) {
-        hasMeaningfulTelemetryShift = true
-      } else {
-        if (prev.status !== resp.status) {
-          hasMeaningfulTelemetryShift = true
-        } else {
-          const distKm = haversineDistance(prev.lat, prev.lon, resp.latitude, resp.longitude)
-          if (distKm * 1000 >= MOVEMENT_THRESHOLD_METERS) {
-            hasMeaningfulTelemetryShift = true
-          }
-        }
-      }
-    }
-
-    // Evaluate trigger criteria
-    const shouldRecalculate =
-      isIncidentChange ||
-      (hasMeaningfulTelemetryShift && elapsedSinceLastEval >= RECALC_DEBOUNCE_MS) ||
-      lastEvaluatedTimeRef.current === 0
-
-    if (!shouldRecalculate) {
-      return () => {
-        isMounted = false
-      }
-    }
-
-    // Update evaluation markers
-    lastIncidentKeyRef.current = incidentKey
-    lastEvaluatedTimeRef.current = now
-    lastEvaluatedCoordsRef.current = currentCoordsMap
-
     const currentReqId = ++latestRequestIdRef.current
 
     const loadCandidatesAndRoute = async () => {
+      // Terminal State or unselected guard (Steps 24 & 25)
+      if (!selectedIncident || ['RESOLVED', 'CANCELLED'].includes(selectedIncident.status)) {
+        if (isMounted) {
+          setCandidateList([])
+          setActiveRoute(null)
+          setRecommendationShift(null)
+          setIsLoadingCandidates(false)
+          lastRouteKeyRef.current = null
+        }
+        return
+      }
+
+      const incidentKey = `${selectedIncident.id}_${selectedIncident.status}_${selectedIncident.severity}_${selectedIncident.type || ''}_${selectedIncident.required_capability || ''}`
+      const isIncidentChange = lastIncidentKeyRef.current !== incidentKey
+      const now = Date.now()
+      const elapsedSinceLastEval = now - lastEvaluatedTimeRef.current
+
+      // Check if any responder had meaningful movement (>= 200m) or status change
+      let hasMeaningfulTelemetryShift = false
+      const currentCoordsMap = new Map()
+
+      for (const resp of liveResponders) {
+        if (!resp.latitude || !resp.longitude) continue
+        currentCoordsMap.set(resp.id, {
+          lat: resp.latitude,
+          lon: resp.longitude,
+          status: resp.status,
+        })
+
+        const prev = lastEvaluatedCoordsRef.current.get(resp.id)
+        if (!prev) {
+          hasMeaningfulTelemetryShift = true
+        } else {
+          if (prev.status !== resp.status) {
+            hasMeaningfulTelemetryShift = true
+          } else {
+            const distKm = haversineDistance(prev.lat, prev.lon, resp.latitude, resp.longitude)
+            if (distKm * 1000 >= MOVEMENT_THRESHOLD_METERS) {
+              hasMeaningfulTelemetryShift = true
+            }
+          }
+        }
+      }
+
+      // Evaluate trigger criteria
+      const shouldRecalculate =
+        isIncidentChange ||
+        (hasMeaningfulTelemetryShift && elapsedSinceLastEval >= RECALC_DEBOUNCE_MS) ||
+        lastEvaluatedTimeRef.current === 0
+
+      if (!shouldRecalculate) return
+
+      // Update evaluation markers
+      lastIncidentKeyRef.current = incidentKey
+      lastEvaluatedTimeRef.current = now
+      lastEvaluatedCoordsRef.current = currentCoordsMap
+
       setIsLoadingCandidates(true)
       const candRes = await fetchResponderCandidates(selectedIncident.id)
 
-      // Discard stale out-of-order response if newer request started
+      // Discard stale out-of-order response if newer request started or component unmounted
       if (!isMounted || currentReqId < latestRequestIdRef.current) return
 
       if (candRes.success && candRes.data.length > 0) {
         setCandidateList(candRes.data)
+        setCalculationMetadata({
+          calculationId: candRes.calculation_id || `calc-${Date.now()}`,
+          calculatedAt: candRes.calculated_at || new Date().toISOString(),
+          calculationVersion: candRes.calculation_version || 1,
+        })
 
         // Evaluate Dynamic Recommendation Shift if incident is already ASSIGNED
         if (currentlyAssignedResponder) {
@@ -111,21 +123,29 @@ export const useDispatchRecommendation = ({
             const topCandEtaMin = topCand.eta_minutes || 5.0
             const etaDeltaMin = Math.round(assignedEtaMin - topCandEtaMin)
 
-            // Trigger shift notification if candidate is >= 2 min faster or assigned unit is OFFLINE
-            if (etaDeltaMin >= 2 || currentlyAssignedResponder.status === 'OFFLINE') {
+            // Trigger shift notification if candidate is >= 2 min faster, assigned unit is OFFLINE, or capability mismatch
+            const isAssignedOffline = currentlyAssignedResponder.status === 'OFFLINE'
+            const isMeaningfulEtaAdvantage = etaDeltaMin >= 2
+
+            if (isAssignedOffline || isMeaningfulEtaAdvantage) {
+              const factualReason = isAssignedOffline
+                ? `Currently assigned ${currentlyAssignedResponder.unit_name} went OFFLINE. ${topCand.unit_name} is now recommended.`
+                : `Recommendation updated because ${topCand.unit_name} is now ${etaDeltaMin} min faster (~${topCand.eta_formatted || `${Math.round(topCandEtaMin)} min`}) and remains qualified for this incident.`
+
               setRecommendationShift({
                 currentResponder: currentlyAssignedResponder,
                 currentEtaFormatted: `${Math.max(1, Math.round(assignedEtaMin))} min`,
+                currentEtaMinutes: assignedEtaMin,
                 newCandidate: topCand,
                 newEtaFormatted:
                   topCand.eta_formatted || `${Math.max(1, Math.round(topCandEtaMin))} min`,
+                newEtaMinutes: topCandEtaMin,
                 etaDeltaMinutes: etaDeltaMin,
-                reason:
-                  currentlyAssignedResponder.status === 'OFFLINE'
-                    ? `Currently assigned ${currentlyAssignedResponder.unit_name} is OFFLINE. ${topCand.unit_name} is now recommended.`
-                    : `${topCand.unit_name} is now ${etaDeltaMin} min faster (~${topCand.eta_formatted || '5 min'}) and qualified for this incident.`,
+                reason: factualReason,
                 detectedAt: Date.now(),
               })
+            } else {
+              setRecommendationShift(null)
             }
           } else {
             setRecommendationShift(null)
@@ -173,6 +193,30 @@ export const useDispatchRecommendation = ({
                 status: routeRes.data.status,
                 isFallback: routeRes.data.is_fallback,
                 label: `${primaryTarget.unit_name || primaryTarget.unitName || 'Unit'} Route`,
+              })
+            } else if (isMounted) {
+              // Resilient fallback to vector corridor coordinates if route calculation is unavailable
+              setActiveRoute({
+                responderId: primaryTarget.id,
+                coordinates: [
+                  [primaryTarget.latitude, primaryTarget.longitude],
+                  [selectedIncident.latitude, selectedIncident.longitude],
+                ],
+                geometry: [],
+                distanceKm:
+                  Math.round(
+                    haversineDistance(
+                      primaryTarget.latitude,
+                      primaryTarget.longitude,
+                      selectedIncident.latitude,
+                      selectedIncident.longitude
+                    ) * 10
+                  ) / 10,
+                etaFormatted: 'Estimated',
+                provider: 'vector_corridor',
+                status: 'ESTIMATED',
+                isFallback: true,
+                label: `${primaryTarget.unit_name || primaryTarget.unitName || 'Unit'} Corridor`,
               })
             }
           }
@@ -297,7 +341,7 @@ export const useDispatchRecommendation = ({
   )
 
   const refreshCandidates = useCallback(async () => {
-    if (!selectedIncident) return
+    if (!selectedIncident || ['RESOLVED', 'CANCELLED'].includes(selectedIncident.status)) return
     setIsLoadingCandidates(true)
     const currentReqId = ++latestRequestIdRef.current
     const candRes = await fetchResponderCandidates(selectedIncident.id)
@@ -305,6 +349,11 @@ export const useDispatchRecommendation = ({
 
     if (candRes.success) {
       setCandidateList(candRes.data || [])
+      setCalculationMetadata({
+        calculationId: candRes.calculation_id || `calc-${Date.now()}`,
+        calculatedAt: candRes.calculated_at || new Date().toISOString(),
+        calculationVersion: candRes.calculation_version || 1,
+      })
     }
     setIsLoadingCandidates(false)
   }, [selectedIncident])
@@ -349,6 +398,7 @@ export const useDispatchRecommendation = ({
     selectCandidateRoute,
     refreshCandidates,
     clearRoute,
+    calculationMetadata,
   }
 }
 

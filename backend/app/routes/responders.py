@@ -112,12 +112,50 @@ async def get_candidate_responders(
     include_routes: bool = Query(
         True, description="Enrich top candidate units with live OSRM / corridor route geometry"
     ),
+    required_capability: str | None = Query(
+        None, description="Optional required capability override for incident evaluation"
+    ),
     user: AuthenticatedUser = Depends(require_authority),
 ):
     """Retrieve ranked candidate responders for an active incident (Authority only)."""
     db = await get_database()
+    inc = await incident_service.get_incident_by_id(db, incident_id)
+    if not inc:
+        return ResponderCandidateListResponse(
+            incident_id=incident_id,
+            allocation_status="NO_AVAILABLE_RESPONDER",
+            message=f"No incident found with ID '{incident_id}'.",
+            data=[],
+            count=0,
+            calculation_id=str(uuid.uuid4()),
+            calculated_at=datetime.now(UTC).isoformat(),
+            is_recommendation_changed=False,
+            change_reason=None,
+            assigned_responder_id=None,
+            current_assignment_eta_minutes=None,
+        )
+
+    # Discard recommendations for terminal incidents (Steps 24 & 25)
+    if inc.status in ("RESOLVED", "CANCELLED"):
+        return ResponderCandidateListResponse(
+            incident_id=incident_id,
+            allocation_status=f"INCIDENT_{inc.status}",
+            message=f"Incident #{inc.ticket_id} is already {inc.status.lower()}.",
+            data=[],
+            count=0,
+            calculation_id=str(uuid.uuid4()),
+            calculated_at=datetime.now(UTC).isoformat(),
+            is_recommendation_changed=False,
+            change_reason=None,
+            assigned_responder_id=None,
+            current_assignment_eta_minutes=None,
+        )
+
     candidates = await responder_service.get_candidate_responders_for_incident(
-        db, incident_id, include_routes=include_routes
+        db,
+        incident_id,
+        include_routes=include_routes,
+        required_capability=required_capability,
     )
 
     allocation_status = "RECOMMENDED" if candidates else "NO_AVAILABLE_RESPONDER"
@@ -148,30 +186,37 @@ async def get_candidate_responders(
         if assigned_resp and candidates:
             top_cand = candidates[0]
             if top_cand.id != assigned_resp_id:
-                inc = await incident_service.get_incident_by_id(db, incident_id)
-                if inc:
-                    dist_km = haversine_distance_km(
-                        assigned_resp.latitude,
-                        assigned_resp.longitude,
-                        inc.latitude,
-                        inc.longitude,
-                    )
-                    speed_kmh = 30.0 if assigned_resp.capability == "FLOOD_BOAT" else 40.0
-                    assigned_eta = round((dist_km / max(1.0, speed_kmh)) * 60.0, 1)
+                dist_km = haversine_distance_km(
+                    assigned_resp.latitude,
+                    assigned_resp.longitude,
+                    inc.latitude,
+                    inc.longitude,
+                )
+                speed_kmh = 30.0 if assigned_resp.capability == "FLOOD_BOAT" else 40.0
+                assigned_eta = round((dist_km / max(1.0, speed_kmh)) * 60.0, 1)
 
-                    if (assigned_eta - top_cand.eta_minutes) >= 2.0:
-                        is_recommendation_changed = True
-                        diff_min = max(1, round(assigned_eta - top_cand.eta_minutes))
-                        change_reason = (
-                            f"Recommendation updated: {top_cand.unit_name} is now {diff_min} min "
-                            f"faster (~{top_cand.eta_formatted}) and qualified for this incident."
-                        )
-                    elif assigned_resp.status == "OFFLINE":
-                        is_recommendation_changed = True
-                        change_reason = (
-                            f"Assigned unit {assigned_resp.unit_name} went OFFLINE. "
-                            f"{top_cand.unit_name} is now recommended."
-                        )
+                if (assigned_eta - top_cand.eta_minutes) >= 2.0:
+                    is_recommendation_changed = True
+                    diff_min = max(1, round(assigned_eta - top_cand.eta_minutes))
+                    change_reason = (
+                        f"Recommendation updated: {top_cand.unit_name} is now {diff_min} min "
+                        f"faster (~{top_cand.eta_formatted}) and qualified for this incident."
+                    )
+                elif assigned_resp.status == "OFFLINE":
+                    is_recommendation_changed = True
+                    change_reason = (
+                        f"Assigned unit {assigned_resp.unit_name} went OFFLINE. "
+                        f"{top_cand.unit_name} is now recommended."
+                    )
+                elif (
+                    required_capability and assigned_resp.capability != required_capability.upper()
+                ):
+                    is_recommendation_changed = True
+                    change_reason = (
+                        f"Assigned unit {assigned_resp.unit_name} does not meet required "
+                        f"capability '{required_capability.upper()}'. "
+                        f"{top_cand.unit_name} is recommended."
+                    )
 
     return ResponderCandidateListResponse(
         incident_id=incident_id,

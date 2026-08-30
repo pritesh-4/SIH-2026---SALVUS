@@ -472,6 +472,7 @@ def rank_and_explain_candidates(
     responders: list[ResponderResponse],
     weights: AllocationScoringWeights = DEFAULT_SCORING_WEIGHTS,
     limit: int = 3,
+    required_capability: str | None = None,
 ) -> list[CandidateResponderResponse]:
     """Score, rank, and generate explainable justifications for candidate responders.
 
@@ -480,6 +481,7 @@ def rank_and_explain_candidates(
         responders: Full fleet snapshot.
         weights: Centralized scoring weights (sum to 100).
         limit: Max candidates to return (top 3 by default).
+        required_capability: Optional explicit capability requirement override.
 
     Returns:
         Deterministic ranked candidate list with 1-based ranks and auditable factor breakdowns.
@@ -488,7 +490,10 @@ def rank_and_explain_candidates(
         return []
 
     # 1. First-stage Deterministic Hard Filtering (from Candidate Generation)
-    evaluated_items = [evaluate_responder_eligibility(incident, r) for r in responders]
+    evaluated_items = [
+        evaluate_responder_eligibility(incident, r, required_capability=required_capability)
+        for r in responders
+    ]
     eligible_responders = [
         item.responder for item in evaluated_items if item.is_eligible and item.responder
     ]
