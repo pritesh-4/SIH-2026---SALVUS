@@ -1,6 +1,6 @@
 # DATABASE.md — Database Schema & Storage Architecture
 
-This document details the database architecture, schema migrations, complete 6-table entity definitions, Mermaid Entity-Relationship (ER) model, performance indexes, transactional boundaries, and cloud persistence characteristics for Salvus.
+This document details the database architecture, schema migrations, complete 8-table entity definitions, Mermaid Entity-Relationship (ER) model, performance indexes, transactional boundaries, and cloud persistence characteristics for Salvus.
 
 ---
 
@@ -22,9 +22,11 @@ Salvus uses asynchronous local SQLite powered by Python's `aiosqlite` driver as 
 erDiagram
     INCIDENTS ||--o{ INCIDENT_EVENTS : "tracks audit history"
     INCIDENTS ||--o{ AI_TRIAGE_ASSESSMENTS : "evaluated by"
+    INCIDENTS ||--o{ INCIDENT_ATTACHMENTS : "includes evidence"
     INCIDENTS ||--o| ASSIGNMENTS : "allocated via"
     RESPONDERS ||--o| ASSIGNMENTS : "dispatched via"
     INCIDENTS ||--o| RESPONDERS : "linked mission (assigned_incident_id)"
+    CITIZEN_PROFILES ||--o{ EMERGENCY_CONTACTS : "designates"
 
     INCIDENTS {
         text id PK "UUIDv4 string"
@@ -54,6 +56,18 @@ erDiagram
         text new_status "Status after transition"
         text actor "Dispatcher ID or system"
         text metadata "JSON payload for audit context"
+        text created_at "ISO 8601 UTC timestamp"
+    }
+
+    INCIDENT_ATTACHMENTS {
+        text id PK "UUIDv4 string"
+        text incident_id FK "References incidents(id) ON DELETE CASCADE"
+        text file_url "Local or CDN static URL"
+        text thumbnail_url "Optimized low-res thumbnail URL"
+        text media_type "image/jpeg, image/png, image/webp"
+        integer file_size "Size in bytes (max 5MB)"
+        text checksum "SHA-256 integrity hash"
+        text ai_analysis "JSON scene assessment & safety hazards"
         text created_at "ISO 8601 UTC timestamp"
     }
 
@@ -125,6 +139,37 @@ erDiagram
         text created_at "ISO 8601 UTC timestamp"
         text reviewed_at "ISO 8601 UTC timestamp"
     }
+
+    CITIZEN_PROFILES {
+        text id PK "Unique citizen ID (JWT sub)"
+        text emergency_id UK "Protected ID e.g. SLV-CIT-7829"
+        text full_name "Full citizen name"
+        text phone "Contact phone number"
+        text email "Verified email address"
+        text registered_address "Residential address"
+        text blood_group "Blood group with Rh factor"
+        text avatar_initials "Initials string"
+        text avatar_url "Avatar image URL"
+        text medical_info "JSON conditions, allergies, mobility"
+        text privacy_settings "JSON privacy preferences"
+        text medications_note "Emergency medication notes"
+        integer is_verified "1 for verified citizen"
+        text created_at "ISO 8601 UTC timestamp"
+        text updated_at "ISO 8601 UTC timestamp"
+    }
+
+    EMERGENCY_CONTACTS {
+        text id PK "e.g. ec-101"
+        text user_id FK "References citizen_profiles(id) ON DELETE CASCADE"
+        text name "Contact full name"
+        text relationship "Father, Spouse, Neighbor, etc."
+        text phone "Contact phone number"
+        integer priority "Priority order rank (1-10)"
+        integer is_primary "1 if primary, 0 otherwise"
+        integer notify_on_sos "1 if notified during SOS"
+        text created_at "ISO 8601 UTC timestamp"
+        text updated_at "ISO 8601 UTC timestamp"
+    }
 ```
 
 ---
@@ -144,13 +189,19 @@ erDiagram
 - **Foreign Key:** `incident_id` $\rightarrow$ `incidents(id)` with `ON DELETE CASCADE`.
 - **Key Invariant:** Records in this table are append-only. Zero updates or manual deletes are permitted, ensuring strict legal auditability for emergency operations.
 
-### 3.3 `responders` (Fleet Inventory & Telemetry)
+### 3.3 `incident_attachments` (Cryptographic Media Evidence)
+
+- **Primary Key:** `id` (UUIDv4)
+- **Foreign Key:** `incident_id` $\rightarrow$ `incidents(id)` with `ON DELETE CASCADE`.
+- **Integrity Guarantee:** Includes SHA-256 `checksum` fingerprint to guarantee forensic evidence integrity.
+
+### 3.4 `responders` (Fleet Inventory & Telemetry)
 
 - **Primary Key:** `id` (e.g. `resp-101`)
 - **Foreign Key:** `assigned_incident_id` $\rightarrow$ `incidents(id)` with `ON DELETE SET NULL`.
 - **Key Invariant:** A responder can only be linked to at most one active incident at any given time.
 
-### 3.4 `assignments` (First-Class Dispatch Coordination)
+### 3.5 `assignments` (First-Class Dispatch Coordination)
 
 - **Primary Key:** `id` (UUIDv4)
 - **Foreign Keys:**
@@ -158,16 +209,35 @@ erDiagram
   - `responder_id` $\rightarrow$ `responders(id)` with `ON DELETE CASCADE`
 - **Key Invariant:** Only one active assignment (`PROPOSED`, `ASSIGNED`, `EN_ROUTE`, `NEARBY`, `ON_SCENE`) is permitted per responder and per incident.
 
-### 3.5 `shelters` (Evacuation Logistics)
+### 3.6 `shelters` (Evacuation Logistics)
 
 - **Primary Key:** `id` (e.g. `shl-01`)
 - **Key Invariant:** `available_beds` $\le$ `total_beds`. `occupancy_rate` is dynamically derived and formatted.
 
-### 3.6 `ai_triage_assessments` (Decision Support Audit)
+### 3.7 `ai_triage_assessments` (Decision Support Audit)
 
 - **Primary Key:** `id` (UUIDv4)
 - **Foreign Key:** `incident_id` $\rightarrow$ `incidents(id)` with `ON DELETE CASCADE`.
 - **Key Invariant:** Persists complete model outputs, provider names, latency telemetry, and subsequent human operator adjustment records.
+
+### 3.8 `citizen_profiles` (Persistent Identity & Emergency Readiness)
+
+- **Primary Key:** `id` (e.g. `cit-default` or JWT `sub` user ID).
+- **Unique Constraint:** `emergency_id` (e.g. `SLV-CIT-7829`).
+- **Key Invariants:**
+  - User identity is server-authoritative and bound to cryptographic JWT claims.
+  - Medical records are bounded and protected with citizen-only access rules.
+  - Privacy settings separate user preferences from system-locked safety requirements.
+
+### 3.9 `emergency_contacts` (Designated Emergency Roster)
+
+- **Primary Key:** `id` (e.g. `ec-101`).
+- **Foreign Key:** `user_id` $\rightarrow$ `citizen_profiles(id)` with `ON DELETE CASCADE`.
+- **Key Invariants:**
+  - Single-Primary Enforcement: Exactly one contact per citizen is designated as Primary.
+  - Setting a contact as primary demotes all other contacts of that user.
+  - Deleting the primary contact promotes the next highest priority contact to primary.
+  - Maximum limit of 5 designated contacts per citizen.
 
 ---
 
@@ -182,6 +252,8 @@ CREATE INDEX IF NOT EXISTS idx_incidents_coords ON incidents(latitude, longitude
 -- Foreign key lookup and event history joins
 CREATE INDEX IF NOT EXISTS idx_incident_events_incident_id ON incident_events(incident_id);
 CREATE INDEX IF NOT EXISTS idx_ai_triage_incident_id ON ai_triage_assessments(incident_id);
+CREATE INDEX IF NOT EXISTS idx_incident_attachments_incident_id ON incident_attachments(incident_id);
+CREATE INDEX IF NOT EXISTS idx_incident_attachments_checksum ON incident_attachments(checksum);
 
 -- Fleet status and mission tracking
 CREATE INDEX IF NOT EXISTS idx_responders_status ON responders(status);
@@ -194,6 +266,10 @@ CREATE INDEX IF NOT EXISTS idx_assignments_status ON assignments(status);
 
 -- Shelter status filtering
 CREATE INDEX IF NOT EXISTS idx_shelters_status ON shelters(status);
+
+-- Citizen Profile & Emergency Contact indexes
+CREATE INDEX IF NOT EXISTS idx_citizen_profiles_emergency_id ON citizen_profiles(emergency_id);
+CREATE INDEX IF NOT EXISTS idx_emergency_contacts_user_id ON emergency_contacts(user_id);
 ```
 
 ---
@@ -215,7 +291,16 @@ All mission-critical operations execute inside atomic SQLite transactions (`asyn
 
    If any step fails (e.g. duplicate assignment constraint violation), the entire transaction rolls back cleanly.
 
-2. **Triage Verification Transaction:**
+2. **Primary Contact Promotion Transaction:**
+
+   ```
+   BEGIN TRANSACTION;
+   1. Update 'emergency_contacts' SET is_primary = 0 WHERE user_id = :user_id.
+   2. Update 'emergency_contacts' SET is_primary = 1 WHERE id = :contact_id.
+   COMMIT;
+   ```
+
+3. **Triage Verification Transaction:**
    ```
    BEGIN TRANSACTION;
    1. Update 'ai_triage_assessments' SET review_status = 'VERIFIED', operator_id = actor.
@@ -230,6 +315,6 @@ All mission-critical operations execute inside atomic SQLite transactions (`asyn
 
 - **Render Free Tier (Ephemeral Storage):**
   - Web services on Render's Free tier run on ephemeral containers. Local database files stored at `data/salvus.db` reset upon container restart, deployment, or spin-down.
-  - The `AUTO_SEED=true` environment variable detects an empty database on startup and automatically seeds the complete Kolkata disaster response grid (NDRF Unit 4, Salt Lake Stadium Shelter, active flood beacons).
+  - The `AUTO_SEED=true` environment variable detects an empty database on startup and automatically seeds the complete Kolkata disaster response grid (NDRF Unit 4, Salt Lake Stadium Shelter, active flood beacons, citizen profiles, and emergency contacts).
 - **Render Starter Tier (Persistent Disk):**
   - For permanent production persistence, mount a Render Persistent Disk at `/var/data` (1 GB) and configure `DATABASE_PATH=/var/data/salvus.db`. All records permanently persist across redeploys.

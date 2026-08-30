@@ -561,3 +561,216 @@ Retrieves verified identity, claims, and permission list for the calling token.
 
 - **Auth:** Bearer Token.
 - **Response (200 OK):** `UserProfileResponse`.
+
+---
+
+## 12. Citizen Profile & Emergency Readiness API (`/api/profile`)
+
+### `GET /api/profile/me`
+
+Retrieves the persistent profile of the authenticated citizen. Automatically initializes a default record on the user's first visit.
+
+- **Auth:** `CITIZEN`, `AUTHORITY`, or `RESPONDER` (Bearer Token required).
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "cit-default",
+      "emergency_id": "SLV-CIT-7829",
+      "full_name": "Aditi Mukherjee",
+      "phone": "+91 98301 23456",
+      "email": "aditi.m@salvus.local",
+      "registered_address": "Flat 4B, Greenwood Apts, Sector 12, Salt Lake, Kolkata",
+      "blood_group": "O+",
+      "avatar_initials": "AM",
+      "avatar_url": null,
+      "is_verified": true,
+      "created_at": "2026-08-30T10:00:00+00:00",
+      "updated_at": "2026-08-30T10:00:00+00:00",
+      "medical_info": {
+        "conditions": ["Mild Asthma (Carries Inhaler)"],
+        "allergies": ["Penicillin Allergy"],
+        "mobilityNote": "Fully Mobile / Ambulatory"
+      },
+      "medications_note": "Inhaler in backpack"
+    }
+  }
+  ```
+
+### `PATCH /api/profile/me`
+
+Updates editable identity fields for the authenticated citizen. System-managed fields (`id`, `emergency_id`, `created_at`, `is_verified`) are protected against client tampering.
+
+- **Auth:** Bearer Token required.
+- **Request Payload:**
+  ```json
+  {
+    "full_name": "Aditi Mukherjee Sen",
+    "phone": "+91 98300 11223",
+    "email": "aditi.sen@salvus.local",
+    "blood_group": "O+",
+    "registered_address": "Sector 12, Salt Lake, Kolkata"
+  }
+  ```
+- **Response (200 OK):** `ProfileSingleResponse`.
+
+---
+
+### `GET /api/profile/emergency-contacts`
+
+Lists the designated emergency contacts belonging to the authenticated caller, ordered by primary designation and priority rank.
+
+- **Auth:** Bearer Token required.
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "ec-101",
+        "user_id": "cit-default",
+        "name": "Dr. Sourav Mukherjee",
+        "relationship": "Father",
+        "phone": "+91 98300 11223",
+        "priority": 1,
+        "is_primary": true,
+        "notify_on_sos": true,
+        "created_at": "2026-08-30T10:00:00+00:00",
+        "updated_at": "2026-08-30T10:00:00+00:00"
+      }
+    ],
+    "count": 1
+  }
+  ```
+
+### `POST /api/profile/emergency-contacts`
+
+Adds a new designated emergency contact. Automatically enforces single-primary contact rules and maximum 5 contact limits.
+
+- **Auth:** Bearer Token required.
+- **Request Payload:**
+  ```json
+  {
+    "name": "Priya Das",
+    "relationship": "Sister / Neighbor",
+    "phone": "+91 98311 44556",
+    "priority": 2,
+    "is_primary": false,
+    "notify_on_sos": true
+  }
+  ```
+- **Response (201 Created):** `EmergencyContactSingleResponse`.
+
+### `PATCH /api/profile/emergency-contacts/{id}`
+
+Updates an existing emergency contact. If `is_primary: true` is sent, other contacts for that user are automatically demoted.
+
+- **Auth:** Bearer Token required (Caller must own the contact).
+- **Request Payload:**
+  ```json
+  {
+    "phone": "+91 98311 99887",
+    "is_primary": true
+  }
+  ```
+- **Response (200 OK):** `EmergencyContactSingleResponse`.
+
+### `DELETE /api/profile/emergency-contacts/{id}`
+
+Deletes an emergency contact. If the deleted contact was primary, the next highest priority contact is automatically promoted to primary.
+
+- **Auth:** Bearer Token required.
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Emergency contact deleted successfully."
+  }
+  ```
+
+---
+
+### `GET /api/profile/medical`
+
+Retrieves emergency medical records for the authenticated citizen.
+
+- **Auth:** Bearer Token required.
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "blood_group": "O+",
+      "conditions": ["Mild Asthma (Carries Inhaler)"],
+      "allergies": ["Penicillin Allergy"],
+      "mobility_note": "Fully Mobile / Ambulatory",
+      "medications_note": "Inhaler in backpack"
+    }
+  }
+  ```
+
+### `PATCH /api/profile/medical`
+
+Updates emergency medical details. Sanitizes string inputs and enforces maximum length constraints.
+
+- **Auth:** Bearer Token required.
+- **Request Payload:**
+  ```json
+  {
+    "blood_group": "O+",
+    "conditions": ["Mild Asthma", "Hypertension"],
+    "allergies": ["Penicillin"],
+    "mobility_note": "Fully Mobile / Ambulatory",
+    "medications_note": "Carries Inhaler in backpack"
+  }
+  ```
+- **Response (200 OK):** `MedicalSingleResponse`.
+
+---
+
+### `GET /api/profile/settings`
+
+Retrieves emergency feature preferences and system-locked safety requirements.
+
+- **Auth:** Bearer Token required.
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "emergency_location",
+        "title": "Emergency Location Sharing",
+        "description": "Your GPS location is shared with emergency coordinators only during an active SOS beacon or hazard submission.",
+        "value": true,
+        "locked": true,
+        "badge": "Privacy Protected"
+      },
+      {
+        "id": "offline_cache",
+        "title": "Offline Emergency Cache",
+        "description": "Stores local shelter locations, emergency contacts, and vital medical pass on device for zero-connectivity situations.",
+        "value": true,
+        "locked": false,
+        "badge": null
+      }
+    ]
+  }
+  ```
+
+### `PATCH /api/profile/settings`
+
+Updates toggleable preferences. System-locked settings (`locked: true`) remain protected at default values.
+
+- **Auth:** Bearer Token required.
+- **Request Payload:**
+  ```json
+  {
+    "settings": [
+      { "id": "offline_cache", "value": true },
+      { "id": "critical_push", "value": true }
+    ]
+  }
+  ```
+- **Response (200 OK):** `PrivacySettingsResponse`.

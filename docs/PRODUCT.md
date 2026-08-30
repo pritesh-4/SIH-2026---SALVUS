@@ -100,12 +100,19 @@ Every major feature in Salvus is built to answer four fundamental operational qu
 - **WHEN:** Continuously during crisis monitoring and active mission tracking.
 - **WHAT DECISION DOES IT ENABLE:** Visualizes live transit progress, detects bottleneck intersections, and calculates accurate ETAs using OSRM with resilient offline corridor fallbacks.
 
-### 4.6 Shelter Capacity Logistics (`ShelterPanel.jsx`)
+### 4.6 Shelter Logistics & Safe Intake Routing (`ShelterPanel.jsx`, `AreaMapCard.jsx`)
 
-- **WHO:** Evacuation Coordinators and Field Responders.
-- **WHY:** Sending evacuees to overflowing shelters causes dangerous bottlenecks and logistical chaos.
-- **WHEN:** During active evacuation routing and victim check-in.
-- **WHAT DECISION DOES IT ENABLE:** Directs ambulances and rescue boats to facilities with open bed capacity and adequate 72-hour food/medical supplies.
+- **WHO:** Displaced citizens and evacuation coordinators.
+- **WHY:** Evacuating to a full or unequipped shelter leads to secondary displacement during storms.
+- **WHEN:** Before, during, and immediately following evacuation orders.
+- **WHAT DECISION DOES IT ENABLE:** Directs evacuees to facilities with verified bed capacity, operational backup generators, and clean water supplies.
+
+### 4.7 Emergency Readiness Center & Offline Pass (`CitizenProfile.jsx`, `profileService.js`)
+
+- **WHO:** Citizens preparing _before_ an emergency strikes, and rescue triage teams during intake.
+- **WHY:** Paramedics and rescue teams lose crucial triage minutes attempting to identify unconscious victims, determine blood compatibility, or locate next of kin.
+- **WHEN:** In calm peacetime periods (profile configuration) and zero-connectivity disaster triage (offline pass presentation).
+- **WHAT DECISION DOES IT ENABLE:** Enables immediate contact notification upon SOS trigger, automatic injection of victim vulnerabilities (e.g. Asthma, Non-ambulatory) into incident records, and offline triage verification when cell towers collapse.
 
 ---
 

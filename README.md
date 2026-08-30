@@ -2,10 +2,11 @@
 
 ### AI-Powered Disaster Intelligence & Emergency Rescue Coordination Platform
 
-**Salvus is an operational disaster response platform that connects citizens in distress with emergency authorities through real-time geospatial intelligence, automated AI triage decision-support, explainable deterministic resource allocation, and a calm, state-focused emergency journey.**
+**Salvus is an operational disaster response platform that connects citizens in distress with emergency authorities through real-time geospatial intelligence, automated AI triage decision-support, explainable deterministic resource allocation, persistent emergency readiness profiles, and a calm, state-focused emergency journey.**
 
 [![CI Quality Gate](https://github.com/pritesh-4/SIH-2026---SALVUS/actions/workflows/ci.yml/badge.svg)](https://github.com/pritesh-4/SIH-2026---SALVUS/actions)
-[![Backend Tests: 204 Passing](https://img.shields.io/badge/Backend%20Tests-204%20Passing-brightgreen.svg)](#testing--verification)
+[![Backend Tests: 349 Passing](https://img.shields.io/badge/Backend%20Tests-349%20Passing-brightgreen.svg)](#testing--verification)
+[![Frontend Tests: 14 Passing](https://img.shields.io/badge/Frontend%20Tests-14%20Passing-brightgreen.svg)](#testing--verification)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node Version](https://img.shields.io/badge/Node-20.x%20LTS-green.svg)](#tech-stack)
 [![Python Version](https://img.shields.io/badge/Python-3.11%20%7C%203.12-blue.svg)](#tech-stack)
@@ -24,6 +25,7 @@ Emergency coordinators face overwhelming data fragmentation:
 - **Geographic Coordination & Hazard Dynamics:** Dynamic flood inundation lines, impassable debris roads, and downed power lines obstruct standard transit routes.
 - **Shelter Capacity Blind Spots:** Evacuees are frequently sent to facilities that have already exceeded bed capacity or run out of rations.
 - **Communication Latency:** Citizens panic in the dark with zero visibility into rescue vehicle ETA or arrival milestones.
+- **Victim Vulnerability Blindness:** Emergency responders lack immediate access to victim blood groups, pre-existing medical conditions (e.g. Asthma, Diabetes), mobility limitations, or next-of-kin contacts during zero-connectivity triage.
 
 ---
 
@@ -31,11 +33,11 @@ Emergency coordinators face overwhelming data fragmentation:
 
 Salvus resolves the coordination gap through a synchronized, two-sided operational platform:
 
-1. **Citizen Safety Console (`/citizen`):** A lightweight, low-bandwidth interface for citizens to broadcast geo-tagged distress beacons, report localized hazards in-app, inspect elevation-safe shelter routes, and follow a **State-Focused Progressive Disclosure Emergency Journey** from SOS to safe resolution.
-2. **Authority Command Center (`/authority`):** A high-density operational cockpit for emergency coordinators to view real-time incident queues, inspect AI triage recommendations with confidence scores, calculate deterministic vehicle match rankings, dispatch specialized units with 1 click, and oversee shelter logistics.
+1. **Citizen Safety Console (`/citizen`):** A lightweight, low-bandwidth interface for citizens to configure emergency readiness (persistent contacts, medical passport, offline pass), broadcast geo-tagged distress beacons, report localized hazards in-app, inspect elevation-safe shelter routes, and follow a **State-Focused Progressive Disclosure Emergency Journey** from SOS to safe resolution.
+2. **Authority Command Center (`/authority`):** A high-density operational cockpit for emergency coordinators to view real-time incident queues, inspect AI triage recommendations with confidence scores, calculate deterministic vehicle match rankings, dispatch specialized units with 1 click, inspect victim medical summaries, and oversee shelter logistics.
 
 ```
-Citizen Distress SOS
+Citizen Distress SOS (Backed by Persistent Readiness Profile)
        ↓
 Automated AI Triage & Entity Extraction
        ↓
@@ -61,6 +63,7 @@ Evacuation Shelter Reception & Resolution
 - **Multi-Tier AI Provider Waterfall:** AI triage degrades gracefully: **Gemini 2.5 Flash $\rightarrow$ Groq Llama-3.3-70b $\rightarrow$ Deterministic Local Heuristics**. The platform remains fully functional even during complete external AI provider outages.
 - **Calm Intelligence During Chaos:** The Authority Command Center operates on an 85–90% neutral slate budget (`#080C12` base) where semantic colors communicate meaning only (Red = Critical Threat, Amber = Triage Warning, Blue = Active Selection, Green = Resolved / Safe).
 - **State-Focused Progressive Disclosure:** The citizen emergency interface eliminates panic-induced cognitive overload by rendering only the single most actionable focal point per lifecycle state.
+- **Persistent Emergency Readiness & Offline Pass:** Citizens prepare _before_ crises strike. Live identity, single-primary emergency contacts, and medical alerts automatically feed into SOS beacons and cache locally for zero-connectivity triage desks.
 - **Cryptographic Security & RBAC:** Role-based access control (CITIZEN, AUTHORITY, RESPONDER, SYSTEM) enforced across REST endpoints and Socket.IO room subscriptions.
 - **Resilient Real-time Synchronization:** Bi-directional Socket.IO WebSockets with automatic room re-subscription and state reconciliation upon reconnection.
 
@@ -74,15 +77,23 @@ Evacuation Shelter Reception & Resolution
 - **In-App 3-Step Hazard Reporting:** Structured hazard tickets with category tagging (Floods, Downed Lines, Debris, Trapped Persons), GPS coordinates, and deduplication locking.
 - **Interactive Situational Map (`/citizen/map`):** Leaflet dark-theme radar with flood hydro-contours, emergency posts, and step-by-step shelter safe route guidance.
 - **Categorized Advisories (`/citizen/alerts`):** Actionable safety guidance filtered by Critical, Warning, and Watch tiers.
-- **Emergency Readiness Profile (`/citizen/profile`):** Verified identity, medical passport, speed-dial contacts, and siren tone testing.
+- **Emergency Readiness System (`/citizen/profile`):**
+  - **Persistent User Identity:** Server-authoritative profile with unique Emergency ID (`SLV-CIT-XXXX`) bound to cryptographic JWT claims.
+  - **Designated Emergency Contacts:** Full CRUD with single-primary enforcement, priority ranking, and automatic promotion upon primary deletion.
+  - **Medical Passport:** Blood group with Rh factor, conditions, allergies, mobility protocols, and medication notes.
+  - **Deterministic Readiness Indicator:** Live `READY` vs `SETUP INCOMPLETE` status scoring.
+  - **Real Offline Emergency Pass:** Local device caching with staleness detection (`SAVED`, `NEEDS_UPDATE`, `NOT_SAVED`).
+  - **Web Audio Siren Tester:** Local 1.5s dual-tone pulse (880Hz / 440Hz) with autoplay safety.
+  - **Zero-Network Degradation:** Safe offline snapshots render profile with honest reconnect notifications.
 - **8-State Progressive Emergency Journey (`/citizen/emergency`):** `SOS_ACTIVE` $\rightarrow$ `TRIAGING` $\rightarrow$ `VERIFIED` $\rightarrow$ `ASSIGNED` $\rightarrow$ `EN_ROUTE` $\rightarrow$ `NEARBY` (<100m proximity cue) $\rightarrow$ `ON_SCENE` $\rightarrow$ `RESOLVED`.
+  - Automatically renders the **Designated Emergency Contacts Notified** panel and **Evacuee Medical Summary** directly on the emergency screen.
 
 ### Authority Command Center (`/authority`)
 
 - **Operational Metrics Strip:** Live tracking of Active Incidents, Critical Threats, Fleet Deployed ratio, Available Beds, and Resolved Cases.
 - **Priority Ingestion Queue:** Scan-friendly list with severity badges, category pills, elapsed time, and AI urgency indicators.
 - **Tactical Geospatial Command Map:** Full-screen Leaflet OpenStreetMap surface with custom SVG vessel markers, route corridors, hazard zones, and spatial incident clusters.
-- **Dedicated Incident Inspector:** Complete incident context, affected person counts, reporter notes, and lifecycle progression controls.
+- **Dedicated Incident Inspector:** Complete incident context, affected person counts, reporter notes, victim medical alerts, and lifecycle progression controls.
 - **Fleet Matrix & Status Management:** Craft status (`AVAILABLE`, `ASSIGNED`, `EN_ROUTE`, `ON_SCENE`, `OFFLINE`), team leads, and VHF radio channels.
 - **Shelter Logistics & Intake:** Bed capacity indicators, 72-hour supply ratings, and hazard proximity alerts.
 
@@ -95,14 +106,17 @@ flowchart TB
     subgraph Client_Layer ["Client Presentation Layer (React 19 + Leaflet + Vite)"]
         direction TB
         CitizenPortal["Citizen Safety Console (/citizen)"]
+        CitizenProfile["Emergency Readiness Center (/citizen/profile)"]
         CitizenEmergency["Progressive Emergency Console (/citizen/emergency)"]
         AuthorityCenter["Authority Command Center (/authority)"]
         RealtimeSocket["Realtime Socket Manager (socket.js)"]
-        APIService["REST API Client (api.js)"]
+        APIService["REST API Client (api.js & profileService.js)"]
 
+        CitizenPortal <--> CitizenProfile
         CitizenPortal <--> CitizenEmergency
         CitizenPortal <-->|"1-Click Switcher"| AuthorityCenter
         CitizenPortal --> APIService
+        CitizenProfile --> APIService
         CitizenEmergency --> APIService
         CitizenEmergency <--> RealtimeSocket
         AuthorityCenter --> APIService
@@ -113,7 +127,7 @@ flowchart TB
         direction TB
         AuthRBAC["JWT Auth & Cryptographic RBAC"]
         Middleware["Security Headers | Payload Limits | Request Logger"]
-        Router["REST Routers (/api/incidents, /api/assignments, /api/responders, /api/shelters, /api/triage, /api/hazards)"]
+        Router["REST Routers (/api/incidents, /api/assignments, /api/responders, /api/shelters, /api/triage, /api/hazards, /api/profile)"]
         SocketEngine["Async Socket.IO Server (Rooms: 'authorities', 'incident:{id}')"]
     end
 
@@ -121,6 +135,7 @@ flowchart TB
         direction TB
         IncidentSvc["Incident Service & State Machine"]
         AssignmentSvc["Assignment Service (First-Class Lifecycle)"]
+        ProfileSvc["Profile & Readiness Service (profile_service.py)"]
         AllocationEngine["Explainable Deterministic Allocation Engine (6 Factors)"]
         CandidateGen["Candidate Generation (Strict Hard Filtering)"]
         RoutingSvc["Routing Service (OSRM + Vector Corridor Fallback)"]
@@ -130,7 +145,7 @@ flowchart TB
 
     subgraph Storage_Layer ["Storage & External Providers"]
         direction TB
-        SQLite["Async SQLite (WAL Mode + Foreign Keys)"]
+        SQLite["Async SQLite (WAL Mode + Foreign Keys - 8 Tables)"]
         OSRM["OpenStreetMap OSRM Server"]
         GeminiAPI["Google Gemini API"]
         GroqAPI["Groq Cloud API"]
@@ -140,14 +155,14 @@ flowchart TB
     APIService -.->|HTTP/REST| Router
     RealtimeSocket -.->|WebSockets| SocketEngine
 
-    Router --> AuthRBAC --> Middleware --> IncidentSvc & AssignmentSvc & HazardSvc
+    Router --> AuthRBAC --> Middleware --> IncidentSvc & AssignmentSvc & ProfileSvc & HazardSvc
     SocketEngine <--> IncidentSvc & AssignmentSvc
 
     IncidentSvc --> AIService
     AssignmentSvc --> AllocationEngine --> CandidateGen --> RoutingSvc
-
     IncidentSvc --> SQLite
     AssignmentSvc --> SQLite
+    ProfileSvc --> SQLite
     AIService --> GeminiAPI & GroqAPI
     RoutingSvc --> OSRM
     HazardSvc --> MeteoAPI
@@ -157,19 +172,20 @@ flowchart TB
 
 ## Tech Stack
 
-| Layer                   | Technology                           | Version                 | Purpose & Rationale                                                         |
-| :---------------------- | :----------------------------------- | :---------------------- | :-------------------------------------------------------------------------- |
-| **Frontend**            | React, Vite                          | `19.2.8`, `8.2.0`       | Ultra-fast rendering, instant HMR, component isolation                      |
-| **Styling**             | Tailwind CSS v4, Vanilla CSS         | `4.3.3`                 | Custom design tokens, 85-90% slate neutral budget                           |
-| **Backend**             | FastAPI, Python                      | `0.115+`, `3.11 / 3.12` | Asynchronous coroutines, OpenAPI schemas, Pydantic v2 validation            |
-| **Database**            | SQLite via `aiosqlite`               | WAL Mode                | Zero-latency local/demo persistence, strict foreign key constraints         |
-| **Realtime**            | Socket.IO (Python & JS client)       | `4.8.3`                 | Bi-directional events, room authorization (`authorities`, `incident:{id}`)  |
-| **Maps & GIS**          | Leaflet, OpenStreetMap               | `1.9.4`                 | Dark-theme tactical radar, custom SVG markers, route polylines              |
-| **Routing**             | OSRM Engine + Vector Fallback        | REST API                | Real-world road/corridor distance, duration, and geometry                   |
-| **AI Decision Support** | Gemini 2.5 Flash, Groq Llama-3.3-70b | REST SDKs               | Unstructured parsing, urgency scoring, PII sanitization, heuristic fallback |
-| **Auth & Security**     | PyJWT, Cryptography                  | HMAC-SHA256             | Cryptographic token minting, role-based access control, security headers    |
-| **Code Quality**        | ESLint, Prettier, Ruff               | `10.8`, `3.9`, `0.9`    | Automated linting, code style enforcement, Git pre-commit hooks             |
-| **Testing**             | Pytest, AnyIO                        | `9.1.1`                 | **204 passing automated tests** across 19 backend test suites               |
+| Layer                   | Technology                           | Version                 | Purpose & Rationale                                                            |
+| :---------------------- | :----------------------------------- | :---------------------- | :----------------------------------------------------------------------------- |
+| **Frontend**            | React, Vite                          | `19.2.8`, `8.2.0`       | Ultra-fast rendering, instant HMR, component isolation                         |
+| **Styling**             | Tailwind CSS v4, Vanilla CSS         | `4.3.3`                 | Custom design tokens, 85-90% slate neutral budget                              |
+| **Backend**             | FastAPI, Python                      | `0.115+`, `3.11 / 3.12` | Asynchronous coroutines, OpenAPI schemas, Pydantic v2 validation               |
+| **Database**            | SQLite via `aiosqlite`               | WAL Mode                | Zero-latency local/demo persistence, strict foreign key constraints (8 tables) |
+| **Realtime**            | Socket.IO (Python & JS client)       | `4.8.3`                 | Bi-directional events, room authorization (`authorities`, `incident:{id}`)     |
+| **Maps & GIS**          | Leaflet, OpenStreetMap               | `1.9.4`                 | Dark-theme tactical radar, custom SVG markers, route polylines                 |
+| **Audio Engine**        | Web Audio API                        | Native Browser          | Dual-tone siren synthesis (880Hz / 440Hz) with zero external media files       |
+| **Routing**             | OSRM Engine + Vector Fallback        | REST API                | Real-world road/corridor distance, duration, and geometry                      |
+| **AI Decision Support** | Gemini 2.5 Flash, Groq Llama-3.3-70b | REST SDKs               | Unstructured parsing, urgency scoring, PII sanitization, heuristic fallback    |
+| **Auth & Security**     | PyJWT, Cryptography                  | HMAC-SHA256             | Cryptographic token minting, role-based access control, security headers       |
+| **Code Quality**        | ESLint, Prettier, Ruff               | `10.8`, `3.9`, `0.9`    | Automated linting, code style enforcement, Git pre-commit hooks                |
+| **Testing**             | Pytest, Node Test Runner             | `9.1.1`, Node 20+       | **349 passing backend tests** and **14 passing frontend unit tests**           |
 
 ---
 
@@ -177,28 +193,30 @@ flowchart TB
 
 Salvus maintains absolute architectural honesty regarding data sources:
 
-| Capability                     | Classification    | Description                                                                                                                                       |
-| :----------------------------- | :---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Incident Lifecycle**         | **LIVE**          | Full database persistence, audit event logging, and WebSocket broadcast.                                                                          |
-| **Assignment Lifecycle**       | **LIVE**          | Authoritative database entity with state synchronization across responder and incident.                                                           |
-| **Deterministic Allocation**   | **LIVE**          | Real-time 6-factor mathematical calculation executed on live fleet coordinates.                                                                   |
-| **AI Triage Evaluation**       | **HYBRID**        | **LIVE** when `GEMINI_API_KEY` or `GROQ_API_KEY` is configured; **FALLBACK** to deterministic rule-based heuristics when unconfigured or offline. |
-| **OSRM Route Geometry**        | **HYBRID**        | **LIVE** real-world road routing with automatic fallback to calculated 15-waypoint vector corridors.                                              |
-| **Responder GPS Movement**     | **SIMULATED**     | Deterministic GPS telemetry simulation advancing along computed route corridors.                                                                  |
-| **Hazard Feed Ingestion**      | **LIVE / CACHED** | Normalized disaster signals from Open-Meteo and USGS with cached fallbacks.                                                                       |
-| **Database Storage on Render** | **EPHEMERAL**     | Render Free tier SQLite resets on redeploy; `AUTO_SEED=true` populates baseline disaster grid. Persistent disk supported on Render Starter.       |
+| Capability                      | Classification    | Description                                                                                                                                       |
+| :------------------------------ | :---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Citizen Profile & Readiness** | **LIVE**          | Full database persistence, JWT subject binding, single-primary contact enforcement.                                                               |
+| **Incident Lifecycle**          | **LIVE**          | Full database persistence, audit event logging, and WebSocket broadcast.                                                                          |
+| **Assignment Lifecycle**        | **LIVE**          | Authoritative database entity with state synchronization across responder and incident.                                                           |
+| **Deterministic Allocation**    | **LIVE**          | Real-time 6-factor mathematical calculation executed on live fleet coordinates.                                                                   |
+| **AI Triage Evaluation**        | **HYBRID**        | **LIVE** when `GEMINI_API_KEY` or `GROQ_API_KEY` is configured; **FALLBACK** to deterministic rule-based heuristics when unconfigured or offline. |
+| **OSRM Route Geometry**         | **HYBRID**        | **LIVE** real-world road routing with automatic fallback to calculated 15-waypoint vector corridors.                                              |
+| **Responder GPS Movement**      | **SIMULATED**     | Deterministic GPS telemetry simulation advancing along computed route corridors.                                                                  |
+| **Hazard Feed Ingestion**       | **LIVE / CACHED** | Normalized disaster signals from Open-Meteo and USGS with cached fallbacks.                                                                       |
+| **Database Storage on Render**  | **EPHEMERAL**     | Render Free tier SQLite resets on redeploy; `AUTO_SEED=true` populates baseline disaster grid. Persistent disk supported on Render Starter.       |
 
 ---
 
 ## Golden Demo Flow (3-Minute Script)
 
 1. **Dual-Window Setup:** Open `/citizen` on the left and `/authority` on the right.
-2. **Citizen Distress SOS:** Click **SEND SOS** on Citizen Home. Hold to confirm. Observe instant ticket creation (`#SV-2048`).
-3. **Real-time Queue Arrival:** The incident appears instantly in the Authority Command Center queue and Leaflet tactical map with zero page reload.
-4. **AI Triage & Verification:** Authority reviews AI situation intelligence (Urgency 9.4/10, Flash Flood, Flood Boat required) and clicks **Verify Triage**. The Citizen screen immediately updates to `VERIFIED`.
-5. **Deterministic Allocation:** The system computes the top candidate unit (**NDRF Unit 4 — Alpha Team**, 94/100 score) with full explainable mathematical breakdown.
-6. **Dispatch & Live Tracking:** Dispatcher clicks **Confirm Dispatch**. As the rescue vessel moves along the corridor, the citizen sees live animated vessel navigation, distance (850m), and dynamic ETA countdown (4m).
-7. **Proximity Alert & Resolution:** When within 100 meters, citizen receives an urgent proximity beacon with torch signaling cues. Incident completes with safe evacuation to Salt Lake Stadium shelter.
+2. **Emergency Readiness Inspection:** Open `/citizen/profile` on the citizen screen. Demonstrate verified Emergency ID (`SLV-CIT-7829`), primary contact, medical conditions (Asthma), and test the Web Audio siren tone.
+3. **Citizen Distress SOS:** Return to Citizen Home, click **SEND SOS**, hold to confirm. Observe instant ticket creation (`#SV-2048`).
+4. **Real-time Queue Arrival:** The incident appears instantly in the Authority Command Center queue and Leaflet tactical map with zero page reload.
+5. **AI Triage & Verification:** Authority reviews AI situation intelligence (Urgency 9.4/10, Flash Flood, Flood Boat required) along with the victim's medical alerts. Dispatcher clicks **Verify Triage**. The Citizen screen immediately updates to `VERIFIED`.
+6. **Deterministic Allocation:** The system computes the top candidate unit (**NDRF Unit 4 — Alpha Team**, 94/100 score) with full explainable mathematical breakdown.
+7. **Dispatch & Live Tracking:** Dispatcher clicks **Confirm Dispatch**. As the rescue vessel moves along the corridor, the citizen sees live animated vessel navigation, distance (850m), and dynamic ETA countdown (4m).
+8. **Proximity Alert & Resolution:** When within 100 meters, citizen receives an urgent proximity beacon with torch signaling cues. Incident completes with safe evacuation to Salt Lake Stadium shelter.
 
 ---
 
@@ -210,22 +228,22 @@ salvus/
 ├── backend/                       # Python FastAPI Backend
 │   ├── app/
 │   │   ├── auth/                  # JWT handler, role claims, RBAC dependencies
-│   │   ├── db/                    # SQLite WAL database, migrations & seeders
+│   │   ├── db/                    # SQLite WAL database (8 tables), migrations & seeders
 │   │   ├── logging/               # Structured telemetry & request logger
 │   │   ├── middleware/            # Security headers, payload limits, correlation ID
-│   │   ├── models/                # Pydantic v2 schemas & domain models
+│   │   ├── models/                # Pydantic v2 schemas (incidents, profile, contacts, triage)
 │   │   ├── realtime/              # Socket.IO async server & room manager
-│   │   ├── routes/                # REST endpoints (incidents, assignments, responders, etc.)
-│   │   ├── services/              # Domain logic (allocation engine, routing, AI, triage)
+│   │   ├── routes/                # REST endpoints (incidents, assignments, responders, profile, etc.)
+│   │   ├── services/              # Domain logic (profile, allocation engine, routing, AI, triage)
 │   │   └── main.py                # ASGI combined application entrypoint
-│   ├── tests/                     # 19 test suites (204 automated tests)
+│   ├── tests/                     # 29 test suites (349 automated tests)
 │   ├── .env.example               # Backend environment variables template
 │   └── requirements.txt           # Python dependencies
 ├── docs/                          # Comprehensive Technical Documentation System
 │   ├── ARCHITECTURE.md            # System architecture & component design
 │   ├── PRODUCT.md                 # Product strategy, personas & workflows
-│   ├── API.md                     # REST & WebSocket API contracts
-│   ├── DATABASE.md                # SQLite WAL schema, ER diagrams & migrations
+│   ├── API.md                     # REST & WebSocket API contracts (12 route modules)
+│   ├── DATABASE.md                # SQLite WAL schema (8 tables), ER diagrams & migrations
 │   ├── REALTIME.md                # Socket.IO room architecture & event catalogue
 │   ├── AI_ARCHITECTURE.md         # 3-tier AI waterfall & human verification model
 │   ├── SECURITY.md                # Cryptographic RBAC, headers & privacy controls
@@ -237,13 +255,13 @@ salvus/
 │   ├── ROADMAP.md                 # Project milestones & completed deliverables
 │   └── DECISIONS.md               # Architecture Decision Records (ADR-001 to ADR-014)
 ├── src/                           # React 19 Frontend
-│   ├── components/                # Authority, citizen & shared common components
+│   ├── components/                # Authority, citizen, UI kit & shared common components
 │   ├── data/                      # Fixtures & reference data
-│   ├── features/                  # Domain feature hooks (incidents, fleet, shelters, dispatch)
+│   ├── features/                  # Domain feature hooks (emergency state, fleet, shelters, dispatch)
 │   ├── layouts/                   # AuthorityLayout and CitizenLayout shells
-│   ├── lib/                       # Realtime socket, geolocation & theme tokens
+│   ├── lib/                       # Realtime socket, Web Audio siren, geolocation & theme tokens
 │   ├── pages/                     # SPA route views (Citizen & Authority pages)
-│   └── services/                  # Frontend REST API client & OSRM routing service
+│   └── services/                  # Frontend REST API client, profile service & OSRM routing
 ├── package.json                   # Frontend dependencies and scripts
 ├── render.yaml                    # Render Blueprint (Infrastructure as Code)
 ├── vercel.json                    # Vercel SPA routing configuration
@@ -272,9 +290,10 @@ cp .env.example .env
 # 3. Start Vite dev server
 npm run dev
 
-# 4. Run quality checks
+# 4. Run quality & test checks
 npm run lint
 npm run format:check
+node --test src/lib/__tests__/emergencyReadinessPhase3.test.js src/lib/__tests__/emergencyReadiness.test.js src/lib/__tests__/profileService.test.js
 npm run build
 ```
 
@@ -360,19 +379,25 @@ uvicorn app.main:combined_asgi_app --reload --host 0.0.0.0 --port 8000
 The codebase includes an extensive automated testing suite:
 
 ```bash
-# Run full backend test suite (204 tests)
+# Run full backend test suite (349 tests)
 cd backend
 pytest -v
 
+# Run frontend test suite (14 tests)
+node --test src/lib/__tests__/emergencyReadinessPhase3.test.js src/lib/__tests__/emergencyReadiness.test.js src/lib/__tests__/profileService.test.js
+
 # Run linting and code style checks
+npm run lint
 ruff check app tests
 ruff format --check app tests
 ```
 
 ### Verified Test Benchmark:
 
-- **Total Backend Tests:** **204 Passing** (0 failures, 0 errors)
+- **Total Backend Tests:** **349 Passing** across 29 test suites (0 failures, 0 errors)
   - `test_state_machine.py`: 64 tests (Complete finite state machine transitions)
+  - `test_profile_api.py`: 7 tests (Citizen profile identity and medical management)
+  - `test_emergency_readiness_api.py`: 5 tests (Emergency contacts CRUD and safety locks)
   - `test_security_hardening.py`: 11 tests (JWT authentication & RBAC)
   - `test_allocation_engine.py`: 10 tests (Deterministic 6-factor scoring)
   - `test_candidate_generation.py`: 11 tests (Eligibility hard filtering)
@@ -389,6 +414,7 @@ ruff format --check app tests
   - `test_realtime_dispatch_loop.py`: 3 tests (End-to-end realtime lifecycle)
   - `test_disaster_intelligence.py`: 5 tests (Normalized hazard feeds)
   - `test_assignment_flow.py`: 4 tests (Transactional state consistency)
+- **Total Frontend Unit Tests:** **14 Passing** (Emergency Readiness, Pass Staleness, Single-Primary Promotion, Service Resilience)
 
 ---
 
@@ -397,9 +423,9 @@ ruff format --check app tests
 For complete in-depth architectural manuals, refer to the [`docs/`](docs/) directory:
 
 - 📐 **[ARCHITECTURE.md](docs/ARCHITECTURE.md):** Layer boundaries, Mermaid flowcharts, and component design.
-- 🎯 **[PRODUCT.md](docs/PRODUCT.md):** User personas, problem definition, and decision rationale.
-- 🔌 **[API.md](docs/API.md):** Complete REST endpoints and WebSocket event specifications.
-- 🗄️ **[DATABASE.md](docs/DATABASE.md):** SQLite WAL schema, ER diagrams, indexes, and migrations.
+- 🎯 **[PRODUCT.md](docs/PRODUCT.md):** User personas, problem definition, decision rationale, and Emergency Readiness.
+- 🔌 **[API.md](docs/API.md):** Complete REST endpoints (12 route modules) and WebSocket event specifications.
+- 🗄️ **[DATABASE.md](docs/DATABASE.md):** SQLite WAL schema (8 tables), ER diagrams, indexes, and migrations.
 - ⚡ **[REALTIME.md](docs/REALTIME.md):** Socket.IO room architecture, event catalogue, and out-of-order guards.
 - 🤖 **[AI_ARCHITECTURE.md](docs/AI_ARCHITECTURE.md):** 3-tier AI waterfall, schema validation, PII redaction, and human verification.
 - 🛡️ **[SECURITY.md](docs/SECURITY.md):** Cryptographic JWT authentication, RBAC matrix, and security headers.

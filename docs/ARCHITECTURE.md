@@ -31,7 +31,7 @@ flowchart TB
         direction TB
         JWTAuth["JWT Authentication & RBAC Dependencies (app/auth/)"]
         SecMiddleware["Security Middleware (Headers, 5MB Limit, Correlation ID, Logger)"]
-        APIRouters["REST Routers (incidents, assignments, responders, shelters, triage, routing, hazards)"]
+        APIRouters["REST Routers (incidents, assignments, responders, shelters, triage, routing, hazards, profile)"]
         SocketEngine["Async Socket.IO Server (app/realtime/socket_manager.py)"]
     end
 
@@ -39,6 +39,7 @@ flowchart TB
         direction TB
         IncidentSvc["Incident Service & State Machine (incident_service.py)"]
         AssignmentSvc["Assignment Service (assignment_service.py)"]
+        ProfileSvc["Profile & Readiness Service (profile_service.py)"]
         AllocationEng["Explainable Allocation Engine (allocation_engine.py)"]
         CandidateGen["Candidate Generation Hard Filters (candidate_generation.py)"]
         RoutingSvc["Routing Service & TTL Cache (routing_service.py)"]
@@ -48,7 +49,7 @@ flowchart TB
 
     subgraph Storage_Layer ["4. Persistence & External Providers"]
         direction TB
-        SQLiteDB[("Async SQLite (WAL Mode + Foreign Keys)\nbackend/data/salvus.db")]
+        SQLiteDB[("Async SQLite (WAL Mode + Foreign Keys)\nbackend/data/salvus.db (8 Tables)")]
         OSRMServer["OpenStreetMap OSRM Server\n(https://router.project-osrm.org)"]
         GeminiCloud["Google Gemini API\n(gemini-2.5-flash)"]
         GroqCloud["Groq Cloud API\n(llama-3.3-70b-versatile)"]
@@ -65,6 +66,7 @@ flowchart TB
     AssignmentSvc --> AllocationEng --> CandidateGen --> RoutingSvc
     IncidentSvc --> SQLiteDB
     AssignmentSvc --> SQLiteDB
+    ProfileSvc --> SQLiteDB
     AIService --> GeminiCloud & GroqCloud
     RoutingSvc --> OSRMServer
     HazardSvc --> DisasterFeeds
@@ -77,6 +79,9 @@ flowchart TB
 ### 2.1 Client Presentation Layer (`src/`)
 
 - **Dual-Portal Orchestration:** Runs as a single-page React 19 application hosting both the Citizen Safety Console (`/citizen`, `/citizen/map`, `/citizen/alerts`, `/citizen/profile`, `/citizen/emergency`) and the Authority Command Center (`/authority`).
+- **Emergency Readiness System (`/citizen/profile`):** Replaces static profiles with live persistent identity, single-primary emergency contact management, medical records, privacy controls, and a real Web Audio emergency siren test tone.
+- **Offline Readiness & Emergency Pass Engine:** Caches minimal essential emergency data on device for zero-connectivity rescue desks with automated staleness detection (`SAVED`, `NEEDS_UPDATE`, `NOT_SAVED`).
+- **Cross-System SOS Integration:** Seamlessly feeds citizen profile identity, medical alerts, and primary contacts into the live SOS distress pipeline (`useEmergencyState.js`).
 - **Domain State Hooks:** Isolates remote server state, caching, and WebSocket subscriptions into clean feature modules (`src/features/authority/` and `src/features/citizen/`).
 - **State-Focused Progressive Disclosure:** Elevates only the single most critical focal point per emergency lifecycle milestone, eliminating cognitive overload for panic-stricken citizens.
 - **Strict Color Budget:** Authority Command Center adheres to an 85–90% neutral slate budget (`#080C12` base) with semantic colors reserved exclusively for operational meaning.
@@ -92,6 +97,7 @@ flowchart TB
 
 ### 2.3 Domain Services Layer (`backend/app/services/`)
 
+- **Profile & Emergency Readiness Service:** Manages persistent citizen identity, emergency contacts with single-primary enforcement, medical records, and privacy preferences.
 - **Incident Service:** Enforces finite state machine transitions, audit event history, and duplicate report deduplication (4-second window).
 - **Assignment Service:** Manages responder-to-incident allocations as an authoritative first-class entity with synchronized state commits.
 - **Explainable Allocation Engine:** Computes deterministic 6-factor scores (Max 100) with auditable justification bullets and multi-level tie-breaking.
@@ -102,8 +108,8 @@ flowchart TB
 ### 2.4 Storage Layer (`backend/app/db/`)
 
 - **Async SQLite (`aiosqlite`):** High-performance local storage with Write-Ahead Logging (`PRAGMA journal_mode=WAL`) and foreign key enforcement (`PRAGMA foreign_keys=ON`).
-- **6 Normalized Tables:** `incidents`, `incident_events`, `responders`, `shelters`, `ai_triage_assessments`, `assignments`.
-- **11 Performance Indexes:** Spatial, timestamp, and foreign key indexes ensuring sub-millisecond query latency.
+- **8 Normalized Tables:** `incidents`, `incident_events`, `incident_attachments`, `responders`, `shelters`, `ai_triage_assessments`, `assignments`, `citizen_profiles`, `emergency_contacts`.
+- **13 Performance Indexes:** Spatial, timestamp, foreign key, and identity indexes ensuring sub-millisecond query latency.
 
 ---
 

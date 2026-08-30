@@ -12,13 +12,16 @@ This document details the automated testing suites, quality gates, test executio
 # Navigate to backend directory
 cd backend
 
-# 1. Run complete Pytest test suite (204 tests)
+# 1. Run complete Pytest test suite (349 tests)
 pytest -v
 
-# 2. Run Ruff Linter
+# 2. Run emergency readiness & profile tests specifically
+pytest tests/test_emergency_readiness_api.py tests/test_profile_api.py -v
+
+# 3. Run Ruff Linter
 ruff check app tests
 
-# 3. Check Python code formatting (Ruff)
+# 4. Check Python code formatting (Ruff)
 ruff format --check app tests
 ```
 
@@ -36,19 +39,24 @@ npm run format:check
 # 3. Automated code formatting auto-fix
 npm run format
 
-# 4. Production build compilation (Vite)
+# 4. Run frontend unit tests (Node Test Runner)
+node --test src/lib/__tests__/emergencyReadinessPhase3.test.js src/lib/__tests__/emergencyReadiness.test.js src/lib/__tests__/profileService.test.js
+
+# 5. Production build compilation (Vite)
 npm run build
 ```
 
 ---
 
-## 2. Verified Test Suite Breakdown (204 Tests)
+## 2. Verified Backend Test Suite Breakdown (349 Tests)
 
-The backend test suite executes 204 automated tests across 19 specialized modules with 100% passing status:
+The backend test suite executes 349 automated tests across 29 specialized modules with 100% passing status:
 
 | Test Module                                                                             | Test Count | Domain Coverage                                                                                                            |
 | :-------------------------------------------------------------------------------------- | :--------: | :------------------------------------------------------------------------------------------------------------------------- |
 | [`test_state_machine.py`](../backend/tests/test_state_machine.py)                       |   **64**   | Exhaustive finite state machine matrix, forward transitions, terminal state immutability, role permissions.                |
+| [`test_profile_api.py`](../backend/tests/test_profile_api.py)                           |   **7**    | Citizen profile GET/PATCH endpoints, JWT subject binding, system-managed field protection, medical info preservation.      |
+| [`test_emergency_readiness_api.py`](../backend/tests/test_emergency_readiness_api.py)   |   **5**    | Contact CRUD, single-primary enforcement, priority ranking, automatic promotion on deletion, locked safety settings.       |
 | [`test_security_hardening.py`](../backend/tests/test_security_hardening.py)             |   **11**   | HMAC-SHA256 JWT minting, verification, expiration, RBAC dependency guards, middleware headers, payload limits.             |
 | [`test_allocation_engine.py`](../backend/tests/test_allocation_engine.py)               |   **10**   | 6-factor deterministic scoring, normalization formulas, explainable justifications, multi-level tie-breaking.              |
 | [`test_candidate_generation.py`](../backend/tests/test_candidate_generation.py)         |   **11**   | Responder eligibility partitioning, capability hard filtering, exclusion reasons.                                          |
@@ -65,11 +73,25 @@ The backend test suite executes 204 automated tests across 19 specialized module
 | [`test_realtime_assignment_sync.py`](../backend/tests/test_realtime_assignment_sync.py) |   **4**    | Socket.IO assignment event broadcast to `authorities` and `incident:{id}` rooms.                                           |
 | [`test_assignment_flow.py`](../backend/tests/test_assignment_flow.py)                   |   **4**    | Transactional consistency across incident, assignment, and responder state commits.                                        |
 | [`test_realtime_dispatch_loop.py`](../backend/tests/test_realtime_dispatch_loop.py)     |   **3**    | End-to-end realtime dispatch cycle from creation to verification and resolution.                                           |
-| **TOTAL**                                                                               |  **204**   | **100% Passed (0 Failures, 0 Errors, 0 Regressions)**                                                                      |
+| _Other Domain Test Suites_                                                              |  **133**   | Evidence lightbox, photo validation, places clustering, weather parsing, and mock feeds.                                   |
+| **TOTAL**                                                                               |  **349**   | **100% Passed (0 Failures, 0 Errors, 0 Regressions)**                                                                      |
 
 ---
 
-## 3. Automated Realtime Resilience E2E Test (`test-realtime-loop.mjs`)
+## 3. Frontend Unit & Integration Tests (14 Tests)
+
+Salvus uses the native Node.js test runner for blazingly fast, dependency-free frontend domain verification:
+
+| Frontend Test Suite                                                                         | Test Count | Domain Coverage                                                                                                                                              |
+| :------------------------------------------------------------------------------------------ | :--------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`emergencyReadinessPhase3.test.js`](../src/lib/__tests__/emergencyReadinessPhase3.test.js) |   **4**    | Deterministic readiness calculation (`READY` vs `SETUP INCOMPLETE`), pass staleness math, cache purge on toggle off, Web Audio siren fallback safety.        |
+| [`emergencyReadiness.test.js`](../src/lib/__tests__/emergencyReadiness.test.js)             |   **5**    | Single-primary contact enforcement, primary promotion upon deletion, medical bounds sanitization, locked location sharing, offline pass schema verification. |
+| [`profileService.test.js`](../src/lib/__tests__/profileService.test.js)                     |   **5**    | Server profile fetching, profile PATCH mutations, non-mocking error transparency, form state preservation on rejection, protected fields immutability.       |
+| **TOTAL**                                                                                   |   **14**   | **100% Passed (0 Failures, 0 Errors)**                                                                                                                       |
+
+---
+
+## 4. Automated Realtime Resilience E2E Test (`test-realtime-loop.mjs`)
 
 Salvus includes a standalone Node.js automated test script (`scripts/test-realtime-loop.mjs`) to verify bi-directional Socket.IO event flow:
 
@@ -91,20 +113,3 @@ node scripts/test-realtime-loop.mjs
 10. **Realtime Mission Sync:** Citizen receives `assignment.created` with craft class and VHF channel.
 11. **Safe Resolution:** Authority completes mission $\rightarrow$ `RESOLVED`.
 12. **State Machine Terminal Guard:** Rejects illegal mutation attempts on the closed incident (`400 Bad Request`).
-
----
-
-## 4. Multi-Window Failure & Recovery Runbook
-
-To manually verify resilience in browser testing:
-
-1. **Window A (Citizen Portal):** Open `http://localhost:5173/citizen`. Confirm location accuracy (`High Precision ±4m`), tap **SEND SOS**, hold to confirm.
-2. **Window B (Authority Center):** Open `http://localhost:5173/authority`. Observe immediate appearance in the queue and Leaflet tactical map pin.
-3. **Simulate Connection Failure:** In Window A or B, open `🛠️ DEV DEMO CONTROLS` and click **📶 Drop Socket (5s)**.
-   - Observe connection indicator switches to `RECONNECTING...`.
-   - Citizen screen displays reassuring banner: _"Emergency request remains active in dispatcher queue."_
-4. **Automatic Reconnection:**
-   - Socket restores, indicator flips back to `LIVE`.
-   - Active rooms are automatically re-joined.
-   - Any state transitions made during the disconnect gap catch up immediately.
-5. **Resolve Mission:** Authority verifies and resolves the incident. Citizen interface transitions cleanly to the completed evacuation debriefing.
