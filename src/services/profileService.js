@@ -1,5 +1,8 @@
 import { apiClient, fetchRoleToken, getAuthToken } from './api'
 
+const OFFLINE_PASS_KEY = 'salvus_offline_emergency_pass'
+const OFFLINE_PROFILE_SNAPSHOT_KEY = 'salvus_profile_snapshot_local'
+
 /**
  * Fetch the authenticated citizen's persistent profile from the backend.
  * Automatically provisions a citizen identity session if unauthenticated.
@@ -330,6 +333,13 @@ export const updatePrivacySettings = async (settingsList) => {
     }
     const response = await apiClient.patch('/api/profile/settings', payload)
     if (response.data?.success && Array.isArray(response.data?.data)) {
+      // If offline_cache is turned OFF, clear local emergency pass and cache
+      const offlineSetting = response.data.data.find((s) => s.id === 'offline_cache')
+      if (offlineSetting && !offlineSetting.value) {
+        clearOfflinePassLocal()
+        clearProfileSnapshotLocal()
+      }
+
       return {
         success: true,
         data: response.data.data,
@@ -354,13 +364,12 @@ export const updatePrivacySettings = async (settingsList) => {
 }
 
 // ---------------------------------------------------------------------------
-// Offline Emergency Pass Local Storage Helpers
+// Offline Emergency Pass & Snapshot Local Storage Engine
 // ---------------------------------------------------------------------------
 
-const OFFLINE_PASS_KEY = 'salvus_offline_emergency_pass'
-
 /**
- * Cache essential emergency pass data locally on device for zero-connectivity scenarios.
+ * Cache essential emergency pass data locally on device for zero-connectivity situations.
+ * Never stores auth tokens or raw passwords.
  */
 export const saveOfflinePassLocal = (passData) => {
   if (typeof window === 'undefined') return false
@@ -392,6 +401,93 @@ export const getOfflinePassLocal = () => {
   }
 }
 
+/**
+ * Remove cached emergency pass from local storage.
+ */
+export const clearOfflinePassLocal = () => {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem(OFFLINE_PASS_KEY)
+  } catch (e) {
+    console.warn('[Salvus Offline] Failed to clear pass cache:', e)
+  }
+}
+
+/**
+ * Check if the locally saved offline pass is fresh or stale compared to current server data.
+ * Returns: 'NOT_SAVED' | 'SAVED' | 'NEEDS_UPDATE'
+ */
+export const checkPassStatus = (profile, contacts) => {
+  const cachedPass = getOfflinePassLocal()
+  if (!cachedPass || !cachedPass.cachedAt) {
+    return 'NOT_SAVED'
+  }
+
+  // If profile was updated after pass was cached, pass is stale
+  if (profile?.updated_at) {
+    const profileUpdateTime = new Date(profile.updated_at).getTime()
+    const passCachedTime = new Date(cachedPass.cachedAt).getTime()
+    if (profileUpdateTime > passCachedTime + 1000) {
+      return 'NEEDS_UPDATE'
+    }
+  }
+
+  // Check if any contact was updated after pass was cached
+  if (Array.isArray(contacts)) {
+    const passCachedTime = new Date(cachedPass.cachedAt).getTime()
+    for (const c of contacts) {
+      if (c.updated_at && new Date(c.updated_at).getTime() > passCachedTime + 1000) {
+        return 'NEEDS_UPDATE'
+      }
+    }
+  }
+
+  return 'SAVED'
+}
+
+/**
+ * Save complete safe profile snapshot locally for graceful offline fallback.
+ */
+export const saveProfileSnapshotLocal = (profile, contacts, settings) => {
+  if (typeof window === 'undefined' || !profile) return
+  try {
+    const snapshot = {
+      profile,
+      contacts: contacts || [],
+      settings: settings || [],
+      cachedAt: new Date().toISOString(),
+    }
+    localStorage.setItem(OFFLINE_PROFILE_SNAPSHOT_KEY, JSON.stringify(snapshot))
+  } catch (e) {
+    console.warn('[Salvus Offline] Failed to save profile snapshot:', e)
+  }
+}
+
+/**
+ * Retrieve cached profile snapshot when server is offline.
+ */
+export const getCachedProfileSnapshot = () => {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(OFFLINE_PROFILE_SNAPSHOT_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Clear profile snapshot.
+ */
+export const clearProfileSnapshotLocal = () => {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem(OFFLINE_PROFILE_SNAPSHOT_KEY)
+  } catch {
+    // Ignore
+  }
+}
+
 export default {
   fetchCitizenProfile,
   updateCitizenProfile,
@@ -405,4 +501,9 @@ export default {
   updatePrivacySettings,
   saveOfflinePassLocal,
   getOfflinePassLocal,
+  clearOfflinePassLocal,
+  checkPassStatus,
+  saveProfileSnapshotLocal,
+  getCachedProfileSnapshot,
+  clearProfileSnapshotLocal,
 }

@@ -38,6 +38,7 @@ export const CitizenEmergency = () => {
     aiTriage,
     responder,
     emergencyContacts,
+    citizenProfile,
     timelineSteps,
     instructions,
     setCurrentState,
@@ -273,6 +274,50 @@ export const CitizenEmergency = () => {
                         </a>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Emergency Identity & Medical Summary Banner for Rescue Teams */}
+              {citizenProfile && (
+                <div className="bg-salvus-surface border border-salvus-border rounded-2xl p-4 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-salvus-border pb-2.5 mb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-salvus-text-primary uppercase tracking-wider">
+                        Patient / Evacuee Identity
+                      </span>
+                      <span className="text-[10px] font-mono text-salvus-text-muted">
+                        [{citizenProfile.emergency_id}]
+                      </span>
+                    </div>
+                    {citizenProfile.blood_group && citizenProfile.blood_group !== 'UNKNOWN' && (
+                      <span className="text-[10px] font-bold text-salvus-critical bg-salvus-critical-bg border border-salvus-critical-border px-2 py-0.5 rounded-md">
+                        Blood: {citizenProfile.blood_group}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {(citizenProfile.medical_info?.conditions || []).map((c) => (
+                      <span
+                        key={c}
+                        className="bg-salvus-critical-bg text-salvus-critical px-2 py-0.5 rounded-md text-[11px] font-medium"
+                      >
+                        {c}
+                      </span>
+                    ))}
+                    {(citizenProfile.medical_info?.allergies || []).map((a) => (
+                      <span
+                        key={a}
+                        className="bg-salvus-warning-bg text-salvus-warning-text px-2 py-0.5 rounded-md text-[11px] font-medium"
+                      >
+                        Allergy: {a}
+                      </span>
+                    ))}
+                    {citizenProfile.medical_info?.mobilityNote && (
+                      <span className="text-[11px] text-salvus-text-secondary bg-salvus-muted px-2 py-0.5 rounded-md">
+                        {citizenProfile.medical_info.mobilityNote}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}

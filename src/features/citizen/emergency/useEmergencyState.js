@@ -7,7 +7,7 @@ import {
   fetchIncidentAssignments,
   fetchResponders,
 } from '../../../services/api'
-import { fetchEmergencyContacts } from '../../../services/profileService'
+import { fetchCitizenProfile, fetchEmergencyContacts } from '../../../services/profileService'
 import {
   joinRoom,
   leaveRoom,
@@ -88,6 +88,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
   const [userLocation, setUserLocation] = useState(() => INITIAL_LOCATION_STATE)
 
   const [emergencyContacts, setEmergencyContacts] = useState([])
+  const [citizenProfile, setCitizenProfile] = useState(null)
   const stopLocationWatchRef = useRef(null)
   const assignedResponderRef = useRef(assignedResponder)
 
@@ -97,9 +98,13 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
 
   useEffect(() => {
     let isMounted = true
-    fetchEmergencyContacts().then((res) => {
-      if (isMounted && res.success && Array.isArray(res.data)) {
-        setEmergencyContacts(res.data)
+    Promise.all([fetchEmergencyContacts(), fetchCitizenProfile()]).then(([contRes, profRes]) => {
+      if (!isMounted) return
+      if (contRes.success && Array.isArray(contRes.data)) {
+        setEmergencyContacts(contRes.data)
+      }
+      if (profRes.success && profRes.data) {
+        setCitizenProfile(profRes.data)
       }
     })
     return () => {
@@ -517,12 +522,17 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     const loc = await getCurrentLocation()
     const lat = loc.latitude || loc.model?.latitude || 22.5726
     const lng = loc.longitude || loc.model?.longitude || 88.3639
+
+    const reporterName = citizenProfile?.full_name || 'Citizen User'
+    const reporterPhone = citizenProfile?.phone || '+91 98301 23456'
+    const emergencyId = citizenProfile?.emergency_id || 'SLV-CIT-7829'
+
     const result = await createIncident({
       type: 'flood',
       severity: 'CRITICAL',
-      description: 'DEMO SOS Beacon — Realtime Pipeline Test',
-      reporter_name: 'Aditi Roy (Demo)',
-      reporter_phone: '+91 98301 24890',
+      description: `DEMO SOS Beacon [${emergencyId}] — Realtime Pipeline Test`,
+      reporter_name: reporterName,
+      reporter_phone: reporterPhone,
       latitude: lat,
       longitude: lng,
       affected_count: 3,
@@ -534,7 +544,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
       setLiveIncident(result.data)
       setCurrentState('SOS_ACTIVE')
     }
-  }, [])
+  }, [citizenProfile])
 
   // Auto-play simulation effect (when auto-play is activated in demo controls)
   useEffect(() => {
@@ -582,6 +592,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     responder: dynamicResponder,
     routes: emergencyFlowData.routes,
     emergencyContacts,
+    citizenProfile,
     timelineSteps,
     instructions: currentInstructions,
     setCurrentState: selectState,

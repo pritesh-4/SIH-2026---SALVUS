@@ -11,7 +11,12 @@ import {
   fetchPrivacySettings,
   updatePrivacySettings,
   saveOfflinePassLocal,
+  getOfflinePassLocal,
+  checkPassStatus,
+  saveProfileSnapshotLocal,
+  getCachedProfileSnapshot,
 } from '../services/profileService'
+import { playTestEmergencySiren } from '../lib/emergencyAudio'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -43,12 +48,13 @@ const RELATIONSHIP_OPTIONS = [
 ]
 
 export const CitizenProfile = () => {
-  // 1. Authoritative Server State
+  // 1. Authoritative Server & Offline State
   const [profile, setProfile] = useState(null)
   const [contacts, setContacts] = useState([])
   const [privacySettings, setPrivacySettings] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
+  const [isOfflineFallback, setIsOfflineFallback] = useState(false)
 
   // 2. Identity Edit Form State
   const [isEditingIdentity, setIsEditingIdentity] = useState(false)
@@ -90,16 +96,20 @@ export const CitizenProfile = () => {
   const [deleteConfirmContact, setDeleteConfirmContact] = useState(null)
   const [isDeletingContact, setIsDeletingContact] = useState(false)
 
-  // 5. Offline Emergency Pass Modal State
+  // 5. Offline Emergency Pass Modal & Staleness State
   const [isOfflinePassModalOpen, setIsOfflinePassModalOpen] = useState(false)
+  const [passStatus, setPassStatus] = useState('NOT_SAVED')
+  const [cachedPassData, setCachedPassData] = useState(null)
 
-  // 6. UI Disclosures & Tone State
+  // 6. Audio Siren Tester & UI Disclosures
+  const [isSirenPlaying, setIsSirenPlaying] = useState(false)
+  const [sirenError, setSirenError] = useState(null)
+  const stopSirenRef = useRef(null)
+
   const [showMedicalDetails, setShowMedicalDetails] = useState(false)
   const [showAddressDetails, setShowAddressDetails] = useState(false)
-  const [testToneActive, setTestToneActive] = useState(false)
   const [toastMessage, setToastMessage] = useState(null)
 
-  const testToneTimeoutRef = useRef(null)
   const toastTimeoutRef = useRef(null)
 
   const showToast = useCallback((msg) => {
@@ -109,54 +119,23 @@ export const CitizenProfile = () => {
   }, [])
 
   // -------------------------------------------------------------------------
-  // Initial Data Fetch Pipeline
+  // Initial Data Fetch Pipeline & Offline Resilience
   // -------------------------------------------------------------------------
-  const loadAllData = useCallback(async () => {
-    setLoadError(null)
-
-    const [profRes, contRes, privRes] = await Promise.all([
-      fetchCitizenProfile(),
-      fetchEmergencyContacts(),
-      fetchPrivacySettings(),
-    ])
-
-    if (profRes.success && profRes.data) {
-      setProfile(profRes.data)
-      setIdentityForm({
-        full_name: profRes.data.full_name || '',
-        phone: profRes.data.phone || '',
-        email: profRes.data.email || '',
-        blood_group: profRes.data.blood_group || 'UNKNOWN',
-        registered_address: profRes.data.registered_address || '',
-      })
-    } else {
-      setLoadError(profRes.error?.message || 'Profile unavailable. Unable to connect to server.')
-    }
-
-    if (contRes.success && Array.isArray(contRes.data)) {
-      setContacts(contRes.data)
-    }
-
-    if (privRes.success && Array.isArray(privRes.data)) {
-      setPrivacySettings(privRes.data)
-    }
-
-    setIsLoading(false)
-  }, [])
-
-  const handleRetry = () => {
-    setIsLoading(true)
-    loadAllData()
-  }
-
   useEffect(() => {
-    let active = true
+    let isMounted = true
 
-    Promise.all([fetchCitizenProfile(), fetchEmergencyContacts(), fetchPrivacySettings()]).then(
-      ([profRes, contRes, privRes]) => {
-        if (!active) return
+    const runInit = async () => {
+      try {
+        const [profRes, contRes, privRes] = await Promise.all([
+          fetchCitizenProfile(),
+          fetchEmergencyContacts(),
+          fetchPrivacySettings(),
+        ])
+
+        if (!isMounted) return
 
         if (profRes.success && profRes.data) {
+          setIsOfflineFallback(false)
           setProfile(profRes.data)
           setIdentityForm({
             full_name: profRes.data.full_name || '',
@@ -165,35 +144,109 @@ export const CitizenProfile = () => {
             blood_group: profRes.data.blood_group || 'UNKNOWN',
             registered_address: profRes.data.registered_address || '',
           })
+
+          const loadedContacts = contRes.success && Array.isArray(contRes.data) ? contRes.data : []
+          const loadedPriv = privRes.success && Array.isArray(privRes.data) ? privRes.data : []
+
+          setContacts(loadedContacts)
+          setPrivacySettings(loadedPriv)
+
+          saveProfileSnapshotLocal(profRes.data, loadedContacts, loadedPriv)
+          setPassStatus(checkPassStatus(profRes.data, loadedContacts))
+          setCachedPassData(getOfflinePassLocal())
+        } else {
+          const offlineSnapshot = getCachedProfileSnapshot()
+          if (offlineSnapshot?.profile) {
+            setIsOfflineFallback(true)
+            setProfile(offlineSnapshot.profile)
+            setContacts(offlineSnapshot.contacts || [])
+            setPrivacySettings(offlineSnapshot.settings || [])
+            setPassStatus(checkPassStatus(offlineSnapshot.profile, offlineSnapshot.contacts || []))
+            setCachedPassData(getOfflinePassLocal())
+          } else {
+            setLoadError(
+              profRes.error?.message || 'Profile unavailable. Unable to connect to server.'
+            )
+          }
+        }
+      } catch {
+        if (!isMounted) return
+        const offlineSnapshot = getCachedProfileSnapshot()
+        if (offlineSnapshot?.profile) {
+          setIsOfflineFallback(true)
+          setProfile(offlineSnapshot.profile)
+          setContacts(offlineSnapshot.contacts || [])
+          setPrivacySettings(offlineSnapshot.settings || [])
+          setPassStatus(checkPassStatus(offlineSnapshot.profile, offlineSnapshot.contacts || []))
+          setCachedPassData(getOfflinePassLocal())
+        } else {
+          setLoadError('Network disconnected. No offline emergency snapshot found on this device.')
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    runInit()
+
+    return () => {
+      isMounted = false
+      if (stopSirenRef.current) stopSirenRef.current()
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
+    }
+  }, [])
+
+  const handleRetry = () => {
+    setIsLoading(true)
+    setLoadError(null)
+    Promise.all([fetchCitizenProfile(), fetchEmergencyContacts(), fetchPrivacySettings()])
+      .then(([profRes, contRes, privRes]) => {
+        if (profRes.success && profRes.data) {
+          setIsOfflineFallback(false)
+          setProfile(profRes.data)
+          setIdentityForm({
+            full_name: profRes.data.full_name || '',
+            phone: profRes.data.phone || '',
+            email: profRes.data.email || '',
+            blood_group: profRes.data.blood_group || 'UNKNOWN',
+            registered_address: profRes.data.registered_address || '',
+          })
+          const loadedContacts = contRes.success && Array.isArray(contRes.data) ? contRes.data : []
+          const loadedPriv = privRes.success && Array.isArray(privRes.data) ? privRes.data : []
+          setContacts(loadedContacts)
+          setPrivacySettings(loadedPriv)
+          saveProfileSnapshotLocal(profRes.data, loadedContacts, loadedPriv)
+          setPassStatus(checkPassStatus(profRes.data, loadedContacts))
+          setCachedPassData(getOfflinePassLocal())
         } else {
           setLoadError(
             profRes.error?.message || 'Profile unavailable. Unable to connect to server.'
           )
         }
-
-        if (contRes.success && Array.isArray(contRes.data)) {
-          setContacts(contRes.data)
-        }
-
-        if (privRes.success && Array.isArray(privRes.data)) {
-          setPrivacySettings(privRes.data)
-        }
-
+      })
+      .catch((err) => {
+        setLoadError(err.message || 'Connection failed.')
+      })
+      .finally(() => {
         setIsLoading(false)
-      }
-    )
+      })
+  }
 
-    return () => {
-      active = false
-    }
-  }, [])
+  // -------------------------------------------------------------------------
+  // Readiness Calculation (Deterministic Emergency Safety Standard)
+  // -------------------------------------------------------------------------
+  const hasValidIdentity = Boolean(profile?.full_name?.trim() && profile?.phone?.trim())
+  const hasEmergencyContact = contacts.length > 0 && contacts.some((c) => c.is_primary)
+  const hasMedicalSetup = Boolean(
+    (profile?.blood_group && profile?.blood_group !== 'UNKNOWN') ||
+    (profile?.medical_info?.conditions && profile.medical_info.conditions.length > 0) ||
+    (profile?.medical_info?.allergies && profile.medical_info.allergies.length > 0)
+  )
 
-  useEffect(() => {
-    return () => {
-      if (testToneTimeoutRef.current) clearTimeout(testToneTimeoutRef.current)
-      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
-    }
-  }, [])
+  const isReadinessComplete = hasValidIdentity && hasEmergencyContact
+  const readinessLabel = isReadinessComplete ? 'READY' : 'SETUP INCOMPLETE'
 
   // -------------------------------------------------------------------------
   // Identity Handlers
@@ -248,6 +301,8 @@ export const CitizenProfile = () => {
     const res = await updateCitizenProfile(payload)
     if (res.success && res.data) {
       setProfile(res.data)
+      saveProfileSnapshotLocal(res.data, contacts, privacySettings)
+      setPassStatus(checkPassStatus(res.data, contacts))
       setIdentitySaveStatus('saved')
       setIsEditingIdentity(false)
       showToast('✓ Identity details updated successfully')
@@ -299,9 +354,8 @@ export const CitizenProfile = () => {
 
     const res = await updateMedicalInfo(payload)
     if (res.success && res.data) {
-      // Sync local profile state
-      setProfile((prev) => ({
-        ...prev,
+      const updatedProfile = {
+        ...profile,
         blood_group: res.data.blood_group,
         medical_info: {
           conditions: res.data.conditions,
@@ -309,7 +363,10 @@ export const CitizenProfile = () => {
           mobilityNote: res.data.mobility_note,
         },
         medications_note: res.data.medications_note,
-      }))
+      }
+      setProfile(updatedProfile)
+      saveProfileSnapshotLocal(updatedProfile, contacts, privacySettings)
+      setPassStatus(checkPassStatus(updatedProfile, contacts))
       setMedicalSaveStatus('saved')
       setIsMedicalModalOpen(false)
       showToast('✓ Emergency medical information updated')
@@ -377,9 +434,11 @@ export const CitizenProfile = () => {
     if (editingContactId) {
       const res = await updateEmergencyContact(editingContactId, payload)
       if (res.success && res.data) {
-        // Refresh contact list from server to ensure single-primary consistency
         const refetch = await fetchEmergencyContacts()
-        if (refetch.success) setContacts(refetch.data)
+        const updatedContacts = refetch.success ? refetch.data : contacts
+        setContacts(updatedContacts)
+        saveProfileSnapshotLocal(profile, updatedContacts, privacySettings)
+        setPassStatus(checkPassStatus(profile, updatedContacts))
         setIsContactModalOpen(false)
         showToast('✓ Emergency contact updated')
       } else {
@@ -390,7 +449,10 @@ export const CitizenProfile = () => {
       const res = await createEmergencyContact(payload)
       if (res.success && res.data) {
         const refetch = await fetchEmergencyContacts()
-        if (refetch.success) setContacts(refetch.data)
+        const updatedContacts = refetch.success ? refetch.data : contacts
+        setContacts(updatedContacts)
+        saveProfileSnapshotLocal(profile, updatedContacts, privacySettings)
+        setPassStatus(checkPassStatus(profile, updatedContacts))
         setIsContactModalOpen(false)
         showToast('✓ New emergency contact added')
       } else {
@@ -405,7 +467,10 @@ export const CitizenProfile = () => {
     const res = await updateEmergencyContact(contact.id, { is_primary: true })
     if (res.success) {
       const refetch = await fetchEmergencyContacts()
-      if (refetch.success) setContacts(refetch.data)
+      const updatedContacts = refetch.success ? refetch.data : contacts
+      setContacts(updatedContacts)
+      saveProfileSnapshotLocal(profile, updatedContacts, privacySettings)
+      setPassStatus(checkPassStatus(profile, updatedContacts))
       showToast(`⭐ Set ${contact.name} as Primary Contact`)
     } else {
       showToast(`Failed to set primary: ${res.error?.message}`)
@@ -419,7 +484,10 @@ export const CitizenProfile = () => {
     const res = await deleteEmergencyContact(deleteConfirmContact.id)
     if (res.success) {
       const refetch = await fetchEmergencyContacts()
-      if (refetch.success) setContacts(refetch.data)
+      const updatedContacts = refetch.success ? refetch.data : []
+      setContacts(updatedContacts)
+      saveProfileSnapshotLocal(profile, updatedContacts, privacySettings)
+      setPassStatus(checkPassStatus(profile, updatedContacts))
       setDeleteConfirmContact(null)
       showToast('✓ Contact removed from emergency roster')
     } else {
@@ -429,7 +497,7 @@ export const CitizenProfile = () => {
   }
 
   // -------------------------------------------------------------------------
-  // Privacy Settings Toggles
+  // Privacy Settings Toggles & Cache Purge
   // -------------------------------------------------------------------------
   const handleTogglePrivacySetting = async (id) => {
     const target = privacySettings.find((s) => s.id === id)
@@ -441,39 +509,91 @@ export const CitizenProfile = () => {
     const res = await updatePrivacySettings(updated)
     if (res.success && Array.isArray(res.data)) {
       setPrivacySettings(res.data)
+      const offlineSetting = res.data.find((s) => s.id === 'offline_cache')
+      if (offlineSetting && !offlineSetting.value) {
+        setPassStatus('NOT_SAVED')
+        setCachedPassData(null)
+        showToast('Offline cache disabled & local passes cleared')
+      } else {
+        showToast('Preference updated')
+      }
     } else {
-      // Rollback on failure
-      setPrivacySettings(privacySettings)
+      setPrivacySettings(privacySettings) // Rollback
       showToast('Could not save preference setting.')
     }
   }
 
   // -------------------------------------------------------------------------
-  // Readiness Tools Handlers
+  // Real Web Audio Emergency Siren Tester
   // -------------------------------------------------------------------------
-  const handleTestTone = () => {
-    setTestToneActive(true)
-    if (testToneTimeoutRef.current) clearTimeout(testToneTimeoutRef.current)
-    testToneTimeoutRef.current = setTimeout(() => setTestToneActive(false), 2000)
+  const handleToggleSirenTest = () => {
+    if (isSirenPlaying) {
+      if (stopSirenRef.current) {
+        stopSirenRef.current()
+        stopSirenRef.current = null
+      }
+      setIsSirenPlaying(false)
+      return
+    }
+
+    setSirenError(null)
+    const stopFn = playTestEmergencySiren({
+      onStart: () => {
+        setIsSirenPlaying(true)
+      },
+      onEnd: () => {
+        setIsSirenPlaying(false)
+        stopSirenRef.current = null
+      },
+      onError: (err) => {
+        setIsSirenPlaying(false)
+        setSirenError('Audio playback restricted by browser. Click again to permit test tone.')
+        console.warn('[Salvus Siren Audio Error]', err)
+      },
+    })
+    stopSirenRef.current = stopFn
   }
 
-  const handleOpenOfflinePass = () => {
-    // Cache essential snapshot locally
+  // -------------------------------------------------------------------------
+  // Real Offline Emergency Pass Generator
+  // -------------------------------------------------------------------------
+  const handleSaveAndOpenOfflinePass = () => {
+    const primaryContact = contacts.find((c) => c.is_primary) || contacts[0] || null
+    const secondaryContact = contacts.find((c) => c.id !== primaryContact?.id) || null
+
     const passPayload = {
       emergencyId: profile?.emergency_id || 'SLV-CIT-7829',
       fullName: profile?.full_name || 'Citizen User',
       bloodGroup: profile?.blood_group || 'UNKNOWN',
       phone: profile?.phone || 'Not registered',
       registeredAddress: profile?.registered_address || 'Kolkata, WB',
-      primaryContact: contacts.find((c) => c.is_primary) || contacts[0] || null,
+      primaryContact: primaryContact
+        ? {
+            name: primaryContact.name,
+            phone: primaryContact.phone,
+            relation: primaryContact.relationship,
+          }
+        : null,
+      secondaryContact: secondaryContact
+        ? {
+            name: secondaryContact.name,
+            phone: secondaryContact.phone,
+            relation: secondaryContact.relationship,
+          }
+        : null,
       conditions: profile?.medical_info?.conditions || [],
       allergies: profile?.medical_info?.allergies || [],
       mobilityNote: profile?.medical_info?.mobilityNote || 'Fully Mobile / Ambulatory',
       medicationsNote: profile?.medications_note || null,
     }
 
-    saveOfflinePassLocal(passPayload)
-    setIsOfflinePassModalOpen(true)
+    const saved = saveOfflinePassLocal(passPayload)
+    if (saved) {
+      setPassStatus('SAVED')
+      setCachedPassData(getOfflinePassLocal())
+      setIsOfflinePassModalOpen(true)
+      showToast('✓ Offline Emergency Pass cached on device')
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -553,6 +673,97 @@ export const CitizenProfile = () => {
           </div>
         )}
       </div>
+
+      {/* Offline Mode Indicator if loaded from local cache */}
+      {isOfflineFallback && (
+        <div className="bg-salvus-warning-bg border border-salvus-warning-border rounded-2xl p-4 text-salvus-warning-text flex items-center justify-between gap-4 text-xs font-medium animate-fadeIn shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg">📡</span>
+            <span>
+              <strong>Offline Mode Active:</strong> Viewing locally stored emergency readiness
+              records. Changes will sync when connection returns.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="underline font-bold hover:opacity-80 shrink-0 cursor-pointer"
+          >
+            Try Reconnecting
+          </button>
+        </div>
+      )}
+
+      {/* Emergency Readiness Status Hero Banner */}
+      <Card
+        variant={isReadinessComplete ? 'default' : 'warning'}
+        padding="md"
+        className="border-2 transition-all"
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start md:items-center gap-3.5">
+            <div
+              className={`h-11 w-11 rounded-xl flex items-center justify-center font-bold text-lg shrink-0 ${
+                isReadinessComplete
+                  ? 'bg-salvus-safe-bg text-salvus-safe border border-salvus-safe-border'
+                  : 'bg-salvus-warning-bg text-salvus-warning-text border border-salvus-warning-border'
+              }`}
+            >
+              {isReadinessComplete ? '✓' : '⚠️'}
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold uppercase tracking-wider text-salvus-text-secondary">
+                  Emergency Readiness Status
+                </span>
+                <Badge variant={isReadinessComplete ? 'safe' : 'warning'}>{readinessLabel}</Badge>
+              </div>
+              <p className="text-xs text-salvus-text-secondary mt-0.5 leading-relaxed font-normal">
+                {isReadinessComplete
+                  ? 'Your profile, verified identity, and primary contact are configured for emergency dispatch.'
+                  : 'Your readiness is incomplete. Add a primary emergency contact so Salvus knows who to notify during SOS.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Actionable Readiness Checklist Pills */}
+          <div className="flex items-center gap-2 flex-wrap pt-2 md:pt-0 border-t md:border-t-0 border-salvus-border">
+            <span
+              className={`text-[11px] px-2.5 py-1 rounded-lg font-medium border flex items-center gap-1.5 ${
+                hasValidIdentity
+                  ? 'bg-salvus-safe-bg text-salvus-safe border-salvus-safe-border'
+                  : 'bg-salvus-critical-bg text-salvus-critical border-salvus-critical-border'
+              }`}
+            >
+              <span>{hasValidIdentity ? '✓' : '✗'}</span> Identity
+            </span>
+
+            <span
+              className={`text-[11px] px-2.5 py-1 rounded-lg font-medium border flex items-center gap-1.5 ${
+                hasEmergencyContact
+                  ? 'bg-salvus-safe-bg text-salvus-safe border-salvus-safe-border'
+                  : 'bg-salvus-critical-bg text-salvus-critical border-salvus-critical-border'
+              }`}
+            >
+              <span>{hasEmergencyContact ? '✓' : '✗'}</span> Contact
+            </span>
+
+            <span
+              className={`text-[11px] px-2.5 py-1 rounded-lg font-medium border flex items-center gap-1.5 ${
+                hasMedicalSetup
+                  ? 'bg-salvus-safe-bg text-salvus-safe border-salvus-safe-border'
+                  : 'bg-salvus-muted text-salvus-text-secondary border-salvus-border'
+              }`}
+            >
+              <span>{hasMedicalSetup ? '✓' : '○'}</span> Medical
+            </span>
+
+            <span className="text-[11px] px-2.5 py-1 rounded-lg font-medium border bg-salvus-info-bg text-salvus-info border-salvus-info-border flex items-center gap-1.5">
+              <span>🔒</span> Location Protected
+            </span>
+          </div>
+        </div>
+      </Card>
 
       {/* 2-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -749,7 +960,9 @@ export const CitizenProfile = () => {
                         Emergency Medical Information
                       </span>
                       <span className="text-xs text-salvus-text-muted">
-                        {totalMedicalCount} critical medical items on file
+                        {totalMedicalCount > 0
+                          ? `${totalMedicalCount} critical medical items on file`
+                          : 'Optional — helps paramedics during rescue triage'}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
@@ -843,15 +1056,19 @@ export const CitizenProfile = () => {
 
             <div className="space-y-3">
               {contacts.length === 0 ? (
-                <div className="p-6 text-center bg-salvus-muted/30 border border-salvus-border rounded-xl">
-                  <p className="text-xs text-salvus-text-secondary">
-                    No emergency contacts added yet. Add at least one designated contact.
+                <div className="p-6 text-center bg-salvus-warning-bg border border-salvus-warning-border rounded-xl">
+                  <span className="text-2xl block mb-2">⚠️</span>
+                  <p className="text-xs font-bold text-salvus-warning-text">
+                    No emergency contact configured.
+                  </p>
+                  <p className="text-xs text-salvus-text-secondary mt-1">
+                    Add at least one designated contact so emergency coordinators know who to call.
                   </p>
                   <Button
                     variant="primary"
                     size="sm"
                     onClick={handleOpenAddContact}
-                    className="mt-3 text-xs"
+                    className="mt-3.5 text-xs"
                   >
                     Add Primary Emergency Contact
                   </Button>
@@ -915,7 +1132,7 @@ export const CitizenProfile = () => {
                       <button
                         type="button"
                         onClick={() => handleOpenEditContact(contact)}
-                        className="p-1.5 rounded-lg hover:bg-salvus-surface-hover text-salvus-text-secondary hover:text-salvus-text-primary transition-colors text-xs"
+                        className="p-1.5 rounded-lg hover:bg-salvus-surface-hover text-salvus-text-secondary hover:text-salvus-text-primary transition-colors text-xs cursor-pointer"
                         aria-label="Edit contact"
                       >
                         ✏️
@@ -923,7 +1140,7 @@ export const CitizenProfile = () => {
                       <button
                         type="button"
                         onClick={() => setDeleteConfirmContact(contact)}
-                        className="p-1.5 rounded-lg hover:bg-salvus-critical-bg text-salvus-text-muted hover:text-salvus-critical transition-colors text-xs"
+                        className="p-1.5 rounded-lg hover:bg-salvus-critical-bg text-salvus-text-muted hover:text-salvus-critical transition-colors text-xs cursor-pointer"
                         aria-label="Delete contact"
                       >
                         🗑️
@@ -936,7 +1153,7 @@ export const CitizenProfile = () => {
           </Card>
         </div>
 
-        {/* Right Column: Privacy, Appearance & Tools (5 cols) */}
+        {/* Right Column: Privacy, Tools & Offline Pass (5 cols) */}
         <div className="lg:col-span-5 space-y-6">
           {/* Theme & Display Appearance */}
           <Card padding="md">
@@ -989,36 +1206,93 @@ export const CitizenProfile = () => {
           </Card>
 
           {/* Emergency Readiness Tools */}
-          <Card padding="md" className="space-y-3">
-            <h3 className="text-sm font-bold text-salvus-text-primary mb-2">Readiness Tools</h3>
+          <Card padding="md" className="space-y-3.5">
+            <h3 className="text-sm font-bold text-salvus-text-primary mb-1">
+              Readiness & Offline Tools
+            </h3>
 
-            <Button
-              variant="secondary"
-              size="md"
-              fullWidth={true}
-              onClick={handleTestTone}
-              className="font-medium text-xs"
-            >
-              {testToneActive ? '🔊 Testing Siren Tone...' : '🔊 Test Emergency Siren Tone'}
-            </Button>
+            {/* Siren Tone Audio Test */}
+            <div className="p-3 bg-salvus-muted/40 border border-salvus-border rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-salvus-text-primary">
+                  Emergency Siren Alert Audio
+                </span>
+                <span className="text-[10px] text-salvus-text-muted">Test only</span>
+              </div>
+              <Button
+                variant={isSirenPlaying ? 'critical' : 'secondary'}
+                size="sm"
+                fullWidth={true}
+                onClick={handleToggleSirenTest}
+                className="font-medium text-xs flex items-center justify-center gap-2"
+              >
+                {isSirenPlaying ? (
+                  <>
+                    <span className="animate-pulse">🔊</span> Testing Audio Tone (Playing...)
+                  </>
+                ) : (
+                  <>🔊 Test Emergency Siren Tone</>
+                )}
+              </Button>
+              {sirenError ? (
+                <p className="text-[11px] text-salvus-warning-text">{sirenError}</p>
+              ) : (
+                <p className="text-[11px] text-salvus-text-muted">
+                  Plays a local 1.5-second dual test pulse (880Hz/440Hz). Never alerts authorities.
+                </p>
+              )}
+            </div>
 
-            <Button
-              variant="quiet"
-              size="md"
-              fullWidth={true}
-              onClick={handleOpenOfflinePass}
-              className="font-medium text-xs"
-            >
-              💾 View & Save Offline Emergency Pass
-            </Button>
+            {/* Offline Emergency Pass Manager */}
+            <div className="p-3 bg-salvus-muted/40 border border-salvus-border rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-salvus-text-primary">
+                  Offline Emergency Pass
+                </span>
+                <Badge
+                  variant={
+                    passStatus === 'SAVED'
+                      ? 'safe'
+                      : passStatus === 'NEEDS_UPDATE'
+                        ? 'warning'
+                        : 'neutral'
+                  }
+                  size="sm"
+                >
+                  {passStatus === 'SAVED'
+                    ? 'Pass Saved'
+                    : passStatus === 'NEEDS_UPDATE'
+                      ? 'Needs Update'
+                      : 'Not Saved'}
+                </Badge>
+              </div>
+
+              <p className="text-[11px] text-salvus-text-secondary leading-relaxed">
+                Stores your Emergency ID, blood group, allergies, and contact phone in device
+                storage for zero-connectivity rescue desks.
+              </p>
+
+              <Button
+                variant="primary"
+                size="sm"
+                fullWidth={true}
+                onClick={handleSaveAndOpenOfflinePass}
+                className="text-xs font-semibold"
+              >
+                💾{' '}
+                {passStatus === 'SAVED'
+                  ? 'View Offline Emergency Pass'
+                  : 'Generate & Save Offline Pass'}
+              </Button>
+            </div>
           </Card>
 
-          {/* App Info Footer */}
+          {/* App Info & Safe Local Architecture Note */}
           <div className="text-xs text-salvus-text-muted text-center space-y-1">
             <p>
               {citizenProfileData.appInfo.version} · {citizenProfileData.appInfo.build}
             </p>
-            <p>🔒 End-to-End Local Storage Active · Zero-Data Resilience</p>
+            <p>🔒 Local Offline Storage Active · Zero-Data Resilience</p>
           </div>
         </div>
       </div>
@@ -1317,7 +1591,7 @@ export const CitizenProfile = () => {
                   SALVUS CITIZEN PASS
                 </span>
                 <h4 className="text-lg font-extrabold text-salvus-text-primary mt-0.5">
-                  {identity.fullName}
+                  {cachedPassData?.fullName || identity.fullName}
                 </h4>
               </div>
               <div className="bg-salvus-critical-bg border border-salvus-critical-border px-3 py-1.5 rounded-xl text-center">
@@ -1325,7 +1599,7 @@ export const CitizenProfile = () => {
                   Blood Group
                 </span>
                 <span className="text-base font-bold text-salvus-critical">
-                  {identity.bloodGroup}
+                  {cachedPassData?.bloodGroup || identity.bloodGroup}
                 </span>
               </div>
             </div>
@@ -1337,7 +1611,7 @@ export const CitizenProfile = () => {
                   Emergency ID
                 </span>
                 <span className="font-mono font-bold text-salvus-text-primary text-sm">
-                  {identity.emergencyId}
+                  {cachedPassData?.emergencyId || identity.emergencyId}
                 </span>
               </div>
 
@@ -1345,7 +1619,11 @@ export const CitizenProfile = () => {
                 <span className="text-[10px] text-salvus-text-muted uppercase font-semibold block">
                   Primary Emergency Contact
                 </span>
-                {primaryContact ? (
+                {cachedPassData?.primaryContact ? (
+                  <span className="text-salvus-text-primary font-medium">
+                    {cachedPassData.primaryContact.name} ({cachedPassData.primaryContact.phone})
+                  </span>
+                ) : primaryContact ? (
                   <span className="text-salvus-text-primary font-medium">
                     {primaryContact.name} ({primaryContact.phone})
                   </span>
@@ -1359,7 +1637,7 @@ export const CitizenProfile = () => {
                   Critical Conditions & Allergies
                 </span>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {conditionsList.map((c) => (
+                  {(cachedPassData?.conditions || conditionsList).map((c) => (
                     <span
                       key={c}
                       className="bg-salvus-critical-bg text-salvus-critical text-[10px] px-2 py-0.5 rounded-md font-medium"
@@ -1367,7 +1645,7 @@ export const CitizenProfile = () => {
                       {c}
                     </span>
                   ))}
-                  {allergiesList.map((a) => (
+                  {(cachedPassData?.allergies || allergiesList).map((a) => (
                     <span
                       key={a}
                       className="bg-salvus-warning-bg text-salvus-warning-text text-[10px] px-2 py-0.5 rounded-md font-medium"
@@ -1375,9 +1653,10 @@ export const CitizenProfile = () => {
                       {a}
                     </span>
                   ))}
-                  {conditionsList.length === 0 && allergiesList.length === 0 && (
-                    <span className="text-salvus-text-muted text-[11px]">No critical alerts</span>
-                  )}
+                  {(cachedPassData?.conditions || conditionsList).length === 0 &&
+                    (cachedPassData?.allergies || allergiesList).length === 0 && (
+                      <span className="text-salvus-text-muted text-[11px]">No critical alerts</span>
+                    )}
                 </div>
               </div>
 
@@ -1385,14 +1664,24 @@ export const CitizenProfile = () => {
                 <span className="text-[10px] text-salvus-text-muted uppercase font-semibold block">
                   Mobility Protocol
                 </span>
-                <span className="text-salvus-text-primary">{mobilityNote}</span>
+                <span className="text-salvus-text-primary">
+                  {cachedPassData?.mobilityNote || mobilityNote}
+                </span>
               </div>
             </div>
 
             {/* Offline Verification Seal */}
             <div className="flex items-center justify-between pt-3 border-t border-salvus-border text-[11px] text-salvus-text-muted">
-              <span>🔒 Cryptographically Signed Local Storage</span>
-              <span className="font-mono">Salvus Engine 2026</span>
+              <span>🔒 Locally Cached Snapshot</span>
+              <span className="font-mono">
+                Cached:{' '}
+                {cachedPassData?.cachedAt
+                  ? new Date(cachedPassData.cachedAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : 'Just now'}
+              </span>
             </div>
           </div>
 
