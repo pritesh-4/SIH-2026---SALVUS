@@ -10,6 +10,7 @@ import { AreaMapCard } from '../components/citizen/AreaMapCard'
 import { EmergencyConfirmationModal } from '../components/citizen/emergency/EmergencyConfirmationModal'
 import { IncidentReportModal } from '../components/citizen/IncidentReportModal'
 import { createIncident, reverseGeocode } from '../services/api'
+import { generateIdempotencyKey, saveEmergencyCache } from '../lib/emergencyCache'
 import {
   loadCitizenLocationContext,
   formatRelativeFreshness,
@@ -129,24 +130,29 @@ export const CitizenHome = () => {
         return
       }
 
-      // Submit SOS Beacon to backend
-      const result = await createIncident({
-        type: 'flood',
-        severity: 'CRITICAL',
-        description: 'Immediate emergency SOS beacon activated by citizen.',
-        reporter_name: 'Citizen User',
-        reporter_phone: null,
-        latitude: locLat,
-        longitude: locLng,
-        affected_count: 1,
-        is_sos: true,
-      })
+      // Submit SOS Beacon to backend with idempotency key
+      const idempotencyKey = generateIdempotencyKey('sos_cit')
+      const result = await createIncident(
+        {
+          type: 'flood',
+          severity: 'CRITICAL',
+          description: 'Immediate emergency SOS beacon activated by citizen.',
+          reporter_name: 'Citizen User',
+          reporter_phone: null,
+          latitude: locLat,
+          longitude: locLng,
+          affected_count: 1,
+          is_sos: true,
+          idempotency_key: idempotencyKey,
+        },
+        idempotencyKey
+      )
 
       setIsConfirmingSos(false)
       setIsSubmittingSos(false)
 
       if (result.success && result.data) {
-        localStorage.setItem('salvus_active_incident_id', result.data.id)
+        saveEmergencyCache(result.data)
         navigate(`/citizen/sos?incidentId=${result.data.id}`)
       } else {
         navigate('/citizen/sos')
@@ -479,6 +485,20 @@ export const CitizenHome = () => {
           </div>
         </div>
       </div>
+
+      {/* Emergency Confirmation Safeguard Modal */}
+      <EmergencyConfirmationModal
+        isOpen={isConfirmingSos}
+        onConfirm={handleConfirmSos}
+        onCancel={handleCancelSos}
+        isLoading={isSubmittingSos}
+      />
+
+      {/* Community Incident Report Modal */}
+      <IncidentReportModal
+        isOpen={isReportingIncident}
+        onClose={() => setIsReportingIncident(false)}
+      />
     </div>
   )
 }

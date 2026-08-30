@@ -174,6 +174,9 @@ export const AuthorityCommandCenter = () => {
     const result = await changeStatus(selectedIncident.id, targetStatus)
     if (result.success) {
       showStatusMessage(`✓ Status updated: ${label}`, 3000)
+    } else {
+      showStatusMessage(`❌ ${result.error || 'Failed to update status'}`, 4500)
+      refetchIncidents(true)
     }
   }
 

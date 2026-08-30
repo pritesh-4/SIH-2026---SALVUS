@@ -35,6 +35,7 @@ import {
   deriveTimelineSteps,
 } from '../../../lib/stateMachine'
 import {
+  EMERGENCY_CACHE_KEY,
   saveEmergencyCache,
   loadEmergencyCache,
   clearEmergencyCache,
@@ -392,14 +393,34 @@ export const useEmergencyState = (
       setConnectivityStatus('OFFLINE')
     }
 
+    const handleStorageChange = (e) => {
+      if (e.key === EMERGENCY_CACHE_KEY) {
+        if (!e.newValue) {
+          // Cache cleared in another tab (e.g., incident resolved or cancelled)
+          rehydrateEmergency(effectiveIncidentId, true)
+        } else {
+          try {
+            const parsed = JSON.parse(e.newValue)
+            if (parsed.incidentId && parsed.incidentId === effectiveIncidentId) {
+              rehydrateEmergency(effectiveIncidentId, true)
+            }
+          } catch {
+            // Ignore parse error
+          }
+        }
+      }
+    }
+
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
+    window.addEventListener('storage', handleStorageChange)
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('storage', handleStorageChange)
     }
   }, [effectiveIncidentId, rehydrateEmergency])
 
@@ -635,17 +656,23 @@ export const useEmergencyState = (
       return
     }
 
-    setCurrentState(EMERGENCY_STATE.CANCELLED)
-    clearEmergencyCache()
-
     if (incidentId) {
       try {
-        await updateIncidentStatus(incidentId, 'CANCELLED', 'citizen')
+        const res = await updateIncidentStatus(incidentId, 'CANCELLED', 'citizen')
+        if (!res.success) {
+          // If backend rejected because state is already resolved/terminal
+          console.warn('[Citizen State Machine] Cancellation rejected by server:', res.error)
+          await rehydrateEmergency(incidentId, true)
+          return
+        }
       } catch (err) {
         console.error('Failed to cancel incident on backend:', err)
       }
     }
-  }, [currentState, incidentId])
+
+    setCurrentState(EMERGENCY_STATE.CANCELLED)
+    clearEmergencyCache()
+  }, [currentState, incidentId, rehydrateEmergency])
 
   const resetEmergency = useCallback(() => {
     setIsAutoPlaying(false)
