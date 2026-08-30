@@ -12,14 +12,7 @@ import {
   subscribeToEvent,
   onSocketStatusChange,
 } from '../../../lib/realtime/socket'
-
-const STATUS_RANKS = {
-  NEW: 1,
-  TRIAGE_PENDING: 2,
-  VERIFIED: 3,
-  RESOLVED: 4,
-  CANCELLED: 4,
-}
+import { shouldAcceptStatusUpdate, normalizeToBackendStatus } from '../../../lib/stateMachine'
 
 const normalizeIncident = (inc) => ({
   id: inc.id || `INC-${Math.random().toString(36).substr(2, 6)}`,
@@ -173,16 +166,13 @@ export const useAuthorityIncidents = () => {
     // Listen for remote status transitions with out-of-order protection
     const handleResponseStateChange = (payload) => {
       const incId = payload.id || payload.incident_id
-      const targetStatus = payload.status
+      const targetStatus = normalizeToBackendStatus(payload.status)
 
       setIncidents((prev) =>
         prev.map((inc) => {
           if (inc.id === incId) {
-            const currentRank = STATUS_RANKS[inc.status] || 0
-            const incomingRank = STATUS_RANKS[targetStatus] || 0
-
             // Event ordering protection: do not regress status if an older packet arrives late
-            if (incomingRank < currentRank && inc.status !== 'CANCELLED') {
+            if (!shouldAcceptStatusUpdate(inc.status, targetStatus)) {
               return inc
             }
 
@@ -219,10 +209,13 @@ export const useAuthorityIncidents = () => {
     const handleAssignmentEvent = (payload) => {
       const incId = payload.incident_id || payload.id
       if (!incId) return
-      const targetStatus = payload.status || 'ASSIGNED'
+      const targetStatus = normalizeToBackendStatus(payload.status || 'ASSIGNED')
       setIncidents((prev) =>
         prev.map((inc) => {
           if (inc.id === incId) {
+            if (!shouldAcceptStatusUpdate(inc.status, targetStatus)) {
+              return inc
+            }
             return {
               ...inc,
               status: targetStatus,

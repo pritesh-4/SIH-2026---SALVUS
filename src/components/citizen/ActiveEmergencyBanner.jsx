@@ -2,14 +2,20 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchIncidentById } from '../../services/api'
 import { joinRoom, leaveRoom, subscribeToEvent } from '../../lib/realtime/socket'
+import { shouldAcceptStatusUpdate, normalizeToBackendStatus } from '../../lib/stateMachine'
+import { loadEmergencyCache } from '../../lib/emergencyCache'
 import { Badge } from '../ui/Badge'
 
 export const ActiveEmergencyBanner = () => {
   const navigate = useNavigate()
   const [activeIncidentId, setActiveIncidentId] = useState(() => {
-    return localStorage.getItem('salvus_active_incident_id')
+    const cache = loadEmergencyCache()
+    return cache?.incidentId || localStorage.getItem('salvus_active_incident_id') || null
   })
-  const [incidentData, setIncidentData] = useState(null)
+  const [incidentData, setIncidentData] = useState(() => {
+    const cache = loadEmergencyCache()
+    return cache?.cachedIncident || null
+  })
 
   const checkStorage = useCallback(() => {
     const id = localStorage.getItem('salvus_active_incident_id')
@@ -49,20 +55,32 @@ export const ActiveEmergencyBanner = () => {
     const handleStatus = (payload) => {
       if (!isMounted) return
       if (payload.incident_id === activeIncidentId || payload.id === activeIncidentId) {
-        if (payload.status === 'RESOLVED' || payload.status === 'CANCELLED') {
-          setIncidentData((p) => (p ? { ...p, status: payload.status } : null))
-        } else {
-          setIncidentData((p) => (p ? { ...p, status: payload.status } : null))
-        }
+        const incomingStatus = normalizeToBackendStatus(payload.status)
+        setIncidentData((prev) => {
+          if (!prev) return null
+          if (!shouldAcceptStatusUpdate(prev.status, incomingStatus)) {
+            return prev
+          }
+          return { ...prev, status: incomingStatus }
+        })
       }
     }
 
     const handleAssign = (payload) => {
       if (!isMounted) return
       if (payload.incident_id === activeIncidentId || payload.id === activeIncidentId) {
-        if (payload.responder) {
-          setIncidentData((p) => (p ? { ...p, assigned_responder: payload.responder } : p))
-        }
+        const incomingStatus = normalizeToBackendStatus(payload.status || 'ASSIGNED')
+        setIncidentData((prev) => {
+          if (!prev) return null
+          const next = { ...prev }
+          if (payload.responder) {
+            next.assigned_responder = payload.responder
+          }
+          if (shouldAcceptStatusUpdate(prev.status, incomingStatus)) {
+            next.status = incomingStatus
+          }
+          return next
+        })
       }
     }
 

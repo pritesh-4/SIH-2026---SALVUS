@@ -134,12 +134,12 @@ async def test_duplicate_active_assignment_rejection_responder(client):
     )
     assert res1.status_code == 201
 
-    # 2nd assignment for same responder must be rejected
+    # 2nd assignment for same responder must be rejected with 409 Conflict
     res2 = await client.post(
         "/api/assignments",
         json={"incident_id": inc2["id"], "responder_id": responder_id},
     )
-    assert res2.status_code == 400
+    assert res2.status_code == 409
     error_detail = res2.json()["detail"]["error"]
     assert error_detail["code"] == "RESPONDER_ALREADY_ASSIGNED"
 
@@ -175,12 +175,12 @@ async def test_duplicate_active_assignment_rejection_incident(client):
     )
     assert res1.status_code == 201
 
-    # 2nd assignment for same incident must be rejected
+    # 2nd assignment for same incident must be rejected with 409 Conflict
     res2 = await client.post(
         "/api/assignments",
         json={"incident_id": inc["id"], "responder_id": resp2_id},
     )
-    assert res2.status_code == 400
+    assert res2.status_code == 409
     error_detail = res2.json()["detail"]["error"]
     assert error_detail["code"] == "INCIDENT_ALREADY_ASSIGNED"
 

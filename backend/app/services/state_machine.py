@@ -232,3 +232,15 @@ def get_assignment_rank(status: str) -> int:
         return ASSIGNMENT_STATUS_RANKS[AssignmentStatus(status)]
     except (ValueError, KeyError):
         return 0
+
+
+def should_accept_incident_update(current: str, incoming: str) -> bool:
+    """Return True if incoming realtime status update should be accepted.
+
+    Protects against out-of-order packets and transitions from terminal states.
+    """
+    if is_terminal(current):
+        return False
+    if is_terminal(incoming):
+        return True
+    return get_rank(incoming) >= get_rank(current)

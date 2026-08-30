@@ -64,6 +64,11 @@ async def create_incident(
     """Create a new incident report or SOS beacon and issue scoped citizen access token."""
     db = await get_database()
     request_id = getattr(request.state, "request_id", "req-transient")
+    idempotency_key = (
+        request.headers.get("Idempotency-Key")
+        or request.headers.get("X-Idempotency-Key")
+        or payload.idempotency_key
+    )
 
     # Derive authenticated citizen identity or mint new citizen ID
     reporter_id = user.user_id if user else f"cit-{uuid.uuid4().hex[:8]}"
@@ -73,7 +78,9 @@ async def create_incident(
         else (user.name if user else "Citizen User")
     )
 
-    incident = await incident_service.create_incident(db, payload, reporter_id=reporter_id)
+    incident = await incident_service.create_incident(
+        db, payload, reporter_id=reporter_id, idempotency_key=idempotency_key
+    )
 
     # Issue scoped citizen token for this incident if caller is not already authority/system
     if not user or user.role == UserRole.CITIZEN:

@@ -154,10 +154,10 @@ class TestStatusTransition:
         create_resp = await client.post("/api/incidents", json=VALID_INCIDENT)
         inc_id = create_resp.json()["data"]["id"]
 
-        # Try to skip triage: NEW → VERIFIED (not allowed)
+        # Try impossible jump: untriaged/new incident directly to ON_SCENE (not allowed)
         resp = await client.patch(
             f"/api/incidents/{inc_id}/status",
-            json={"status": "VERIFIED", "actor": "test"},
+            json={"status": "ON_SCENE", "actor": "test"},
         )
         assert resp.status_code == 400
 

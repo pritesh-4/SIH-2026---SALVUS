@@ -2,10 +2,11 @@
  * Salvus Routing Client Service
  *
  * Provides frontend access to the Salvus OSRM routing service with
- * seamless fallback to client-side interpolated corridor geometry.
+ * seamless fallback to client-side interpolated corridor geometry and
+ * race-safe route request management (cancels stale responses).
  */
 
-import { apiClient } from './api'
+import { apiClient } from './api.js'
 
 /**
  * Calculate Haversine distance in km between two coordinate pairs.
@@ -30,6 +31,14 @@ export const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
       Math.sin(dLon / 2)
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   return Math.round(R * c * 100) / 100
+}
+
+/**
+ * Check if coordinate has moved beyond minimum threshold in meters.
+ */
+export const hasSignificantlyMoved = (lat1, lon1, lat2, lon2, thresholdMeters = 30) => {
+  const distKm = haversineDistanceKm(lat1, lon1, lat2, lon2)
+  return distKm * 1000 >= thresholdMeters
 }
 
 /**
@@ -106,7 +115,14 @@ export const generateFallbackCorridor = (
 /**
  * Fetch route between coordinates from backend routing API with automatic fallback.
  */
-export const fetchRoute = async (originLat, originLon, destLat, destLon, profile = 'driving') => {
+export const fetchRoute = async (
+  originLat,
+  originLon,
+  destLat,
+  destLon,
+  profile = 'driving',
+  signal = null
+) => {
   const oLat = Number(originLat)
   const oLon = Number(originLon)
   const dLat = Number(destLat)
@@ -129,6 +145,7 @@ export const fetchRoute = async (originLat, originLon, destLat, destLon, profile
         dest_lng: dLon,
         profile,
       },
+      signal,
     })
     if (response.data?.data) {
       const d = response.data.data
@@ -153,6 +170,9 @@ export const fetchRoute = async (originLat, originLon, destLat, destLon, profile
       }
     }
   } catch (error) {
+    if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
+      return { success: false, isCancelled: true, data: null }
+    }
     console.warn('[RoutingClient] Backend route query failed, using fallback corridor:', error)
   }
 
@@ -163,9 +183,99 @@ export const fetchRoute = async (originLat, originLon, destLat, destLon, profile
   }
 }
 
+/**
+ * Race-Safe Route Query Manager
+ *
+ * Enforces:
+ * 1. Monotonically increasing sequence IDs to drop stale out-of-order route responses.
+ * 2. In-flight request cancellation via AbortController when coordinates change.
+ * 3. Distance thresholding to prevent expensive re-queries on micro GPS jitter (< 30m).
+ */
+export class RouteManager {
+  constructor(thresholdMeters = 30) {
+    this.thresholdMeters = thresholdMeters
+    this.currentSeq = 0
+    this.abortController = null
+    this.lastQueryOrigin = null
+    this.lastQueryDest = null
+    this.cachedRoute = null
+  }
+
+  async calculateRoute(originLat, originLon, destLat, destLon, profile = 'driving', force = false) {
+    const oLat = Number(originLat)
+    const oLon = Number(originLon)
+    const dLat = Number(destLat)
+    const dLon = Number(destLon)
+
+    if (isNaN(oLat) || isNaN(oLon) || isNaN(dLat) || isNaN(dLon)) {
+      return { success: false, data: null, error: 'INVALID_COORDS' }
+    }
+
+    // Micro-movement check: return cached route if movement is negligible
+    if (
+      !force &&
+      this.cachedRoute &&
+      this.lastQueryOrigin &&
+      this.lastQueryDest &&
+      !hasSignificantlyMoved(
+        this.lastQueryOrigin.lat,
+        this.lastQueryOrigin.lon,
+        oLat,
+        oLon,
+        this.thresholdMeters
+      ) &&
+      !hasSignificantlyMoved(
+        this.lastQueryDest.lat,
+        this.lastQueryDest.lon,
+        dLat,
+        dLon,
+        this.thresholdMeters
+      )
+    ) {
+      return { success: true, data: this.cachedRoute, isCached: true }
+    }
+
+    // Cancel any previous in-flight route query
+    if (this.abortController) {
+      this.abortController.abort()
+    }
+    this.abortController = new AbortController()
+
+    const requestSeq = ++this.currentSeq
+
+    const result = await fetchRoute(oLat, oLon, dLat, dLon, profile, this.abortController.signal)
+
+    // Stale response guard: If another query started while this was in-flight, discard
+    if (requestSeq !== this.currentSeq) {
+      return { success: false, isStale: true, data: null }
+    }
+
+    if (result.success && result.data) {
+      this.lastQueryOrigin = { lat: oLat, lon: oLon }
+      this.lastQueryDest = { lat: dLat, lon: dLon }
+      this.cachedRoute = result.data
+    }
+
+    return result
+  }
+
+  clear() {
+    if (this.abortController) {
+      this.abortController.abort()
+      this.abortController = null
+    }
+    this.currentSeq = 0
+    this.lastQueryOrigin = null
+    this.lastQueryDest = null
+    this.cachedRoute = null
+  }
+}
+
 export default {
   haversineDistanceKm,
+  hasSignificantlyMoved,
   formatEta,
   generateFallbackCorridor,
   fetchRoute,
+  RouteManager,
 }

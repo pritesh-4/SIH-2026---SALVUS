@@ -7,6 +7,7 @@ from app.services.state_machine import (
     get_rank,
     is_assignment_terminal,
     is_terminal,
+    should_accept_incident_update,
     validate_assignment_transition,
     validate_responder_transition,
     validate_transition,
@@ -29,11 +30,17 @@ class TestValidTransitions:
     def test_verified_to_assigned(self):
         assert validate_transition("VERIFIED", "ASSIGNED") is True
 
+    def test_verified_to_resolved_direct(self):
+        assert validate_transition("VERIFIED", "RESOLVED") is True
+
     def test_assigned_to_en_route(self):
         assert validate_transition("ASSIGNED", "EN_ROUTE") is True
 
     def test_en_route_to_nearby(self):
         assert validate_transition("EN_ROUTE", "NEARBY") is True
+
+    def test_en_route_to_on_scene(self):
+        assert validate_transition("EN_ROUTE", "ON_SCENE") is True
 
     def test_nearby_to_on_scene(self):
         assert validate_transition("NEARBY", "ON_SCENE") is True
@@ -147,27 +154,42 @@ class TestCancellation:
 
 
 # -----------------------------------------------------------------------
-# Invalid transitions
+# Invalid & impossible transitions
 # -----------------------------------------------------------------------
 
 
 class TestInvalidTransitions:
-    """Backward and skip transitions must be rejected."""
+    """Backward and impossible transitions must be strictly rejected."""
 
     def test_cannot_go_backwards(self):
         assert validate_transition("ON_SCENE", "EN_ROUTE") is False
         assert validate_transition("EN_ROUTE", "ASSIGNED") is False
+        assert validate_transition("ASSIGNED", "NEW") is False
+        assert validate_transition("NEARBY", "ASSIGNED") is False
+        assert validate_transition("ON_SCENE", "NEW") is False
+
+    def test_cannot_skip_triage(self):
+        assert validate_transition("NEW", "VERIFIED") is False
+        assert validate_transition("NEW", "ASSIGNED") is False
+        assert validate_transition("TRIAGE_PENDING", "ASSIGNED") is False
 
     def test_cannot_transition_from_resolved(self):
+        assert validate_transition("RESOLVED", "EN_ROUTE") is False
+        assert validate_transition("RESOLVED", "ASSIGNED") is False
         assert validate_transition("RESOLVED", "NEW") is False
         assert validate_transition("RESOLVED", "TRIAGE_PENDING") is False
+        assert validate_transition("RESOLVED", "CANCELLED") is False
 
     def test_cannot_transition_from_cancelled(self):
+        assert validate_transition("CANCELLED", "ASSIGNED") is False
+        assert validate_transition("CANCELLED", "EN_ROUTE") is False
         assert validate_transition("CANCELLED", "NEW") is False
+        assert validate_transition("CANCELLED", "RESOLVED") is False
 
     def test_invalid_status_string(self):
         assert validate_transition("INVALID", "NEW") is False
         assert validate_transition("NEW", "INVALID") is False
+        assert validate_transition("IDLE", "ON_SCENE") is False
 
 
 # -----------------------------------------------------------------------
@@ -209,7 +231,7 @@ class TestTerminalStates:
 
 
 # -----------------------------------------------------------------------
-# Status ranking
+# Status ranking & Packet Guards
 # -----------------------------------------------------------------------
 
 
@@ -239,3 +261,25 @@ class TestStatusRanking:
         assert get_assignment_rank("ON_SCENE") < get_assignment_rank("COMPLETED")
         assert get_assignment_rank("COMPLETED") == get_assignment_rank("CANCELLED")
         assert get_assignment_rank("UNKNOWN") == 0
+
+
+class TestPacketGuard:
+    """Out-of-order packet and stale update guard tests."""
+
+    def test_accepts_forward_packet(self):
+        assert should_accept_incident_update("NEW", "ASSIGNED") is True
+        assert should_accept_incident_update("ASSIGNED", "EN_ROUTE") is True
+        assert should_accept_incident_update("EN_ROUTE", "ON_SCENE") is True
+
+    def test_rejects_stale_out_of_order_packet(self):
+        assert should_accept_incident_update("ON_SCENE", "ASSIGNED") is False
+        assert should_accept_incident_update("EN_ROUTE", "NEW") is False
+        assert should_accept_incident_update("NEARBY", "TRIAGE_PENDING") is False
+
+    def test_rejects_updates_to_terminal_state(self):
+        assert should_accept_incident_update("RESOLVED", "EN_ROUTE") is False
+        assert should_accept_incident_update("CANCELLED", "ASSIGNED") is False
+
+    def test_accepts_terminal_packet_from_active_state(self):
+        assert should_accept_incident_update("EN_ROUTE", "CANCELLED") is True
+        assert should_accept_incident_update("ON_SCENE", "RESOLVED") is True

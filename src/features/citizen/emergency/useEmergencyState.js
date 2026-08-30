@@ -21,21 +21,33 @@ import {
   formatCoordinates,
   INITIAL_LOCATION_STATE,
 } from '../../../lib/location'
-import { haversineDistanceKm } from '../../../services/routingService'
+import { haversineDistanceKm, RouteManager } from '../../../services/routingService'
+import {
+  EMERGENCY_STATE,
+  STATE_ORDER,
+  STATUS_TO_STATE,
+  normalizeToUiState,
+  validateTransition,
+  isTerminalState,
+  shouldAcceptStatusUpdate,
+  getNextState,
+  getPreviousState,
+  deriveTimelineSteps,
+} from '../../../lib/stateMachine'
+import {
+  saveEmergencyCache,
+  loadEmergencyCache,
+  clearEmergencyCache,
+  isCacheStale,
+  formatSyncFreshness,
+  generateIdempotencyKey,
+} from '../../../lib/emergencyCache'
 
-export const STATE_ORDER = [
-  'SOS_ACTIVE',
-  'TRIAGING',
-  'VERIFIED',
-  'ASSIGNED',
-  'EN_ROUTE',
-  'NEARBY',
-  'ON_SCENE',
-  'RESOLVED',
-]
+// Re-export constants for downstream consumer convenience
+export { STATE_ORDER }
 
 // State duration map in seconds for demo progression
-export const STATE_DURATIONS = {
+export const STATE_DURATIONS = Object.freeze({
   SOS_ACTIVE: 3,
   TRIAGING: 3.5,
   VERIFIED: 2.5,
@@ -44,58 +56,66 @@ export const STATE_DURATIONS = {
   NEARBY: 3.5,
   ON_SCENE: 3.5,
   RESOLVED: 4,
-}
+})
 
-// Map backend IncidentStatus to frontend emergency UI flow state
-const STATUS_TO_STATE_MAP = {
-  NEW: 'SOS_ACTIVE',
-  TRIAGE_PENDING: 'TRIAGING',
-  VERIFIED: 'VERIFIED',
-  ASSIGNED: 'ASSIGNED',
-  EN_ROUTE: 'EN_ROUTE',
-  NEARBY: 'NEARBY',
-  ON_SCENE: 'ON_SCENE',
-  RESOLVED: 'RESOLVED',
-  CANCELLED: 'CANCELLED',
-}
+export const useEmergencyState = (
+  initialState = EMERGENCY_STATE.SOS_ACTIVE,
+  activeIncidentId = null
+) => {
+  // 1. Initial hydration: Load recovery hint from cache immediately to prevent screen flash
+  const cachedRecoveryHint = useMemo(() => loadEmergencyCache(), [])
 
-const STATUS_RANKS = {
-  NEW: 1,
-  TRIAGE_PENDING: 2,
-  VERIFIED: 3,
-  ASSIGNED: 4,
-  EN_ROUTE: 5,
-  NEARBY: 6,
-  ON_SCENE: 7,
-  RESOLVED: 8,
-  CANCELLED: 8,
-}
-
-export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId = null) => {
   const [incidentId, setIncidentId] = useState(() => {
-    return activeIncidentId || localStorage.getItem('salvus_active_incident_id') || null
+    return activeIncidentId || cachedRecoveryHint?.incidentId || null
   })
   const effectiveIncidentId = activeIncidentId || incidentId
 
-  const [liveIncident, setLiveIncident] = useState(null)
-  const [assignedResponder, setAssignedResponder] = useState(null)
-  const [currentState, setCurrentState] = useState(initialState)
+  const [liveIncident, setLiveIncident] = useState(() => cachedRecoveryHint?.cachedIncident || null)
+  const [assignedResponder, setAssignedResponder] = useState(
+    () => cachedRecoveryHint?.cachedResponder || null
+  )
+  const [currentState, setCurrentState] = useState(() => {
+    if (cachedRecoveryHint?.lastKnownStatus) {
+      return normalizeToUiState(cachedRecoveryHint.lastKnownStatus)
+    }
+    return normalizeToUiState(initialState)
+  })
+
+  const [lastSyncedAt, setLastSyncedAt] = useState(() => cachedRecoveryHint?.lastSyncedAt || null)
+  const [submittingState, setSubmittingState] = useState('idle') // 'idle' | 'submitting' | 'success' | 'failure' | 'conflict'
   const [isAutoPlaying, setIsAutoPlaying] = useState(false)
   const [simulationSpeed, setSimulationSpeed] = useState(1) // 1x, 1.5x, 2x
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
   const [locationStatus, setLocationStatus] = useState('ACTIVE') // ACTIVE, ACQUIRING, RETRYING
   const [connectivityStatus, setConnectivityStatus] = useState('CONNECTED') // CONNECTED, LIMITED_CONNECTION, OFFLINE, RECONNECTING
-  const [userLocation, setUserLocation] = useState(() => INITIAL_LOCATION_STATE)
+  const [userLocation, setUserLocation] = useState(
+    () => cachedRecoveryHint?.cachedUserLocation || INITIAL_LOCATION_STATE
+  )
 
   const [emergencyContacts, setEmergencyContacts] = useState([])
   const [citizenProfile, setCitizenProfile] = useState(null)
+
+  // Current active SOS idempotency key (stable across retries of the SAME emergency submission)
+  const pendingSosIdempotencyKeyRef = useRef(null)
+  const routeManagerRef = useRef(new RouteManager(30))
   const stopLocationWatchRef = useRef(null)
   const assignedResponderRef = useRef(assignedResponder)
+  const currentStateRef = useRef(currentState)
+  const liveIncidentRef = useRef(liveIncident)
 
   useEffect(() => {
     assignedResponderRef.current = assignedResponder
   }, [assignedResponder])
 
+  useEffect(() => {
+    currentStateRef.current = currentState
+  }, [currentState])
+
+  useEffect(() => {
+    liveIncidentRef.current = liveIncident
+  }, [liveIncident])
+
+  // Profile and contacts bootstrap
   useEffect(() => {
     let isMounted = true
     Promise.all([fetchEmergencyContacts(), fetchCitizenProfile()]).then(([contRes, profRes]) => {
@@ -113,42 +133,54 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
   }, [])
 
   // -------------------------------------------------------------------------
-  // 1. Initial Load & Realtime Sync for Live Incident
+  // 2. Unified Authoritative Rehydration Engine: rehydrateEmergency(incidentId)
   // -------------------------------------------------------------------------
-  useEffect(() => {
-    if (!effectiveIncidentId) return
+  const rehydrateEmergency = useCallback(async (targetId, isSilentBackground = false) => {
+    if (!targetId) return
 
-    let isMounted = true
+    try {
+      const result = await fetchIncidentById(targetId)
 
-    // Fetch initial state from backend
-    const loadIncident = async () => {
-      const result = await fetchIncidentById(effectiveIncidentId)
-      if (result.success && result.data && isMounted) {
-        localStorage.setItem('salvus_active_incident_id', result.data.id)
-        setLiveIncident(result.data)
-        const mappedState = STATUS_TO_STATE_MAP[result.data.status] || 'SOS_ACTIVE'
-        setCurrentState(mappedState)
-        if (result.data.latitude && result.data.longitude) {
+      if (result.success && result.data) {
+        const inc = result.data
+        const authoritativeUiState = normalizeToUiState(inc.status)
+
+        // If incident is terminal on server, reflect it authoritatively and clean cache
+        if (isTerminalState(authoritativeUiState) || isTerminalState(inc.status)) {
+          setCurrentState(authoritativeUiState)
+          setLiveIncident(inc)
+          clearEmergencyCache()
+          return
+        }
+
+        // Server is authoritative: update live incident and state
+        setLiveIncident(inc)
+        setCurrentState(authoritativeUiState)
+        const nowIso = new Date().toISOString()
+        setLastSyncedAt(nowIso)
+        setConnectivityStatus('CONNECTED')
+
+        if (inc.latitude && inc.longitude) {
           setUserLocation(
             createLocationModel({
-              latitude: result.data.latitude,
-              longitude: result.data.longitude,
-              coordinates: formatCoordinates(result.data.latitude, result.data.longitude),
+              latitude: inc.latitude,
+              longitude: inc.longitude,
+              coordinates: formatCoordinates(inc.latitude, inc.longitude),
               source: 'INCIDENT',
               permission: 'GRANTED',
               status: 'ACTIVE',
-              address: result.data.location_name || 'Incident Scene',
+              address: inc.location_name || 'Incident Scene',
             })
           )
         }
 
-        // Also check if responder or active assignment exists for this incident
-        if (['ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE'].includes(result.data.status)) {
+        // Reconcile assignments & assigned responder
+        if (['ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE'].includes(inc.status)) {
           const [assignRes, respRes] = await Promise.all([
-            fetchIncidentAssignments(effectiveIncidentId),
+            fetchIncidentAssignments(targetId),
             fetchResponders(),
           ])
-          if (isMounted && assignRes.success && assignRes.data?.length > 0 && respRes.success) {
+          if (assignRes.success && assignRes.data?.length > 0 && respRes.success) {
             const activeAssign =
               assignRes.data.find((a) =>
                 ['ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE'].includes(a.status)
@@ -157,73 +189,133 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
               const matchedResp = respRes.data.find((r) => r.id === activeAssign.responder_id)
               if (matchedResp) {
                 setAssignedResponder(matchedResp)
+                saveEmergencyCache(inc, matchedResp)
+                return
               }
             }
           }
         }
+
+        saveEmergencyCache(inc, assignedResponderRef.current)
+      } else if (result.error?.status === 404) {
+        // Incident no longer exists on server -> clear stale local cache
+        console.warn(
+          `[Citizen Hydration] Incident #${targetId} not found on server. Clearing cache.`
+        )
+        clearEmergencyCache()
+        setLiveIncident(null)
+        setAssignedResponder(null)
+        setIncidentId(null)
+        setCurrentState(EMERGENCY_STATE.SOS_ACTIVE)
+      } else {
+        // Transient network failure during refresh: preserve last-known cache safely
+        if (!isSilentBackground) {
+          setConnectivityStatus('OFFLINE')
+          console.warn(
+            '[Citizen Hydration] Server unreachable during rehydration. Retaining last-known cache.'
+          )
+        }
+      }
+    } catch (err) {
+      if (!isSilentBackground) {
+        setConnectivityStatus('OFFLINE')
+        console.warn('[Citizen Hydration] Network error during rehydration:', err.message)
       }
     }
+  }, [])
 
-    loadIncident()
+  // -------------------------------------------------------------------------
+  // 3. Initial Load & Realtime Socket Subscription
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!effectiveIncidentId) return
+
+    let isMounted = true
+
+    // Initial authoritative reconciliation
+    const syncAuthoritativeState = async () => {
+      if (isMounted) {
+        await rehydrateEmergency(effectiveIncidentId)
+      }
+    }
+    syncAuthoritativeState()
 
     // Join the incident-specific Socket.IO room
     const roomName = `incident:${effectiveIncidentId}`
     joinRoom(roomName)
 
-    // Helper for handling incident response state updates
+    // Realtime Handlers with Out-of-Order Packet Guards
     const handleStatusChange = (payload) => {
       if (!isMounted) return
       if (payload.incident_id === effectiveIncidentId || payload.id === effectiveIncidentId) {
-        console.log(
-          `[Citizen Realtime] Status updated for ${effectiveIncidentId} -> ${payload.status}`
-        )
-        const mappedState = STATUS_TO_STATE_MAP[payload.status] || 'SOS_ACTIVE'
+        const incomingStatus = payload.status
+        const incomingUiState = normalizeToUiState(incomingStatus)
+
+        // Protect against out-of-order packets and lock terminal state
+        if (!shouldAcceptStatusUpdate(currentStateRef.current, incomingStatus)) {
+          console.warn(`[Citizen Realtime] Ignored stale/out-of-order packet: ${incomingStatus}`)
+          return
+        }
+
+        console.log(`[Citizen Realtime] Status: ${incomingStatus} (${incomingUiState})`)
 
         if (payload.responder) {
           setAssignedResponder(payload.responder)
         }
 
-        setLiveIncident((prev) => {
-          if (prev) {
-            const currentRank = STATUS_RANKS[prev.status] || 0
-            const incomingRank = STATUS_RANKS[payload.status] || 0
-            if (incomingRank < currentRank && prev.status !== 'CANCELLED') {
-              console.warn(`[Citizen Guard] Ignored out-of-order status: ${payload.status}`)
-              return prev
-            }
-          }
-          setCurrentState(mappedState)
-          return payload.incident || (prev ? { ...prev, status: payload.status } : null)
-        })
+        setCurrentState(incomingUiState)
+        const updatedInc =
+          payload.incident ||
+          (liveIncidentRef.current ? { ...liveIncidentRef.current, status: incomingStatus } : null)
+        setLiveIncident(updatedInc)
+        const nowIso = new Date().toISOString()
+        setLastSyncedAt(nowIso)
+
+        if (isTerminalState(incomingUiState)) {
+          clearEmergencyCache()
+        } else if (updatedInc) {
+          saveEmergencyCache(updatedInc, payload.responder || assignedResponderRef.current)
+        }
       }
     }
 
-    // Helper for handling assignment creation & status change
     const handleAssignmentChange = (payload) => {
       if (!isMounted) return
       if (payload.incident_id === effectiveIncidentId || payload.id === effectiveIncidentId) {
-        console.log(
-          '[Citizen Realtime] Assignment event received:',
-          payload.status,
-          payload.responder?.unit_name
-        )
         if (payload.responder) {
           setAssignedResponder(payload.responder)
         }
-        const mapped = STATUS_TO_STATE_MAP[payload.status] || 'ASSIGNED'
-        setCurrentState(mapped)
-        setLiveIncident((prev) => (prev ? { ...prev, status: payload.status } : null))
+        const incomingStatus = payload.status || 'ASSIGNED'
+        const incomingUiState = normalizeToUiState(incomingStatus)
+
+        if (shouldAcceptStatusUpdate(currentStateRef.current, incomingStatus)) {
+          setCurrentState(incomingUiState)
+          const updatedInc = liveIncidentRef.current
+            ? { ...liveIncidentRef.current, status: incomingStatus }
+            : null
+          setLiveIncident(updatedInc)
+          const nowIso = new Date().toISOString()
+          setLastSyncedAt(nowIso)
+          if (updatedInc) {
+            saveEmergencyCache(updatedInc, payload.responder || assignedResponderRef.current)
+          }
+        }
       }
     }
 
-    // Helper for handling responder telemetry
     const handleResponderLocation = (payload) => {
       if (!isMounted) return
       if (
         payload.assigned_incident_id === effectiveIncidentId ||
         assignedResponderRef.current?.id === payload.id
       ) {
-        setAssignedResponder((prev) => (prev ? { ...prev, ...payload } : payload))
+        setAssignedResponder((prev) => {
+          const next = prev ? { ...prev, ...payload } : payload
+          if (liveIncidentRef.current) {
+            saveEmergencyCache(liveIncidentRef.current, next)
+          }
+          return next
+        })
       }
     }
 
@@ -234,25 +326,28 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
         assignedResponderRef.current?.id === payload.id
       ) {
         setAssignedResponder((prev) => (prev ? { ...prev, ...payload } : payload))
-        if (STATUS_TO_STATE_MAP[payload.status]) {
-          setCurrentState(STATUS_TO_STATE_MAP[payload.status])
+        if (STATUS_TO_STATE[payload.status]) {
+          const incomingUi = normalizeToUiState(payload.status)
+          if (shouldAcceptStatusUpdate(currentStateRef.current, payload.status)) {
+            setCurrentState(incomingUi)
+          }
         }
       }
     }
 
-    // Listen strictly to canonical Socket.IO events (no aliases)
+    // Subscribe to canonical realtime events
     const unsub1 = subscribeToEvent('incident.response_state_changed', handleStatusChange)
     const unsub2 = subscribeToEvent('assignment.created', handleAssignmentChange)
     const unsub3 = subscribeToEvent('assignment.status_changed', handleAssignmentChange)
     const unsub4 = subscribeToEvent('responder.location_updated', handleResponderLocation)
     const unsub5 = subscribeToEvent('responder.status_changed', handleResponderStatus)
 
-    // Listen for socket connectivity health with automatic re-sync on reconnect
+    // Reconnection health listener: Automatically re-sync authoritative state from backend
     const unsubscribeConn = onSocketStatusChange((status) => {
       if (isMounted) {
         setConnectivityStatus(status)
         if (status === 'CONNECTED') {
-          loadIncident()
+          rehydrateEmergency(effectiveIncidentId)
         }
       }
     })
@@ -267,13 +362,52 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
       unsub5()
       unsubscribeConn()
     }
-  }, [effectiveIncidentId])
+  }, [effectiveIncidentId, rehydrateEmergency])
 
   // -------------------------------------------------------------------------
-  // 2. Emergency Mode Geolocation Watcher (Privacy-compliant)
+  // 4. App Resume / Visibility Listener (re-validates without blind reloads)
   // -------------------------------------------------------------------------
   useEffect(() => {
-    if (currentState === 'CANCELLED' || currentState === 'RESOLVED') {
+    if (!effectiveIncidentId) return
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const cache = loadEmergencyCache()
+        if (isCacheStale(cache, 15)) {
+          console.log(
+            '[Citizen Resume] App foregrounded & cache stale. Rehydrating from server truth...'
+          )
+          rehydrateEmergency(effectiveIncidentId, true)
+        }
+      }
+    }
+
+    const handleOnline = () => {
+      console.log('[Citizen Network] Browser back online. Rehydrating emergency state...')
+      setConnectivityStatus('CONNECTED')
+      rehydrateEmergency(effectiveIncidentId)
+    }
+
+    const handleOffline = () => {
+      setConnectivityStatus('OFFLINE')
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [effectiveIncidentId, rehydrateEmergency])
+
+  // -------------------------------------------------------------------------
+  // 5. Emergency Mode Geolocation Watcher
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (isTerminalState(currentState)) {
       if (stopLocationWatchRef.current) {
         stopLocationWatchRef.current()
         stopLocationWatchRef.current = null
@@ -281,7 +415,6 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
       return
     }
 
-    // Start watching position during active emergency
     stopLocationWatchRef.current = watchEmergencyLocation(
       (locModel) => {
         setUserLocation(locModel)
@@ -301,7 +434,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
   }, [currentState])
 
   // -------------------------------------------------------------------------
-  // 3. Computed State Metadata & Live Distance/ETA
+  // 6. Computed Metadata & Live Distance/ETA
   // -------------------------------------------------------------------------
   const currentInfo = useMemo(() => {
     return emergencyFlowData.states[currentState] || emergencyFlowData.states.SOS_ACTIVE
@@ -315,7 +448,6 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     )
   }, [currentState])
 
-  // Dynamic live distance calculation if live telemetry is active
   const dynamicDistanceKm = useMemo(() => {
     if (
       assignedResponder?.latitude &&
@@ -380,7 +512,6 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     }
   }, [currentState])
 
-  // Dynamic incident data merging mock template with live backend data
   const dynamicIncident = useMemo(() => {
     if (liveIncident) {
       return {
@@ -389,7 +520,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
         category:
           liveIncident.type === 'flood'
             ? 'Flood / Water Inundation'
-            : liveIncident.type.replace('_', ' ').toUpperCase(),
+            : (liveIncident.type || 'EMERGENCY').replace('_', ' ').toUpperCase(),
         severity: liveIncident.severity || 'CRITICAL',
         status: liveIncident.status,
         timestamp: liveIncident.created_at
@@ -402,7 +533,10 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
         description: liveIncident.description,
         userLocation: {
           ...emergencyFlowData.incident.userLocation,
-          coordinates: `${liveIncident.latitude.toFixed(4)}° N, ${liveIncident.longitude.toFixed(4)}° E`,
+          coordinates:
+            liveIncident.latitude && liveIncident.longitude
+              ? `${liveIncident.latitude.toFixed(4)}° N, ${liveIncident.longitude.toFixed(4)}° E`
+              : emergencyFlowData.incident.userLocation.coordinates,
         },
       }
     }
@@ -425,37 +559,30 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     return emergencyFlowData.responder
   }, [assignedResponder])
 
-  // Dynamic timeline mapping
   const timelineSteps = useMemo(() => {
-    if (!liveIncident || !liveIncident.events || liveIncident.events.length === 0) {
-      return emergencyFlowData.timelineSteps
-    }
+    return deriveTimelineSteps(
+      currentState,
+      liveIncident?.events || [],
+      liveIncident?.created_at || null
+    )
+  }, [currentState, liveIncident])
 
-    return emergencyFlowData.timelineSteps.map((step) => {
-      const matchingEvent = liveIncident.events.find(
-        (e) =>
-          (e.event_type === 'CREATED' && step.id === 'SOS_ACTIVE') ||
-          (e.new_status && STATUS_TO_STATE_MAP[e.new_status] === step.id)
-      )
+  const syncFreshnessText = useMemo(() => {
+    return formatSyncFreshness(lastSyncedAt)
+  }, [lastSyncedAt])
 
-      if (matchingEvent) {
-        return {
-          ...step,
-          description: `${step.description} (${new Date(matchingEvent.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
-        }
-      }
-      return step
-    })
-  }, [liveIncident])
+  const isStale = useMemo(() => {
+    return isCacheStale({ lastSyncedAt }, 20)
+  }, [lastSyncedAt])
 
   // -------------------------------------------------------------------------
-  // 4. Action Handlers
+  // 7. Action Handlers with State-Machine Transition Protection & Idempotency
   // -------------------------------------------------------------------------
   const goToNextState = useCallback(() => {
     setCurrentState((prev) => {
-      const currentIndex = STATE_ORDER.indexOf(prev)
-      if (currentIndex >= 0 && currentIndex < STATE_ORDER.length - 1) {
-        return STATE_ORDER[currentIndex + 1]
+      const next = getNextState(prev)
+      if (next) {
+        return next
       }
       return prev
     })
@@ -463,23 +590,35 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
 
   const goToPrevState = useCallback(() => {
     setCurrentState((prev) => {
-      const currentIndex = STATE_ORDER.indexOf(prev)
-      if (currentIndex > 0) {
-        return STATE_ORDER[currentIndex - 1]
+      const previous = getPreviousState(prev)
+      if (previous) {
+        return previous
       }
       return prev
     })
   }, [])
 
-  const selectState = useCallback((stateKey) => {
-    if (emergencyFlowData.states[stateKey]) {
-      setCurrentState(stateKey)
-    }
+  const selectState = useCallback((targetKey) => {
+    const targetUi = normalizeToUiState(targetKey)
+    if (!targetUi) return
+
+    setCurrentState((prev) => {
+      if (validateTransition(prev, targetUi)) {
+        return targetUi
+      }
+      console.warn(
+        `[Citizen State Machine] Rejected invalid transition attempt: ${prev} → ${targetUi}`
+      )
+      return prev
+    })
   }, [])
 
   const openCancelModal = useCallback(() => {
+    if (isTerminalState(currentState)) {
+      return
+    }
     setIsCancelModalOpen(true)
-  }, [])
+  }, [currentState])
 
   const closeCancelModal = useCallback(() => {
     setIsCancelModalOpen(false)
@@ -488,7 +627,16 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
   const confirmCancelEmergency = useCallback(async () => {
     setIsAutoPlaying(false)
     setIsCancelModalOpen(false)
-    setCurrentState('CANCELLED')
+
+    if (!validateTransition(currentState, EMERGENCY_STATE.CANCELLED)) {
+      console.warn(
+        `[Citizen State Machine] Cannot cancel incident from terminal state: ${currentState}`
+      )
+      return
+    }
+
+    setCurrentState(EMERGENCY_STATE.CANCELLED)
+    clearEmergencyCache()
 
     if (incidentId) {
       try {
@@ -497,56 +645,88 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
         console.error('Failed to cancel incident on backend:', err)
       }
     }
-  }, [incidentId])
+  }, [currentState, incidentId])
 
   const resetEmergency = useCallback(() => {
     setIsAutoPlaying(false)
     setIsCancelModalOpen(false)
-    setCurrentState('SOS_ACTIVE')
+    clearEmergencyCache()
+    pendingSosIdempotencyKeyRef.current = null
+    routeManagerRef.current.clear()
+    setIncidentId(null)
+    setLiveIncident(null)
+    setAssignedResponder(null)
+    setCurrentState(EMERGENCY_STATE.SOS_ACTIVE)
     setLocationStatus('ACTIVE')
     setConnectivityStatus('CONNECTED')
-    setAssignedResponder(null)
+    setSubmittingState('idle')
   }, [])
 
   const triggerSos = useCallback(() => {
     setIsAutoPlaying(false)
     setIsCancelModalOpen(false)
-    setCurrentState('SOS_ACTIVE')
+    setCurrentState(EMERGENCY_STATE.SOS_ACTIVE)
     setLocationStatus('ACTIVE')
     setConnectivityStatus('CONNECTED')
+    setSubmittingState('idle')
   }, [])
 
-  // Trigger real live demo incident connecting to backend API & WebSocket
+  // Trigger real live demo incident with stable idempotency key across retries
   const triggerLiveDemoSos = useCallback(async () => {
-    setIsAutoPlaying(false)
-    const loc = await getCurrentLocation()
-    const lat = loc.latitude || loc.model?.latitude || 22.5726
-    const lng = loc.longitude || loc.model?.longitude || 88.3639
-
-    const reporterName = citizenProfile?.full_name || 'Citizen User'
-    const reporterPhone = citizenProfile?.phone || '+91 98301 23456'
-    const emergencyId = citizenProfile?.emergency_id || 'SLV-CIT-7829'
-
-    const result = await createIncident({
-      type: 'flood',
-      severity: 'CRITICAL',
-      description: `DEMO SOS Beacon [${emergencyId}] — Realtime Pipeline Test`,
-      reporter_name: reporterName,
-      reporter_phone: reporterPhone,
-      latitude: lat,
-      longitude: lng,
-      affected_count: 3,
-      is_sos: true,
-    })
-
-    if (result.success && result.data) {
-      setIncidentId(result.data.id)
-      setLiveIncident(result.data)
-      setCurrentState('SOS_ACTIVE')
+    if (submittingState === 'submitting') {
+      console.warn('[Citizen SOS] Submission already in progress. Ignoring duplicate click.')
+      return
     }
-  }, [citizenProfile])
 
-  // Auto-play simulation effect (when auto-play is activated in demo controls)
+    setIsAutoPlaying(false)
+    setSubmittingState('submitting')
+
+    // Maintain stable idempotency key across retries of the SAME logical SOS trigger
+    if (!pendingSosIdempotencyKeyRef.current) {
+      pendingSosIdempotencyKeyRef.current = generateIdempotencyKey('sos_cit')
+    }
+    const idempotencyKey = pendingSosIdempotencyKeyRef.current
+
+    try {
+      const loc = await getCurrentLocation()
+      const lat = loc.latitude || loc.model?.latitude || 22.5726
+      const lng = loc.longitude || loc.model?.longitude || 88.3639
+
+      const reporterName = citizenProfile?.full_name || 'Citizen User'
+      const reporterPhone = citizenProfile?.phone || '+91 98301 23456'
+      const emergencyId = citizenProfile?.emergency_id || 'SLV-CIT-7829'
+
+      const result = await createIncident({
+        type: 'flood',
+        severity: 'CRITICAL',
+        description: `DEMO SOS Beacon [${emergencyId}] — Realtime Pipeline Test`,
+        reporter_name: reporterName,
+        reporter_phone: reporterPhone,
+        latitude: lat,
+        longitude: lng,
+        affected_count: 3,
+        is_sos: true,
+        idempotency_key: idempotencyKey,
+      })
+
+      if (result.success && result.data) {
+        setSubmittingState('success')
+        pendingSosIdempotencyKeyRef.current = null // Completed successfully; reset key for future legitimate emergency
+        setIncidentId(result.data.id)
+        setLiveIncident(result.data)
+        const uiState = normalizeToUiState(result.data.status)
+        setCurrentState(uiState)
+        saveEmergencyCache(result.data, null)
+      } else {
+        setSubmittingState(result.error?.code === 'ACTIVE_INCIDENT_EXISTS' ? 'conflict' : 'failure')
+      }
+    } catch (err) {
+      console.error('[Citizen SOS] Error during SOS broadcast:', err)
+      setSubmittingState('failure')
+    }
+  }, [citizenProfile, submittingState])
+
+  // Auto-play simulation effect: drives canonical state machine
   useEffect(() => {
     if (!isAutoPlaying) return
 
@@ -555,9 +735,9 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
 
     const timer = setTimeout(() => {
       setCurrentState((prev) => {
-        const currentIndex = STATE_ORDER.indexOf(prev)
-        if (currentIndex >= 0 && currentIndex < STATE_ORDER.length - 1) {
-          return STATE_ORDER[currentIndex + 1]
+        const next = getNextState(prev)
+        if (next) {
+          return next
         } else {
           setIsAutoPlaying(false)
           return prev
@@ -580,6 +760,10 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     setLocationStatus,
     connectivityStatus,
     setConnectivityStatus,
+    submittingState,
+    lastSyncedAt,
+    syncFreshnessText,
+    isStale,
     isAutoPlaying,
     simulationSpeed,
     setSimulationSpeed,
@@ -601,6 +785,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     resetEmergency,
     triggerSos,
     triggerLiveDemoSos,
+    rehydrateEmergency,
     toggleAutoPlay: () => setIsAutoPlaying((prev) => !prev),
   }
 }

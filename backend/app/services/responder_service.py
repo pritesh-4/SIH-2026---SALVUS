@@ -250,6 +250,14 @@ async def advance_responder_lifecycle(
     if not responder:
         return None
 
+    if responder.status == target_status:
+        updated_inc = (
+            await get_incident_by_id(db, responder.assigned_incident_id)
+            if responder.assigned_incident_id
+            else None
+        )
+        return responder, updated_inc
+
     if not validate_responder_transition(responder.status, target_status):
         raise ValueError(
             f"Invalid responder transition from '{responder.status}' to '{target_status}'."

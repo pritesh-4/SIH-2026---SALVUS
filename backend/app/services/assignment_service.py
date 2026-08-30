@@ -182,9 +182,12 @@ async def create_assignment(
             f"with terminal status '{incident.status}'."
         )
 
-    # 2. Validate single active assignment constraint per incident
+    # 2. Validate single active assignment constraint per incident (with idempotency support)
     active_inc_assignment = await get_active_assignment_for_incident(db, payload.incident_id)
     if active_inc_assignment:
+        if active_inc_assignment.responder_id == payload.responder_id:
+            # Idempotent double-assignment by operator
+            return active_inc_assignment
         raise ValueError(
             f"Incident #{incident.ticket_id} already has an active assignment "
             f"({active_inc_assignment.id}) with status '{active_inc_assignment.status}'."
@@ -200,13 +203,20 @@ async def create_assignment(
 
     # 4. Validate single active assignment constraint per responder
     active_resp_assignment = await get_active_assignment_for_responder(db, payload.responder_id)
-    if active_resp_assignment or responder.status != ResponderStatus.AVAILABLE.value:
-        existing_status = (
-            active_resp_assignment.status if active_resp_assignment else responder.status
-        )
+    if active_resp_assignment:
+        if active_resp_assignment.incident_id == payload.incident_id:
+            return active_resp_assignment
         raise ValueError(
             f"Responder '{responder.unit_name}' already has an active assignment "
-            f"with status '{existing_status}'."
+            f"with status '{active_resp_assignment.status}'."
+        )
+    if (
+        responder.status != ResponderStatus.AVAILABLE.value
+        and responder.assigned_incident_id != payload.incident_id
+    ):
+        raise ValueError(
+            f"Responder '{responder.unit_name}' is currently in state "
+            f"'{responder.status}' and unavailable."
         )
 
     now = datetime.now(UTC).isoformat()
@@ -307,6 +317,24 @@ async def create_assignment(
 
         # Commit all changes atomically
         await db.commit()
+    except aiosqlite.IntegrityError as err:
+        await db.rollback()
+        # Handle concurrent dispatch race condition
+        existing_inc = await get_active_assignment_for_incident(db, payload.incident_id)
+        if existing_inc:
+            if existing_inc.responder_id == payload.responder_id:
+                return existing_inc
+            raise ValueError(
+                f"Incident #{incident.ticket_id} already has an active assignment "
+                f"({existing_inc.id}) with status '{existing_inc.status}'."
+            ) from err
+        existing_resp = await get_active_assignment_for_responder(db, payload.responder_id)
+        if existing_resp:
+            raise ValueError(
+                f"Responder '{responder.unit_name}' already has an active assignment "
+                f"with status '{existing_resp.status}'."
+            ) from err
+        raise
     except Exception:
         await db.rollback()
         raise
@@ -333,6 +361,9 @@ async def update_assignment_status(
         return None
 
     current_status = assignment.status
+    if current_status == target_status:
+        return assignment
+
     if not validate_assignment_transition(current_status, target_status):
         raise ValueError(
             f"Invalid assignment transition: '{current_status}' → '{target_status}' is not allowed."

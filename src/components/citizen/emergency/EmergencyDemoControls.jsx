@@ -1,4 +1,10 @@
 import { useState, useEffect } from 'react'
+import {
+  validateTransition,
+  isTerminalState,
+  getNextState,
+  getPreviousState,
+} from '../../../lib/stateMachine'
 
 export const EmergencyDemoControls = ({
   currentState,
@@ -74,6 +80,10 @@ export const EmergencyDemoControls = ({
     { key: 'RESOLVED', label: '8. Resolved' },
   ]
 
+  const isTerminal = isTerminalState(currentState)
+  const hasNext = Boolean(getNextState(currentState))
+  const hasPrev = Boolean(getPreviousState(currentState))
+
   if (isMinimized) {
     return (
       <aside
@@ -114,22 +124,37 @@ export const EmergencyDemoControls = ({
           </button>
         </div>
 
-        {/* State Pills */}
+        {/* State Pills with State-Machine Transition Guard */}
         <div className="flex items-center gap-1 overflow-x-auto py-1 max-w-full">
-          {states.map((s) => (
-            <button
-              key={s.key}
-              type="button"
-              onClick={() => onSelectState(s.key)}
-              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wide uppercase transition-all whitespace-nowrap cursor-pointer ${
-                currentState === s.key
-                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30 ring-2 ring-cyan-300'
-                  : 'bg-[#0B1118] text-slate-400 hover:text-white border border-[#1E293B]'
-              }`}
-            >
-              {s.label}
-            </button>
-          ))}
+          {states.map((s) => {
+            const isCurrent = currentState === s.key
+            const isAllowed = isCurrent || validateTransition(currentState, s.key)
+
+            return (
+              <button
+                key={s.key}
+                type="button"
+                disabled={!isAllowed}
+                onClick={() => onSelectState(s.key)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wide uppercase transition-all whitespace-nowrap ${
+                  isCurrent
+                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30 ring-2 ring-cyan-300 cursor-default'
+                    : isAllowed
+                      ? 'bg-[#0B1118] text-slate-300 hover:text-white border border-[#1E293B] cursor-pointer hover:border-cyan-500/50'
+                      : 'bg-[#080C12] text-slate-600 border border-slate-900 cursor-not-allowed opacity-40'
+                }`}
+                title={
+                  isCurrent
+                    ? `Current state: ${s.label}`
+                    : isAllowed
+                      ? `Transition to ${s.label}`
+                      : `Invalid transition from ${currentState}`
+                }
+              >
+                {s.label}
+              </button>
+            )
+          })}
         </div>
 
         {/* Right Controls */}
@@ -186,11 +211,14 @@ export const EmergencyDemoControls = ({
 
           <button
             type="button"
+            disabled={isTerminal && !isAutoPlaying}
             onClick={onToggleAutoPlay}
-            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider uppercase transition-colors cursor-pointer ${
+            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider uppercase transition-colors ${
               isAutoPlaying
-                ? 'bg-amber-500 text-slate-950 animate-pulse shadow-md shadow-amber-500/30'
-                : 'bg-[#1E293B] text-slate-300 hover:text-white'
+                ? 'bg-amber-500 text-slate-950 animate-pulse shadow-md shadow-amber-500/30 cursor-pointer'
+                : isTerminal
+                  ? 'bg-[#1E293B] text-slate-600 cursor-not-allowed opacity-40'
+                  : 'bg-[#1E293B] text-slate-300 hover:text-white cursor-pointer'
             }`}
           >
             {isAutoPlaying ? '⏸ Auto' : '▶ Sim'}
@@ -198,16 +226,26 @@ export const EmergencyDemoControls = ({
 
           <button
             type="button"
+            disabled={!hasPrev}
             onClick={onPrev}
-            className="px-2 py-1 rounded-lg bg-[#0B1118] border border-[#1E293B] text-slate-300 hover:text-white text-[10px] font-bold cursor-pointer"
+            className={`px-2 py-1 rounded-lg bg-[#0B1118] border border-[#1E293B] text-[10px] font-bold ${
+              hasPrev
+                ? 'text-slate-300 hover:text-white cursor-pointer'
+                : 'text-slate-600 cursor-not-allowed opacity-40'
+            }`}
             title="Previous Stage"
           >
             ←
           </button>
           <button
             type="button"
+            disabled={!hasNext}
             onClick={onNext}
-            className="px-2 py-1 rounded-lg bg-[#0B1118] border border-[#1E293B] text-slate-300 hover:text-white text-[10px] font-bold cursor-pointer"
+            className={`px-2 py-1 rounded-lg bg-[#0B1118] border border-[#1E293B] text-[10px] font-bold ${
+              hasNext
+                ? 'text-slate-300 hover:text-white cursor-pointer'
+                : 'text-slate-600 cursor-not-allowed opacity-40'
+            }`}
             title="Next Stage"
           >
             →
@@ -225,3 +263,5 @@ export const EmergencyDemoControls = ({
     </aside>
   )
 }
+
+export default EmergencyDemoControls

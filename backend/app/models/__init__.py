@@ -203,6 +203,11 @@ class IncidentCreate(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     affected_count: int = Field(default=1, ge=1, le=10000)
     is_sos: bool = False
+    idempotency_key: str | None = Field(
+        default=None,
+        max_length=128,
+        description="Client idempotency key for at-most-once submission",
+    )
     image_data: str | None = Field(
         default=None, description="Optional base64 encoded scene imagery"
     )

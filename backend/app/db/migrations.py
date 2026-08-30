@@ -231,6 +231,17 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         )
     """)
 
+    # 10. Idempotency Keys Table (Guarantees at-most-once emergency mutation)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS idempotency_keys (
+            key TEXT PRIMARY KEY,
+            resource_type TEXT NOT NULL,
+            resource_id TEXT NOT NULL,
+            request_payload TEXT,
+            created_at TEXT NOT NULL
+        )
+    """)
+
     # Indexes for high-performance spatial, status & identity queries
     await db.execute("CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)")
     await db.execute(
@@ -241,6 +252,10 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
     )
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_incidents_created_at ON incidents(created_at DESC)"
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_incidents_active_sos ON incidents(reporter_id, is_sos) "
+        "WHERE status NOT IN ('RESOLVED', 'CANCELLED')"
     )
     await db.execute("CREATE INDEX IF NOT EXISTS idx_responders_status ON responders(status)")
     await db.execute(
@@ -257,6 +272,17 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_assignments_responder ON assignments(responder_id)"
     )
     await db.execute("CREATE INDEX IF NOT EXISTS idx_assignments_status ON assignments(status)")
+    # Concurrency invariants: At most one active assignment per incident and per responder
+    await db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_assignments_active_incident "
+        "ON assignments(incident_id) "
+        "WHERE status IN ('PROPOSED', 'ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE')"
+    )
+    await db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_assignments_active_responder "
+        "ON assignments(responder_id) "
+        "WHERE status IN ('PROPOSED', 'ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE')"
+    )
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_incident_attachments_incident_id "
         "ON incident_attachments(incident_id)"
@@ -272,9 +298,13 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_emergency_contacts_user_id ON emergency_contacts(user_id)"
     )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_idempotency_resource "
+        "ON idempotency_keys(resource_type, resource_id)"
+    )
 
     await db.commit()
     print(
-        "[DB] Migrations complete with triage audit, assignments, attachments, "
-        "citizen profiles, and emergency contacts."
+        "[DB] Migrations complete with idempotency, concurrency locks, triage audit, "
+        "assignments, attachments, citizen profiles, and emergency contacts."
     )

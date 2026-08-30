@@ -1,12 +1,14 @@
 import { Card } from '../../ui/Card'
 import { Badge } from '../../ui/Badge'
-import { STATE_ORDER } from '../../../features/citizen/emergency/useEmergencyState'
 
 /**
- * Reassuring Emergency Progression Timeline
+ * Reassuring, Event-Derived Emergency Progression Timeline
+ *
+ * Renders status milestones computed authoritatively from:
+ * Incident State + Incident Audit Events = Timeline UI
  */
 export const EmergencyTimeline = ({ timelineSteps = [], currentState = 'SOS_ACTIVE' }) => {
-  const currentIdx = STATE_ORDER.indexOf(currentState)
+  const isCancelled = currentState === 'CANCELLED'
 
   return (
     <Card padding="md" className="transition-all">
@@ -14,15 +16,16 @@ export const EmergencyTimeline = ({ timelineSteps = [], currentState = 'SOS_ACTI
         <h3 className="text-sm font-bold text-salvus-text-primary uppercase tracking-wider">
           Response Timeline
         </h3>
-        <Badge variant="neutral" isMono={true}>
-          Live Log
+        <Badge variant={isCancelled ? 'neutral' : 'neutral'} isMono={true}>
+          {isCancelled ? 'Mission Closed' : 'Live Log'}
         </Badge>
       </div>
 
       <div className="space-y-4 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-salvus-border">
         {timelineSteps.map((step, idx) => {
-          const isCompleted = idx < currentIdx
-          const isCurrent = idx === currentIdx
+          const isCompleted = step.status === 'completed'
+          const isCurrent = step.status === 'current'
+          const isStepCancelled = step.status === 'cancelled'
 
           return (
             <div key={step.id} className="relative flex items-start gap-3.5 pl-1">
@@ -33,10 +36,12 @@ export const EmergencyTimeline = ({ timelineSteps = [], currentState = 'SOS_ACTI
                     ? 'bg-salvus-safe text-white'
                     : isCurrent
                       ? 'bg-salvus-warning text-salvus-bg ring-2 ring-salvus-warning/30'
-                      : 'bg-salvus-muted text-salvus-text-muted'
+                      : isStepCancelled
+                        ? 'bg-salvus-muted text-salvus-text-muted opacity-50'
+                        : 'bg-salvus-muted text-salvus-text-muted'
                 }`}
               >
-                {isCompleted ? '✓' : idx + 1}
+                {isCompleted ? '✓' : isStepCancelled ? '✕' : idx + 1}
               </div>
 
               {/* Step info */}
@@ -48,7 +53,9 @@ export const EmergencyTimeline = ({ timelineSteps = [], currentState = 'SOS_ACTI
                         ? 'text-salvus-text-primary'
                         : isCompleted
                           ? 'text-salvus-text-primary'
-                          : 'text-salvus-text-muted font-normal'
+                          : isStepCancelled
+                            ? 'text-salvus-text-muted line-through opacity-60'
+                            : 'text-salvus-text-muted font-normal'
                     }`}
                   >
                     {step.label}
@@ -63,6 +70,9 @@ export const EmergencyTimeline = ({ timelineSteps = [], currentState = 'SOS_ACTI
                       Done
                     </span>
                   )}
+                  {isStepCancelled && (
+                    <span className="text-[10px] text-salvus-text-muted shrink-0">Stand down</span>
+                  )}
                 </div>
                 <p className="text-xs text-salvus-text-secondary mt-0.5 leading-relaxed">
                   {step.description}
@@ -75,3 +85,5 @@ export const EmergencyTimeline = ({ timelineSteps = [], currentState = 'SOS_ACTI
     </Card>
   )
 }
+
+export default EmergencyTimeline

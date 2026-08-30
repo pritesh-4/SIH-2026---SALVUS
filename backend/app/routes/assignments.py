@@ -53,19 +53,30 @@ async def create_assignment(
     except ValueError as e:
         err_msg = str(e)
         code = "INVALID_ASSIGNMENT"
+        status_code = 400
         if "does not exist" in err_msg:
             code = "NOT_FOUND"
+            status_code = 404
         elif "OFFLINE" in err_msg:
             code = "RESPONDER_OFFLINE"
-        elif "Responder" in err_msg and "already has an active assignment" in err_msg:
+            status_code = 400
+        elif "Responder" in err_msg and (
+            "already has an active assignment" in err_msg or "unavailable" in err_msg
+        ):
             code = "RESPONDER_ALREADY_ASSIGNED"
+            status_code = 409
         elif "Incident" in err_msg and "already has an active assignment" in err_msg:
             code = "INCIDENT_ALREADY_ASSIGNED"
+            status_code = 409
+        elif "conflict" in err_msg.lower():
+            code = "ASSIGNMENT_CONFLICT"
+            status_code = 409
         elif "terminal status" in err_msg:
             code = "TERMINAL_INCIDENT"
+            status_code = 400
 
         raise HTTPException(
-            status_code=400 if code != "NOT_FOUND" else 404,
+            status_code=status_code,
             detail={
                 "success": False,
                 "error": {

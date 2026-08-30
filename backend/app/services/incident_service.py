@@ -32,16 +32,20 @@ from app.services.state_machine import is_terminal, validate_transition
 
 
 async def _next_ticket_id(db: aiosqlite.Connection) -> str:
-    """Generate the next SV-XXXX ticket ID."""
-    cursor = await db.execute("SELECT ticket_id FROM incidents ORDER BY created_at DESC LIMIT 1")
-    row = await cursor.fetchone()
-    if row:
-        try:
-            last_num = int(row["ticket_id"].split("-")[1])
-            return f"SV-{last_num + 1}"
-        except (IndexError, ValueError):
-            pass
-    return "SV-1001"
+    """Generate the next SV-XXXX ticket ID monotonically."""
+    cursor = await db.execute("SELECT ticket_id FROM incidents")
+    rows = await cursor.fetchall()
+    max_num = 1000
+    for r in rows:
+        t_id = r["ticket_id"]
+        if t_id and "-" in t_id:
+            try:
+                num = int(t_id.split("-")[1])
+                if num > max_num:
+                    max_num = num
+            except (IndexError, ValueError):
+                pass
+    return f"SV-{max_num + 1}"
 
 
 # ---------------------------------------------------------------------------
@@ -206,13 +210,73 @@ async def create_incident(
     db: aiosqlite.Connection,
     payload: IncidentCreate,
     reporter_id: str | None = None,
+    idempotency_key: str | None = None,
 ) -> IncidentResponse:
-    """Create a new incident, initial CREATED event, and automatically run AI triage."""
+    """Create a new incident with strict idempotency and deduplication."""
     now_dt = datetime.now(UTC)
     now = now_dt.isoformat()
-    recent_threshold = (now_dt - timedelta(seconds=4)).isoformat()
+    recent_threshold = (now_dt - timedelta(seconds=5)).isoformat()
+    effective_idempotency_key = idempotency_key or payload.idempotency_key
 
-    # Deduplication check
+    # 1. Check explicit Idempotency Key table
+    if effective_idempotency_key:
+        cursor = await db.execute(
+            "SELECT resource_id FROM idempotency_keys "
+            "WHERE key = ? AND resource_type = 'incident' LIMIT 1",
+            (effective_idempotency_key,),
+        )
+        existing_key_row = await cursor.fetchone()
+        if existing_key_row:
+            existing = await get_incident_by_id(db, existing_key_row["resource_id"])
+            if existing:
+                return existing
+
+    # 2. Check active non-terminal citizen SOS invariant
+    if payload.is_sos:
+        check_clauses = []
+        check_params = []
+        if reporter_id and not reporter_id.startswith("cit-"):
+            check_clauses.append("reporter_id = ?")
+            check_params.append(reporter_id)
+        if payload.reporter_phone:
+            check_clauses.append("(reporter_phone IS NOT NULL AND reporter_phone = ?)")
+            check_params.append(payload.reporter_phone)
+
+        if check_clauses:
+            query = f"""
+                SELECT id FROM incidents
+                WHERE ({" OR ".join(check_clauses)})
+                  AND is_sos = 1
+                  AND status NOT IN ('RESOLVED', 'CANCELLED')
+                ORDER BY created_at DESC LIMIT 1
+            """
+            cursor = await db.execute(query, tuple(check_params))
+            active_sos_row = await cursor.fetchone()
+            if active_sos_row:
+                existing_sos = await get_incident_by_id(db, active_sos_row["id"])
+                if existing_sos:
+                    # Associate this idempotency key with the existing active SOS if provided
+                    if effective_idempotency_key:
+                        try:
+                            await db.execute(
+                                """
+                                INSERT OR IGNORE INTO idempotency_keys
+                                    (key, resource_type, resource_id, request_payload, created_at)
+                                VALUES (?, 'incident', ?, ?, ?)
+                                """,
+                                (
+                                    effective_idempotency_key,
+                                    existing_sos.id,
+                                    payload.model_dump_json(),
+                                    now,
+                                ),
+                            )
+                            await db.commit()
+                        except Exception:
+                            pass
+                    return existing_sos
+
+    # 3. Near-simultaneous duplicate check (temporal/spatial fingerprint)
     cursor = await db.execute(
         """
         SELECT id FROM incidents
@@ -239,45 +303,78 @@ async def create_incident(
     if payload.image_data:
         _incident_images[incident_id] = payload.image_data
 
-    await db.execute(
-        """
-        INSERT INTO incidents (id, ticket_id, type, severity, description,
-            reporter_name, reporter_phone, reporter_id, latitude, longitude,
-            affected_count, is_sos, status, ai_state, triage_hash, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            incident_id,
-            ticket_id,
-            payload.type.value,
-            payload.severity.value,
-            payload.description,
-            payload.reporter_name,
-            payload.reporter_phone,
-            reporter_id,
-            payload.latitude,
-            payload.longitude,
-            payload.affected_count,
-            int(payload.is_sos),
-            IncidentStatus.NEW.value,
-            "PROCESSING",
-            None,
-            now,
-            now,
-        ),
-    )
+    try:
+        await db.execute(
+            """
+            INSERT INTO incidents (id, ticket_id, type, severity, description,
+                reporter_name, reporter_phone, reporter_id, latitude, longitude,
+                affected_count, is_sos, status, ai_state, triage_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                incident_id,
+                ticket_id,
+                payload.type.value,
+                payload.severity.value,
+                payload.description,
+                payload.reporter_name,
+                payload.reporter_phone,
+                reporter_id,
+                payload.latitude,
+                payload.longitude,
+                payload.affected_count,
+                int(payload.is_sos),
+                IncidentStatus.NEW.value,
+                "PROCESSING",
+                None,
+                now,
+                now,
+            ),
+        )
 
-    # Create the initial event
-    event_id = str(uuid.uuid4())
-    await db.execute(
-        """
-        INSERT INTO incident_events (id, incident_id, event_type,
-            previous_status, new_status, actor, created_at)
-        VALUES (?, ?, 'CREATED', NULL, ?, 'citizen', ?)
-        """,
-        (event_id, incident_id, IncidentStatus.NEW.value, now),
-    )
-    await db.commit()
+        # Create the initial event
+        event_id = str(uuid.uuid4())
+        await db.execute(
+            """
+            INSERT INTO incident_events (id, incident_id, event_type,
+                previous_status, new_status, actor, created_at)
+            VALUES (?, ?, 'CREATED', NULL, ?, 'citizen', ?)
+            """,
+            (event_id, incident_id, IncidentStatus.NEW.value, now),
+        )
+
+        # Store idempotency key mapping
+        if effective_idempotency_key:
+            await db.execute(
+                """
+                INSERT INTO idempotency_keys
+                    (key, resource_type, resource_id, request_payload, created_at)
+                VALUES (?, 'incident', ?, ?, ?)
+                """,
+                (
+                    effective_idempotency_key,
+                    incident_id,
+                    payload.model_dump_json(),
+                    now,
+                ),
+            )
+
+        await db.commit()
+    except aiosqlite.IntegrityError:
+        await db.rollback()
+        # Handle concurrent race condition for same idempotency key
+        if effective_idempotency_key:
+            cursor = await db.execute(
+                "SELECT resource_id FROM idempotency_keys "
+                "WHERE key = ? AND resource_type = 'incident' LIMIT 1",
+                (effective_idempotency_key,),
+            )
+            race_row = await cursor.fetchone()
+            if race_row:
+                race_existing = await get_incident_by_id(db, race_row["resource_id"])
+                if race_existing:
+                    return race_existing
+        raise
 
     # Fetch and return the created incident immediately (critical-path completed)
     return await get_incident_by_id(db, incident_id)
@@ -326,6 +423,10 @@ async def update_incident_status(
         return None
 
     current_status = row["status"]
+
+    # Idempotent no-op if status is unchanged
+    if current_status == new_status:
+        return await get_incident_by_id(db, incident_id)
 
     # Validate the transition
     if not validate_transition(current_status, new_status):

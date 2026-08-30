@@ -113,7 +113,7 @@ export const fetchIncidentById = async (incidentId) => {
 }
 
 /**
- * Create a new incident report or SOS beacon.
+ * Create a new incident report or SOS beacon with client idempotency protection.
  */
 export const createIncident = async (payload) => {
   try {
@@ -123,6 +123,7 @@ export const createIncident = async (payload) => {
       throw new Error('Valid geographic coordinates (latitude and longitude) are required.')
     }
 
+    const idempotencyKey = payload.idempotency_key || null
     const body = {
       type: payload.type || 'flood',
       severity: payload.severity || 'MEDIUM',
@@ -134,9 +135,15 @@ export const createIncident = async (payload) => {
       longitude: lon,
       affected_count: Number(payload.affected_count) || 1,
       is_sos: Boolean(payload.is_sos),
+      idempotency_key: idempotencyKey,
     }
 
-    const response = await apiClient.post('/api/incidents', body)
+    const headers = {}
+    if (idempotencyKey) {
+      headers['Idempotency-Key'] = idempotencyKey
+    }
+
+    const response = await apiClient.post('/api/incidents', body, { headers })
     if (response.data?.data?.access_token) {
       setAuthToken(response.data.data.access_token)
     }
@@ -152,9 +159,12 @@ export const createIncident = async (payload) => {
         : error.response?.data?.detail?.message) ||
       error.message ||
       'Failed to create incident'
+    const code =
+      error.response?.data?.detail?.error?.code ||
+      (error.response?.status === 409 ? 'ACTIVE_INCIDENT_EXISTS' : error.code || 'CREATE_ERROR')
     return {
       success: false,
-      error: { message, code: error.code || 'CREATE_ERROR' },
+      error: { message, code, status: error.response?.status },
       data: null,
     }
   }
