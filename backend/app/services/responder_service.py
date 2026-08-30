@@ -146,89 +146,136 @@ async def assign_responder_to_incident(
             f"Responder unit '{responder.unit_name}' is currently OFFLINE and cannot be dispatched."
         )
 
+    # Check existing active assignment constraint with idempotency support
+    cursor = await db.execute(
+        """
+        SELECT id, responder_id, status FROM assignments
+        WHERE incident_id = ?
+          AND status IN ('PROPOSED', 'ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE')
+        LIMIT 1
+        """,
+        (incident_id,),
+    )
+    active_assign = await cursor.fetchone()
+    if active_assign:
+        if active_assign["responder_id"] == responder_id:
+            # Idempotent double dispatch to same responder
+            return responder, incident
+        raise ValueError(
+            f"Incident #{incident.ticket_id} already has an active assignment to another unit."
+        )
+
     if (
         responder.assigned_incident_id
         and responder.assigned_incident_id != incident_id
-        and responder.status in ("ASSIGNED", "ON_SCENE")
+        and responder.status in ("ASSIGNED", "ON_SCENE", "EN_ROUTE", "NEARBY")
     ):
         raise ValueError(
             f"Responder unit '{responder.unit_name}' is already "
             "actively assigned to another mission."
         )
 
+    if responder.assigned_incident_id == incident_id and responder.status in (
+        "ASSIGNED",
+        "EN_ROUTE",
+        "NEARBY",
+        "ON_SCENE",
+    ):
+        return responder, incident
+
     now = datetime.now(UTC).isoformat()
     assignment_id = str(uuid.uuid4())
 
-    # 1. Insert/Sync assignment record in assignments table
-    await db.execute(
-        """
-        INSERT INTO assignments (
-            id, incident_id, responder_id, status, assigned_by,
-            assigned_at, accepted_at, started_at, nearby_at,
-            arrived_at, completed_at, cancelled_at,
-            score, score_breakdown, assignment_reason, created_at, updated_at
+    try:
+        # 1. Insert/Sync assignment record in assignments table
+        await db.execute(
+            """
+            INSERT INTO assignments (
+                id, incident_id, responder_id, status, assigned_by,
+                assigned_at, accepted_at, started_at, nearby_at,
+                arrived_at, completed_at, cancelled_at,
+                score, score_breakdown, assignment_reason, created_at, updated_at
+            )
+            VALUES (?, ?, ?, 'ASSIGNED', ?, ?, ?,
+                    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
+            """,
+            (assignment_id, incident_id, responder_id, actor, now, now, now, now),
         )
-        VALUES (?, ?, ?, 'ASSIGNED', ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
-        """,
-        (assignment_id, incident_id, responder_id, actor, now, now, now, now),
-    )
 
-    # 2. Update responder record
-    await db.execute(
-        """
-        UPDATE responders
-        SET status = ?, assigned_incident_id = ?, updated_at = ?
-        WHERE id = ?
-        """,
-        (status, incident_id, now, responder_id),
-    )
+        # 2. Update responder record
+        await db.execute(
+            """
+            UPDATE responders
+            SET status = ?, assigned_incident_id = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (status, incident_id, now, responder_id),
+        )
 
-    # 3. Update incident record lifecycle
-    previous_inc_status = incident.status
-    new_inc_status = "ASSIGNED"
-    await db.execute(
-        """
-        UPDATE incidents
-        SET status = 'ASSIGNED', updated_at = ?
-        WHERE id = ?
-        """,
-        (now, incident_id),
-    )
+        # 3. Update incident record lifecycle
+        previous_inc_status = incident.status
+        new_inc_status = "ASSIGNED"
+        await db.execute(
+            """
+            UPDATE incidents
+            SET status = 'ASSIGNED', updated_at = ?
+            WHERE id = ?
+            """,
+            (now, incident_id),
+        )
 
-    # 4. Add audit event to incident timeline
-    event_id = str(uuid.uuid4())
-    event_metadata = json.dumps(
-        {
-            "assignment_id": assignment_id,
-            "responder_id": responder.id,
-            "unit_name": responder.unit_name,
-            "team_lead": responder.team_lead,
-            "capability": responder.capability,
-            "vehicle_type": responder.vehicle_type,
-            "radio_channel": responder.radio_channel,
-            "distance_km": haversine_distance_km(
-                incident.latitude, incident.longitude, responder.latitude, responder.longitude
+        # 4. Add audit event to incident timeline
+        event_id = str(uuid.uuid4())
+        event_metadata = json.dumps(
+            {
+                "assignment_id": assignment_id,
+                "responder_id": responder.id,
+                "unit_name": responder.unit_name,
+                "team_lead": responder.team_lead,
+                "capability": responder.capability,
+                "vehicle_type": responder.vehicle_type,
+                "radio_channel": responder.radio_channel,
+                "distance_km": haversine_distance_km(
+                    incident.latitude, incident.longitude, responder.latitude, responder.longitude
+                ),
+            }
+        )
+        await db.execute(
+            """
+            INSERT INTO incident_events (id, incident_id, event_type, previous_status,
+                new_status, actor, metadata, created_at)
+            VALUES (?, ?, 'assignment.created', ?, ?, ?, ?, ?)
+            """,
+            (
+                event_id,
+                incident_id,
+                previous_inc_status,
+                new_inc_status,
+                actor,
+                event_metadata,
+                now,
             ),
-        }
-    )
-    await db.execute(
-        """
-        INSERT INTO incident_events (id, incident_id, event_type, previous_status,
-            new_status, actor, metadata, created_at)
-        VALUES (?, ?, 'assignment.created', ?, ?, ?, ?, ?)
-        """,
-        (
-            event_id,
-            incident_id,
-            previous_inc_status,
-            new_inc_status,
-            actor,
-            event_metadata,
-            now,
-        ),
-    )
+        )
 
-    await db.commit()
+        await db.commit()
+    except aiosqlite.IntegrityError:
+        await db.rollback()
+        # Handle concurrent collision
+        cursor = await db.execute(
+            """
+            SELECT id, responder_id, status FROM assignments
+            WHERE incident_id = ?
+              AND status IN ('PROPOSED', 'ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE')
+            LIMIT 1
+            """,
+            (incident_id,),
+        )
+        active_assign = await cursor.fetchone()
+        if active_assign and active_assign["responder_id"] == responder_id:
+            updated_responder = await get_responder_by_id(db, responder_id)
+            updated_incident = await get_incident_by_id(db, incident_id)
+            return updated_responder, updated_incident
+        raise
 
     updated_responder = await get_responder_by_id(db, responder_id)
     updated_incident = await get_incident_by_id(db, incident_id)

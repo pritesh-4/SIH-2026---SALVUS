@@ -171,7 +171,7 @@ export const AuthorityCommandCenter = () => {
   }
 
   const handleTransitionStatus = async (targetStatus, label) => {
-    if (!selectedIncident) return
+    if (!selectedIncident || isUpdatingStatus) return
     const result = await changeStatus(selectedIncident.id, targetStatus)
     if (result.success) {
       showStatusMessage(`✓ Status updated: ${label}`, 3000)
@@ -182,7 +182,7 @@ export const AuthorityCommandCenter = () => {
   }
 
   const handleConfirmAssignment = async (responderId) => {
-    if (!selectedIncident) return
+    if (!selectedIncident || isAssigningUnit) return
 
     setIsAssigningUnit(true)
     const result = await assignResponder(responderId, selectedIncident.id, 'ASSIGNED', 'authority')
@@ -212,7 +212,7 @@ export const AuthorityCommandCenter = () => {
 
   const handleAdvanceLifecycle = async (targetStatus) => {
     const assigned = currentlyAssignedResponder
-    if (!assigned) return
+    if (!assigned || isAssigningUnit) return
 
     const result = await advanceResponderLifecycleAction(assigned.id, targetStatus, 'authority')
     if (result.success) {

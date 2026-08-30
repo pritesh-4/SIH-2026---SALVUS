@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   fetchResponders,
   updateResponderStatus as apiUpdateResponderStatus,
@@ -31,6 +31,11 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
     }
     setIsLoadingFleet(false)
   }, [])
+
+  const onIncidentRefetchRef = useRef(onIncidentRefetch)
+  useEffect(() => {
+    onIncidentRefetchRef.current = onIncidentRefetch
+  }, [onIncidentRefetch])
 
   useEffect(() => {
     let isMounted = true
@@ -66,8 +71,8 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
           prev.map((r) => (r.id === payload.responder.id ? { ...r, ...payload.responder } : r))
         )
       }
-      if (onIncidentRefetch) {
-        onIncidentRefetch(true)
+      if (onIncidentRefetchRef.current) {
+        onIncidentRefetchRef.current(true)
       }
     }
 
@@ -83,7 +88,7 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
       unsub3()
       unsub4()
     }
-  }, [loadFleet, onIncidentRefetch])
+  }, [loadFleet])
 
   // ---------------------------------------------------------------------------
   // 2. Computed Values

@@ -12,7 +12,11 @@ export const useMovementSimulation = ({
   const simulationTimerRef = useRef(null)
   const simStepIndexRef = useRef(0)
 
+  const isSendingRef = useRef(false)
+
   useEffect(() => {
+    let isMounted = true
+
     if (!isSimulatingMovement || !activeRoute?.coordinates?.length || !selectedIncident) {
       if (simulationTimerRef.current) {
         clearInterval(simulationTimerRef.current)
@@ -31,15 +35,19 @@ export const useMovementSimulation = ({
     const intervalMs = Math.max(200, Math.floor(1000 / simulationSpeedMultiplier))
 
     simulationTimerRef.current = setInterval(async () => {
+      if (!isMounted || isSendingRef.current) return
+
       const idx = simStepIndexRef.current
 
       if (idx >= totalSteps) {
         // Destination reached -> Transition to ON_SCENE
         clearInterval(simulationTimerRef.current)
         simulationTimerRef.current = null
-        setIsSimulatingMovement(false)
+        if (isMounted) {
+          setIsSimulatingMovement(false)
+        }
         await advanceResponderLifecycle(responderId, 'ON_SCENE', 'simulation_engine')
-        if (onStatusMessage) {
+        if (isMounted && onStatusMessage) {
           onStatusMessage(`⚓ Unit arrived at incident coordinates: ON SCENE`)
         }
         return
@@ -55,21 +63,29 @@ export const useMovementSimulation = ({
         targetStatus = 'NEARBY'
       }
 
-      // Stream simulated telemetry to backend
-      await sendSimulationStep({
-        responder_id: responderId,
-        incident_id: selectedIncident.id,
-        step_index: idx,
-        total_steps: totalSteps,
-        latitude: lat,
-        longitude: lon,
-        target_status: targetStatus,
-      })
+      isSendingRef.current = true
+      try {
+        // Stream simulated telemetry to backend
+        await sendSimulationStep({
+          responder_id: responderId,
+          incident_id: selectedIncident.id,
+          step_index: idx,
+          total_steps: totalSteps,
+          latitude: lat,
+          longitude: lon,
+          target_status: targetStatus,
+        })
+      } finally {
+        isSendingRef.current = false
+      }
 
-      simStepIndexRef.current = idx + 1
+      if (isMounted) {
+        simStepIndexRef.current = idx + 1
+      }
     }, intervalMs)
 
     return () => {
+      isMounted = false
       if (simulationTimerRef.current) {
         clearInterval(simulationTimerRef.current)
         simulationTimerRef.current = null

@@ -189,7 +189,10 @@ export const createIncident = async (payload) => {
       throw new Error('Valid geographic coordinates (latitude and longitude) are required.')
     }
 
-    const idempotencyKey = payload.idempotency_key || null
+    const defaultKey = payload.is_sos
+      ? `sos_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+      : null
+    const idempotencyKey = payload.idempotency_key || defaultKey
     const body = {
       type: payload.type || 'flood',
       severity: payload.severity || 'MEDIUM',

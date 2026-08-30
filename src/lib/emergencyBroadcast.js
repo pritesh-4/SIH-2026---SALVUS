@@ -29,6 +29,9 @@ const getSenderChannel = () => {
   if (typeof globalThis.BroadcastChannel === 'function') {
     try {
       senderChannel = new globalThis.BroadcastChannel(CHANNEL_NAME)
+      if (typeof senderChannel.unref === 'function') {
+        senderChannel.unref()
+      }
     } catch {
       senderChannel = null
     }
@@ -88,6 +91,9 @@ export const subscribeEmergencyBroadcast = (handler, customSubscriberTabId = nul
   if (typeof globalThis.BroadcastChannel === 'function') {
     try {
       subscriberChannel = new globalThis.BroadcastChannel(CHANNEL_NAME)
+      if (typeof subscriberChannel.unref === 'function') {
+        subscriberChannel.unref()
+      }
       subscriberChannel.onmessage = (event) => {
         if (event?.data && event.data.sourceTabId !== currentTabId) {
           handler(event.data)

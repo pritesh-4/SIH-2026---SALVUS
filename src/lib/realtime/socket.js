@@ -29,12 +29,12 @@ export const getSocket = () => {
   if (!socketInstance) {
     socketInstance = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
-      autoConnect: true,
+      autoConnect: typeof window !== 'undefined',
       auth: (cb) => {
         const token = getAuthToken() || ''
         cb({ token })
       },
-      reconnection: true,
+      reconnection: typeof window !== 'undefined',
       reconnectionAttempts: 100,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 4000,
@@ -108,7 +108,15 @@ export const cleanupSocketOnLogout = () => {
     }
     activeRooms.clear()
     socketInstance.removeAllListeners()
-    socketInstance.disconnect()
+    try {
+      if (socketInstance.io) {
+        socketInstance.io.close()
+      }
+      socketInstance.disconnect()
+      socketInstance.close()
+    } catch {
+      // Ignore closing errors
+    }
     socketInstance = null
   }
   notifyStatus('DISCONNECTED')

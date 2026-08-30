@@ -271,6 +271,11 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_incidents_active_sos ON incidents(reporter_id, is_sos) "
         "WHERE status NOT IN ('RESOLVED', 'CANCELLED')"
     )
+    await db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_incidents_unique_active_sos "
+        "ON incidents(reporter_id) "
+        "WHERE is_sos = 1 AND reporter_id IS NOT NULL AND status NOT IN ('RESOLVED', 'CANCELLED')"
+    )
     await db.execute("CREATE INDEX IF NOT EXISTS idx_responders_status ON responders(status)")
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_responders_assigned ON responders(assigned_incident_id)"

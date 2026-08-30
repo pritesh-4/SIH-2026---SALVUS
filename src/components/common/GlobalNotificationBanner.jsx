@@ -1,22 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { subscribeNotifications } from '../../lib/notifications'
 
 export const GlobalNotificationBanner = () => {
   const [activeNotification, setActiveNotification] = useState(null)
+  const timerRef = useRef(null)
 
   useEffect(() => {
     const unsubscribe = subscribeNotifications((notification) => {
+      if (timerRef.current) clearTimeout(timerRef.current)
       setActiveNotification(notification)
 
-      if (notification.duration > 0) {
-        const timer = setTimeout(() => {
+      if (notification && notification.duration > 0) {
+        timerRef.current = setTimeout(() => {
           setActiveNotification((cur) => (cur?.id === notification.id ? null : cur))
         }, notification.duration)
-        return () => clearTimeout(timer)
       }
     })
 
-    return unsubscribe
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      unsubscribe()
+    }
   }, [])
 
   if (!activeNotification) return null

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   fetchIncidents,
   updateIncidentStatus,
@@ -70,6 +70,7 @@ export const useAuthorityIncidents = () => {
   const [dataMode, setDataMode] = useState(() => (isDemoModeActive() ? 'SIMULATED' : 'LIVE'))
   const [newlyArrivedId, setNewlyArrivedId] = useState(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+  const arrivalTimerRef = useRef(null)
 
   // -------------------------------------------------------------------------
   // 1. Initial & Refresh Incidents Fetch (Enforce Server Truth)
@@ -172,7 +173,8 @@ export const useAuthorityIncidents = () => {
 
         // Highlight new incident with non-distracting visual pulse
         setNewlyArrivedId(incidentId)
-        setTimeout(() => {
+        if (arrivalTimerRef.current) clearTimeout(arrivalTimerRef.current)
+        arrivalTimerRef.current = setTimeout(() => {
           setNewlyArrivedId((cur) => (cur === incidentId ? null : cur))
         }, 4000)
 
@@ -327,6 +329,9 @@ export const useAuthorityIncidents = () => {
       unsubscribeTriageVerified()
       unsubscribeAttachment()
       unsubscribeConn()
+      if (arrivalTimerRef.current) {
+        clearTimeout(arrivalTimerRef.current)
+      }
     }
   }, [refetch])
 

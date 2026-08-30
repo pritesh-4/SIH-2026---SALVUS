@@ -11,7 +11,7 @@ export const useIncidentTriage = ({ onRefetch = null, onStatusMessage = null } =
 
   const verifyTriage = useCallback(
     async (incident, customData = null) => {
-      if (!incident) return { success: false }
+      if (!incident || isVerifyingTriage) return { success: false }
       setIsVerifyingTriage(true)
       const result = await apiVerifyIncidentTriage(
         incident.id,
@@ -29,12 +29,12 @@ export const useIncidentTriage = ({ onRefetch = null, onStatusMessage = null } =
       }
       return result
     },
-    [onRefetch, onStatusMessage]
+    [isVerifyingTriage, onRefetch, onStatusMessage]
   )
 
   const adjustTriage = useCallback(
     async (incident, adjustmentData) => {
-      if (!incident) return { success: false }
+      if (!incident || isVerifyingTriage) return { success: false }
       setIsVerifyingTriage(true)
       const result = await apiAdjustIncidentTriage(incident.id, {
         ...adjustmentData,
@@ -54,12 +54,12 @@ export const useIncidentTriage = ({ onRefetch = null, onStatusMessage = null } =
       }
       return result
     },
-    [onRefetch, onStatusMessage]
+    [isVerifyingTriage, onRefetch, onStatusMessage]
   )
 
   const reevaluateTriage = useCallback(
     async (incident) => {
-      if (!incident) return { success: false }
+      if (!incident || isAnalyzingTriage) return { success: false }
       setIsAnalyzingTriage(true)
       const result = await apiAnalyzeIncidentTriage(incident.id)
       setIsAnalyzingTriage(false)
@@ -74,7 +74,7 @@ export const useIncidentTriage = ({ onRefetch = null, onStatusMessage = null } =
       }
       return result
     },
-    [onRefetch, onStatusMessage]
+    [isAnalyzingTriage, onRefetch, onStatusMessage]
   )
 
   return {

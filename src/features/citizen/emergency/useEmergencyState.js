@@ -119,6 +119,7 @@ export const useEmergencyState = (
   const liveIncidentRef = useRef(liveIncident)
   const processedEventsRef = useRef(new Set())
   const prevConnStatusRef = useRef(connectivityStatus)
+  const reconnectNoticeTimerRef = useRef(null)
 
   useEffect(() => {
     assignedResponderRef.current = assignedResponder
@@ -492,7 +493,10 @@ export const useEmergencyState = (
             prevConnStatusRef.current === 'DISCONNECTED'
           ) {
             setReconnectRestoredNotice(true)
-            setTimeout(() => {
+            if (reconnectNoticeTimerRef.current) {
+              clearTimeout(reconnectNoticeTimerRef.current)
+            }
+            reconnectNoticeTimerRef.current = setTimeout(() => {
               if (isMounted) setReconnectRestoredNotice(false)
             }, 4000)
           }
@@ -511,6 +515,9 @@ export const useEmergencyState = (
       unsub4()
       unsub5()
       unsubscribeConn()
+      if (reconnectNoticeTimerRef.current) {
+        clearTimeout(reconnectNoticeTimerRef.current)
+      }
     }
   }, [effectiveIncidentId, rehydrateEmergency])
 

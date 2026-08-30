@@ -62,12 +62,15 @@ export const ActiveEmergencyBanner = () => {
 
   const checkStorage = useCallback(() => {
     const cache = loadEmergencyCache()
-    const id = cache?.incidentId || localStorage.getItem('salvus_active_incident_id')
-    if (id !== activeIncidentId) {
-      setActiveIncidentId(id)
-      if (!id) setIncidentData(null)
-    }
-  }, [activeIncidentId])
+    const id = cache?.incidentId || localStorage.getItem('salvus_active_incident_id') || null
+    setActiveIncidentId((prev) => {
+      if (prev !== id) {
+        if (!id) setIncidentData(null)
+        return id
+      }
+      return prev
+    })
+  }, [])
 
   useEffect(() => {
     window.addEventListener('storage', checkStorage)

@@ -236,7 +236,7 @@ async def create_incident(
     if payload.is_sos:
         check_clauses = []
         check_params = []
-        if reporter_id and not reporter_id.startswith("cit-"):
+        if reporter_id:
             check_clauses.append("reporter_id = ?")
             check_params.append(reporter_id)
         if payload.reporter_phone:
@@ -375,6 +375,32 @@ async def create_incident(
                 race_existing = await get_incident_by_id(db, race_row["resource_id"])
                 if race_existing:
                     return race_existing
+
+        # Handle concurrent race condition for active citizen SOS invariant
+        if payload.is_sos:
+            check_clauses = []
+            check_params = []
+            if reporter_id:
+                check_clauses.append("reporter_id = ?")
+                check_params.append(reporter_id)
+            if payload.reporter_phone:
+                check_clauses.append("(reporter_phone IS NOT NULL AND reporter_phone = ?)")
+                check_params.append(payload.reporter_phone)
+
+            if check_clauses:
+                query = f"""
+                    SELECT id FROM incidents
+                    WHERE ({" OR ".join(check_clauses)})
+                      AND is_sos = 1
+                      AND status NOT IN ('RESOLVED', 'CANCELLED')
+                    ORDER BY created_at DESC LIMIT 1
+                """
+                cursor = await db.execute(query, tuple(check_params))
+                race_sos_row = await cursor.fetchone()
+                if race_sos_row:
+                    race_sos = await get_incident_by_id(db, race_sos_row["id"])
+                    if race_sos:
+                        return race_sos
         raise
 
     # Fetch and return the created incident immediately (critical-path completed)
@@ -496,16 +522,6 @@ async def verify_incident_triage(
     if incident.status in (IncidentStatus.NEW.value, IncidentStatus.TRIAGE_PENDING.value):
         target_status = IncidentStatus.VERIFIED.value
 
-    await db.execute(
-        """
-        UPDATE incidents
-        SET severity = ?, type = ?, status = ?, updated_at = ?
-        WHERE id = ?
-        """,
-        (new_severity, new_type, target_status, now, incident_id),
-    )
-
-    # 2. Update existing AI assessment review status or insert verified assessment
     adjustments_dict = {
         "adjusted_severity": payload.adjusted_severity.value if payload.adjusted_severity else None,
         "adjusted_type": payload.adjusted_type.value if payload.adjusted_type else None,
@@ -515,10 +531,10 @@ async def verify_incident_triage(
         "notes": payload.reviewer_notes,
     }
 
-    # Update latest triage assessment
+    # Fetch latest triage assessment for idempotency check & update
     cursor = await db.execute(
         """
-        SELECT id, assessment FROM ai_triage_assessments
+        SELECT id, assessment, review_status, operator_adjustments FROM ai_triage_assessments
         WHERE incident_id = ?
         ORDER BY created_at DESC
         LIMIT 1
@@ -526,6 +542,30 @@ async def verify_incident_triage(
         (incident_id,),
     )
     existing_triage = await cursor.fetchone()
+
+    # Idempotent no-op: operator clicking VERIFY multiple times with identical parameters
+    if existing_triage:
+        try:
+            curr_adj = json.loads(existing_triage["operator_adjustments"] or "{}")
+            if (
+                existing_triage["review_status"] == review_status
+                and curr_adj == adjustments_dict
+                and incident.severity == new_severity
+                and incident.type == new_type
+                and incident.status == target_status
+            ):
+                return incident
+        except Exception:
+            pass
+
+    await db.execute(
+        """
+        UPDATE incidents
+        SET severity = ?, type = ?, status = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (new_severity, new_type, target_status, now, incident_id),
+    )
 
     if existing_triage:
         triage_id = existing_triage["id"]

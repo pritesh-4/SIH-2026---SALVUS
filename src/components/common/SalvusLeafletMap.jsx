@@ -58,8 +58,14 @@ export const SalvusLeafletMap = ({
   // 1. Initialize Map Instance & Viewport Observer
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (!mapContainerRef.current) return
+    const container = mapContainerRef.current
+    if (!container) return
     if (mapInstanceRef.current) return
+
+    // Clear any residual Leaflet identifier on the DOM container from rapid remounts
+    if (container._leaflet_id) {
+      delete container._leaflet_id
+    }
 
     const initialCenter =
       userLocation &&
@@ -70,7 +76,7 @@ export const SalvusLeafletMap = ({
           ? center
           : DEFAULT_CENTER
 
-    const map = L.map(mapContainerRef.current, {
+    const map = L.map(container, {
       center: initialCenter,
       zoom,
       zoomControl: interactive,
@@ -117,7 +123,7 @@ export const SalvusLeafletMap = ({
         mapInstanceRef.current.invalidateSize()
       }
     })
-    resizeObserver.observe(mapContainerRef.current)
+    resizeObserver.observe(container)
 
     return () => {
       resizeObserver.disconnect()
@@ -125,6 +131,9 @@ export const SalvusLeafletMap = ({
       mapInstanceRef.current = null
       markersGroupRef.current = null
       routesGroupRef.current = null
+      if (container && container._leaflet_id) {
+        delete container._leaflet_id
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
