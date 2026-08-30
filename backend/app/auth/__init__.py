@@ -17,6 +17,10 @@ from app.auth.jwt_handler import (
     get_secret_key,
     verify_access_token,
 )
+from app.auth.password import (
+    hash_password,
+    verify_password,
+)
 
 __all__ = [
     "AuthenticatedUser",
@@ -26,10 +30,12 @@ __all__ = [
     "get_current_user",
     "get_optional_user",
     "get_secret_key",
+    "hash_password",
     "require_authority",
     "require_citizen",
     "require_responder",
     "require_roles",
     "require_system",
     "verify_access_token",
+    "verify_password",
 ]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.auth.dependencies import get_current_user
@@ -15,12 +15,26 @@ from app.auth.jwt_handler import (
     UserRole,
     create_access_token,
 )
+from app.db import get_database
+from app.services.user_service import authenticate_user
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+# ---------------------------------------------------------------------------
+# Request / Response Models
+# ---------------------------------------------------------------------------
+
+
+class LoginRequest(BaseModel):
+    """Credential-based login request."""
+
+    email: str = Field(description="User email address")
+    password: str = Field(description="User password")
+
+
 class TokenIssueRequest(BaseModel):
-    """Request payload to issue a signed JWT token."""
+    """Request payload to issue a signed JWT token (dev/demo only)."""
 
     role: str = Field(
         default="AUTHORITY", description="Target role: CITIZEN, AUTHORITY, RESPONDER, SYSTEM"
@@ -33,6 +47,24 @@ class TokenIssueRequest(BaseModel):
     scoped_responder_id: str | None = Field(
         default=None, description="Scope token to specific responder unit"
     )
+
+
+class LoginUserResponse(BaseModel):
+    """Safe user profile returned after authentication."""
+
+    id: str
+    email: str
+    full_name: str
+    role: str
+
+
+class LoginResponse(BaseModel):
+    """Response payload for successful credential-based login."""
+
+    access_token: str
+    token_type: str = "bearer"
+    user: LoginUserResponse
+    expires_in: int
 
 
 class UserProfileResponse(BaseModel):
@@ -84,6 +116,61 @@ def _get_permissions_for_role(role: UserRole) -> list[str]:
     return []
 
 
+# ---------------------------------------------------------------------------
+# Credential-Based Login (Phase 1 Auth Foundation)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/login", response_model=LoginResponse)
+async def login(payload: LoginRequest):
+    """Authenticate with email and password credentials.
+
+    Returns a signed JWT access token and user identity on success.
+    Returns 401 with a generic error message on any authentication failure.
+    """
+    db = await get_database()
+    user = await authenticate_user(db, payload.email, payload.password)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "AUTHENTICATION_FAILED",
+                    "message": "Invalid email or password.",
+                },
+            },
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    role_enum = UserRole.from_str(user["role"])
+
+    token = create_access_token(
+        user_id=user["id"],
+        role=role_enum,
+        name=user["full_name"],
+        email=user["email"],
+    )
+
+    return LoginResponse(
+        access_token=token,
+        token_type="bearer",
+        user=LoginUserResponse(
+            id=user["id"],
+            email=user["email"],
+            full_name=user["full_name"],
+            role=user["role"],
+        ),
+        expires_in=DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Token Issuance (Dev / Demo / Test backward compatibility)
+# ---------------------------------------------------------------------------
+
+
 @router.post("/token", response_model=TokenResponse)
 async def issue_token(payload: TokenIssueRequest):
     """Issue a cryptographically signed HMAC-SHA256 JWT access token for a role."""
@@ -120,6 +207,11 @@ async def issue_token(payload: TokenIssueRequest):
 async def issue_demo_token(role: str = "AUTHORITY"):
     """Quick helper for demo environments to mint valid role tokens."""
     return await issue_token(TokenIssueRequest(role=role))
+
+
+# ---------------------------------------------------------------------------
+# Current User Profile
+# ---------------------------------------------------------------------------
 
 
 @router.get("/me", response_model=UserProfileResponse)

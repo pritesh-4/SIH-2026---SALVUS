@@ -78,6 +78,7 @@ flowchart TB
 
 ### 2.1 Client Presentation Layer (`src/`)
 
+- **Authentication Gateway (`src/context/AuthContext.jsx`, `src/pages/LoginPage.jsx`):** Provides a centralized authentication session layer, single source of truth for auth state (`user`, `role`, `login`, `logout`), 401 response interceptor for automatic logout/redirection, and seamless role-based routing (`/citizen` vs `/authority`).
 - **Dual-Portal Orchestration:** Runs as a single-page React 19 application hosting both the Citizen Safety Console (`/citizen`, `/citizen/map`, `/citizen/alerts`, `/citizen/profile`, `/citizen/emergency`) and the Authority Command Center (`/authority`).
 - **Emergency Readiness System (`/citizen/profile`):** Replaces static profiles with live persistent identity, single-primary emergency contact management, medical records, privacy controls, and a real Web Audio emergency siren test tone.
 - **Offline Readiness & Emergency Pass Engine:** Caches minimal essential emergency data on device for zero-connectivity rescue desks with automated staleness detection (`SAVED`, `NEEDS_UPDATE`, `NOT_SAVED`).
@@ -88,7 +89,7 @@ flowchart TB
 
 ### 2.2 API Gateway & Security Layer (`backend/app/routes/`, `backend/app/auth/`, `backend/app/middleware/`)
 
-- **Cryptographic RBAC:** Enforces HMAC-SHA256 JWT claims across four distinct roles: `CITIZEN`, `AUTHORITY`, `RESPONDER`, `SYSTEM`.
+- **Credential Authentication & Cryptographic RBAC:** Authenticates demo users via email and bcrypt-hashed passwords (`POST /api/auth/login`), issuing signed HMAC-SHA256 JWT tokens. Enforces RBAC dependencies across four distinct roles: `CITIZEN`, `AUTHORITY`, `RESPONDER`, `SYSTEM`.
 - **Defensive Middleware:**
   - `SecurityHeadersMiddleware`: Injects HSTS, CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`.
   - `PayloadLimitMiddleware`: Strictly rejects requests $> 5\text{ MB}$ to prevent DoS attacks.
@@ -97,6 +98,7 @@ flowchart TB
 
 ### 2.3 Domain Services Layer (`backend/app/services/`)
 
+- **User Authentication Service (`user_service.py`):** Authoritative credential verification against bcrypt password hashes with constant-time/generic failure responses.
 - **Profile & Emergency Readiness Service:** Manages persistent citizen identity, emergency contacts with single-primary enforcement, medical records, and privacy preferences.
 - **Incident Service:** Enforces finite state machine transitions, audit event history, and duplicate report deduplication (4-second window).
 - **Assignment Service:** Manages responder-to-incident allocations as an authoritative first-class entity with synchronized state commits.
@@ -108,8 +110,8 @@ flowchart TB
 ### 2.4 Storage Layer (`backend/app/db/`)
 
 - **Async SQLite (`aiosqlite`):** High-performance local storage with Write-Ahead Logging (`PRAGMA journal_mode=WAL`) and foreign key enforcement (`PRAGMA foreign_keys=ON`).
-- **8 Normalized Tables:** `incidents`, `incident_events`, `incident_attachments`, `responders`, `shelters`, `ai_triage_assessments`, `assignments`, `citizen_profiles`, `emergency_contacts`.
-- **13 Performance Indexes:** Spatial, timestamp, foreign key, and identity indexes ensuring sub-millisecond query latency.
+- **9 Normalized Tables:** `users`, `incidents`, `incident_events`, `incident_attachments`, `responders`, `shelters`, `ai_triage_assessments`, `assignments`, `citizen_profiles`, `emergency_contacts`.
+- **Performance Indexes:** Spatial, timestamp, foreign key, email, role, and identity indexes ensuring sub-millisecond query latency.
 
 ---
 

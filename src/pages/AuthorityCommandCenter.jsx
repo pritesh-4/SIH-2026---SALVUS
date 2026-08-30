@@ -40,6 +40,7 @@ export const AuthorityCommandCenter = () => {
     changeStatus,
     isUpdatingStatus,
     computedMetrics,
+    connectivityStatus,
     refetch: refetchIncidents,
   } = useAuthorityIncidents()
 
@@ -236,7 +237,11 @@ export const AuthorityCommandCenter = () => {
   return (
     <div className="space-y-3.5 pb-8 animate-fadeIn">
       {/* Top District Header */}
-      <AuthorityHeader hub={hub} dataProvenance={dataProvenance} />
+      <AuthorityHeader
+        hub={hub}
+        dataProvenance={dataProvenance}
+        connectivityStatus={connectivityStatus}
+      />
 
       {/* 4-KPI Operational Strip */}
       <OperationalMetrics

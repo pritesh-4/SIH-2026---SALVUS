@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { emergencyFlowData } from '../../../data/emergencyFlow'
 import {
-  fetchIncidentById,
+  fetchActiveIncident,
   updateIncidentStatus,
   createIncident,
   fetchIncidentAssignments,
@@ -43,6 +43,11 @@ import {
   formatSyncFreshness,
   generateIdempotencyKey,
 } from '../../../lib/emergencyCache'
+import {
+  broadcastEmergencyEvent,
+  subscribeEmergencyBroadcast,
+  EMERGENCY_BROADCAST_EVENTS,
+} from '../../../lib/emergencyBroadcast'
 
 // Re-export constants for downstream consumer convenience
 export { STATE_ORDER }
@@ -63,7 +68,7 @@ export const useEmergencyState = (
   initialState = EMERGENCY_STATE.SOS_ACTIVE,
   activeIncidentId = null
 ) => {
-  // 1. Initial hydration: Load recovery hint from cache immediately to prevent screen flash
+  // 1. Initial non-blocking hydration: Load recovery hint from cache immediately to prevent layout pop
   const cachedRecoveryHint = useMemo(() => loadEmergencyCache(), [])
 
   const [incidentId, setIncidentId] = useState(() => {
@@ -82,8 +87,17 @@ export const useEmergencyState = (
     return normalizeToUiState(initialState)
   })
 
+  // Explicit rehydration tracking to eliminate UI ambiguity & avoid premature safe/home flashes
+  const [isRehydrating, setIsRehydrating] = useState(true)
+  const [rehydrationOutcome, setRehydrationOutcome] = useState(() => {
+    if (cachedRecoveryHint?.incidentId) return 'restoring_hint'
+    return null
+  }) // 'rehydrated' | 'no_active_emergency' | 'resolved' | 'cancelled' | 'offline_unconfirmed' | 'restoring_hint' | null
+
   const [lastSyncedAt, setLastSyncedAt] = useState(() => cachedRecoveryHint?.lastSyncedAt || null)
   const [submittingState, setSubmittingState] = useState('idle') // 'idle' | 'submitting' | 'success' | 'failure' | 'conflict'
+  const [isPeerSubmittingSos, setIsPeerSubmittingSos] = useState(false)
+  const [reconnectRestoredNotice, setReconnectRestoredNotice] = useState(false)
   const [isAutoPlaying, setIsAutoPlaying] = useState(false)
   const [simulationSpeed, setSimulationSpeed] = useState(1) // 1x, 1.5x, 2x
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
@@ -103,6 +117,8 @@ export const useEmergencyState = (
   const assignedResponderRef = useRef(assignedResponder)
   const currentStateRef = useRef(currentState)
   const liveIncidentRef = useRef(liveIncident)
+  const processedEventsRef = useRef(new Set())
+  const prevConnStatusRef = useRef(connectivityStatus)
 
   useEffect(() => {
     assignedResponderRef.current = assignedResponder
@@ -136,98 +152,180 @@ export const useEmergencyState = (
   // -------------------------------------------------------------------------
   // 2. Unified Authoritative Rehydration Engine: rehydrateEmergency(incidentId)
   // -------------------------------------------------------------------------
-  const rehydrateEmergency = useCallback(async (targetId, isSilentBackground = false) => {
-    if (!targetId) return
+  const rehydrateEmergency = useCallback(
+    async (targetId = null, isSilentBackground = false) => {
+      if (!isSilentBackground) {
+        setIsRehydrating(true)
+      }
 
-    try {
-      const result = await fetchIncidentById(targetId)
+      try {
+        const idToQuery = targetId || effectiveIncidentId || undefined
+        const result = await fetchActiveIncident({ incidentId: idToQuery })
 
-      if (result.success && result.data) {
-        const inc = result.data
-        const authoritativeUiState = normalizeToUiState(inc.status)
+        if (result.success) {
+          if (result.data) {
+            const inc = result.data
+            const authoritativeUiState = normalizeToUiState(inc.status)
 
-        // If incident is terminal on server, reflect it authoritatively and clean cache
-        if (isTerminalState(authoritativeUiState) || isTerminalState(inc.status)) {
-          setCurrentState(authoritativeUiState)
-          setLiveIncident(inc)
-          clearEmergencyCache()
-          return
-        }
-
-        // Server is authoritative: update live incident and state
-        setLiveIncident(inc)
-        setCurrentState(authoritativeUiState)
-        const nowIso = new Date().toISOString()
-        setLastSyncedAt(nowIso)
-        setConnectivityStatus('CONNECTED')
-
-        if (inc.latitude && inc.longitude) {
-          setUserLocation(
-            createLocationModel({
-              latitude: inc.latitude,
-              longitude: inc.longitude,
-              coordinates: formatCoordinates(inc.latitude, inc.longitude),
-              source: 'INCIDENT',
-              permission: 'GRANTED',
-              status: 'ACTIVE',
-              address: inc.location_name || 'Incident Scene',
-            })
-          )
-        }
-
-        // Reconcile assignments & assigned responder
-        if (['ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE'].includes(inc.status)) {
-          const [assignRes, respRes] = await Promise.all([
-            fetchIncidentAssignments(targetId),
-            fetchResponders(),
-          ])
-          if (assignRes.success && assignRes.data?.length > 0 && respRes.success) {
-            const activeAssign =
-              assignRes.data.find((a) =>
-                ['ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE'].includes(a.status)
-              ) || assignRes.data[0]
-            if (activeAssign) {
-              const matchedResp = respRes.data.find((r) => r.id === activeAssign.responder_id)
-              if (matchedResp) {
-                setAssignedResponder(matchedResp)
-                saveEmergencyCache(inc, matchedResp)
-                return
+            // If incident is terminal on server, reflect it authoritatively and clean cache
+            if (
+              result.isTerminal ||
+              isTerminalState(authoritativeUiState) ||
+              isTerminalState(inc.status)
+            ) {
+              setIncidentId(inc.id)
+              setLiveIncident(inc)
+              setCurrentState(authoritativeUiState)
+              if (result.responder) {
+                setAssignedResponder(result.responder)
               }
+              clearEmergencyCache()
+              setRehydrationOutcome(authoritativeUiState === 'CANCELLED' ? 'cancelled' : 'resolved')
+              setIsRehydrating(false)
+              return
+            }
+
+            // Server is authoritative: update live incident, responder, and state
+            setIncidentId(inc.id)
+            setLiveIncident(inc)
+            setCurrentState(authoritativeUiState)
+            const nowIso = new Date().toISOString()
+            setLastSyncedAt(nowIso)
+            setConnectivityStatus('CONNECTED')
+            setRehydrationOutcome('rehydrated')
+
+            if (inc.latitude && inc.longitude) {
+              setUserLocation(
+                createLocationModel({
+                  latitude: inc.latitude,
+                  longitude: inc.longitude,
+                  coordinates: formatCoordinates(inc.latitude, inc.longitude),
+                  source: 'INCIDENT',
+                  permission: 'GRANTED',
+                  status: 'ACTIVE',
+                  address: inc.location_name || 'Incident Scene',
+                })
+              )
+            }
+
+            if (result.responder) {
+              setAssignedResponder(result.responder)
+              saveEmergencyCache(inc, result.responder)
+            } else if (['ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE'].includes(inc.status)) {
+              // Reconcile assignments & assigned responder if not attached in primary payload
+              const [assignRes, respRes] = await Promise.all([
+                fetchIncidentAssignments(inc.id),
+                fetchResponders(),
+              ])
+              if (assignRes.success && assignRes.data?.length > 0 && respRes.success) {
+                const activeAssign =
+                  assignRes.data.find((a) =>
+                    ['ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE'].includes(a.status)
+                  ) || assignRes.data[0]
+                if (activeAssign) {
+                  const matchedResp = respRes.data.find((r) => r.id === activeAssign.responder_id)
+                  if (matchedResp) {
+                    setAssignedResponder(matchedResp)
+                    saveEmergencyCache(inc, matchedResp)
+                    setIsRehydrating(false)
+                    return
+                  }
+                }
+              }
+              saveEmergencyCache(inc, assignedResponderRef.current)
+            } else {
+              saveEmergencyCache(inc, assignedResponderRef.current)
+            }
+
+            setIsRehydrating(false)
+          } else {
+            // Server reports NO active incident
+            clearEmergencyCache()
+            setLiveIncident(null)
+            setAssignedResponder(null)
+            setIncidentId(null)
+            setRehydrationOutcome('no_active_emergency')
+            setIsRehydrating(false)
+          }
+        } else {
+          // Failure handling: check if offline or 404
+          if (result.isOffline) {
+            setConnectivityStatus('OFFLINE')
+            if (cachedRecoveryHint) {
+              setRehydrationOutcome('offline_unconfirmed')
+            } else {
+              setRehydrationOutcome('no_active_emergency')
+            }
+          } else if (result.error?.status === 404) {
+            console.warn(
+              `[Citizen Hydration] Incident #${targetId || effectiveIncidentId} not found on server. Clearing cache.`
+            )
+            clearEmergencyCache()
+            setLiveIncident(null)
+            setAssignedResponder(null)
+            setIncidentId(null)
+            setRehydrationOutcome('no_active_emergency')
+          } else {
+            if (!isSilentBackground) {
+              setConnectivityStatus('OFFLINE')
+              console.warn(
+                '[Citizen Hydration] Server unreachable during rehydration. Retaining last-known cache.'
+              )
+            }
+            if (cachedRecoveryHint) {
+              setRehydrationOutcome('offline_unconfirmed')
+            } else {
+              setRehydrationOutcome('no_active_emergency')
             }
           }
+          setIsRehydrating(false)
         }
-
-        saveEmergencyCache(inc, assignedResponderRef.current)
-      } else if (result.error?.status === 404) {
-        // Incident no longer exists on server -> clear stale local cache
-        console.warn(
-          `[Citizen Hydration] Incident #${targetId} not found on server. Clearing cache.`
-        )
-        clearEmergencyCache()
-        setLiveIncident(null)
-        setAssignedResponder(null)
-        setIncidentId(null)
-        setCurrentState(EMERGENCY_STATE.SOS_ACTIVE)
-      } else {
-        // Transient network failure during refresh: preserve last-known cache safely
+      } catch (err) {
         if (!isSilentBackground) {
           setConnectivityStatus('OFFLINE')
-          console.warn(
-            '[Citizen Hydration] Server unreachable during rehydration. Retaining last-known cache.'
-          )
+          console.warn('[Citizen Hydration] Network error during rehydration:', err.message)
         }
+        if (cachedRecoveryHint) {
+          setRehydrationOutcome('offline_unconfirmed')
+        } else {
+          setRehydrationOutcome('no_active_emergency')
+        }
+        setIsRehydrating(false)
       }
-    } catch (err) {
-      if (!isSilentBackground) {
-        setConnectivityStatus('OFFLINE')
-        console.warn('[Citizen Hydration] Network error during rehydration:', err.message)
-      }
-    }
-  }, [])
+    },
+    [cachedRecoveryHint, effectiveIncidentId]
+  )
 
   // -------------------------------------------------------------------------
-  // 3. Initial Load & Realtime Socket Subscription
+  // 3. Initial Load, Realtime Socket Subscription & Cross-Tab Coordination
   // -------------------------------------------------------------------------
+  useEffect(() => {
+    // Cross-tab synchronization listener
+    const unsubscribeBroadcast = subscribeEmergencyBroadcast((message) => {
+      if (!message?.type) return
+
+      if (
+        message.type === EMERGENCY_BROADCAST_EVENTS.STATE_CHANGED ||
+        message.type === EMERGENCY_BROADCAST_EVENTS.EMERGENCY_CANCELLED ||
+        message.type === EMERGENCY_BROADCAST_EVENTS.EMERGENCY_RESOLVED ||
+        message.type === EMERGENCY_BROADCAST_EVENTS.CACHE_PURGED
+      ) {
+        rehydrateEmergency(message.payload?.incidentId || effectiveIncidentId, true)
+      } else if (message.type === EMERGENCY_BROADCAST_EVENTS.SOS_IN_FLIGHT) {
+        setIsPeerSubmittingSos(true)
+      } else if (message.type === EMERGENCY_BROADCAST_EVENTS.SOS_COMPLETED) {
+        setIsPeerSubmittingSos(false)
+        if (!effectiveIncidentId && message.payload?.incidentId) {
+          rehydrateEmergency(message.payload.incidentId, false)
+        }
+      }
+    })
+
+    return () => {
+      unsubscribeBroadcast()
+    }
+  }, [effectiveIncidentId, rehydrateEmergency])
+
   useEffect(() => {
     if (!effectiveIncidentId) return
 
@@ -245,12 +343,30 @@ export const useEmergencyState = (
     const roomName = `incident:${effectiveIncidentId}`
     joinRoom(roomName)
 
-    // Realtime Handlers with Out-of-Order Packet Guards
+    const isDuplicateEvent = (evtKey) => {
+      if (!evtKey) return false
+      if (processedEventsRef.current.has(evtKey)) {
+        return true
+      }
+      processedEventsRef.current.add(evtKey)
+      if (processedEventsRef.current.size > 300) {
+        const firstEntry = processedEventsRef.current.values().next().value
+        processedEventsRef.current.delete(firstEntry)
+      }
+      return false
+    }
+
+    // Realtime Handlers with Out-of-Order Packet Guards & Duplicate Rejection
     const handleStatusChange = (payload) => {
       if (!isMounted) return
       if (payload.incident_id === effectiveIncidentId || payload.id === effectiveIncidentId) {
         const incomingStatus = payload.status
         const incomingUiState = normalizeToUiState(incomingStatus)
+
+        const eventKey = `${payload.incident_id || payload.id}_status_${incomingStatus}_${payload.updated_at || payload.created_at || ''}`
+        if (isDuplicateEvent(eventKey)) {
+          return
+        }
 
         // Protect against out-of-order packets and lock terminal state
         if (!shouldAcceptStatusUpdate(currentStateRef.current, incomingStatus)) {
@@ -277,17 +393,28 @@ export const useEmergencyState = (
         } else if (updatedInc) {
           saveEmergencyCache(updatedInc, payload.responder || assignedResponderRef.current)
         }
+
+        broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.STATE_CHANGED, {
+          incidentId: effectiveIncidentId,
+          status: incomingStatus,
+        })
       }
     }
 
     const handleAssignmentChange = (payload) => {
       if (!isMounted) return
       if (payload.incident_id === effectiveIncidentId || payload.id === effectiveIncidentId) {
+        const incomingStatus = payload.status || 'ASSIGNED'
+        const incomingUiState = normalizeToUiState(incomingStatus)
+
+        const eventKey = `${payload.incident_id || payload.id}_assign_${payload.responder_id || payload.responder?.id || ''}_${incomingStatus}_${payload.created_at || ''}`
+        if (isDuplicateEvent(eventKey)) {
+          return
+        }
+
         if (payload.responder) {
           setAssignedResponder(payload.responder)
         }
-        const incomingStatus = payload.status || 'ASSIGNED'
-        const incomingUiState = normalizeToUiState(incomingStatus)
 
         if (shouldAcceptStatusUpdate(currentStateRef.current, incomingStatus)) {
           setCurrentState(incomingUiState)
@@ -300,6 +427,11 @@ export const useEmergencyState = (
           if (updatedInc) {
             saveEmergencyCache(updatedInc, payload.responder || assignedResponderRef.current)
           }
+
+          broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.STATE_CHANGED, {
+            incidentId: effectiveIncidentId,
+            status: incomingStatus,
+          })
         }
       }
     }
@@ -310,6 +442,9 @@ export const useEmergencyState = (
         payload.assigned_incident_id === effectiveIncidentId ||
         assignedResponderRef.current?.id === payload.id
       ) {
+        const eventKey = `resp_loc_${payload.id}_${payload.latitude}_${payload.longitude}_${payload.updated_at || ''}`
+        if (isDuplicateEvent(eventKey)) return
+
         setAssignedResponder((prev) => {
           const next = prev ? { ...prev, ...payload } : payload
           if (liveIncidentRef.current) {
@@ -326,6 +461,9 @@ export const useEmergencyState = (
         payload.assigned_incident_id === effectiveIncidentId ||
         assignedResponderRef.current?.id === payload.id
       ) {
+        const eventKey = `resp_status_${payload.id}_${payload.status}_${payload.updated_at || ''}`
+        if (isDuplicateEvent(eventKey)) return
+
         setAssignedResponder((prev) => (prev ? { ...prev, ...payload } : payload))
         if (STATUS_TO_STATE[payload.status]) {
           const incomingUi = normalizeToUiState(payload.status)
@@ -348,8 +486,19 @@ export const useEmergencyState = (
       if (isMounted) {
         setConnectivityStatus(status)
         if (status === 'CONNECTED') {
-          rehydrateEmergency(effectiveIncidentId)
+          if (
+            prevConnStatusRef.current === 'RECONNECTING' ||
+            prevConnStatusRef.current === 'OFFLINE' ||
+            prevConnStatusRef.current === 'DISCONNECTED'
+          ) {
+            setReconnectRestoredNotice(true)
+            setTimeout(() => {
+              if (isMounted) setReconnectRestoredNotice(false)
+            }, 4000)
+          }
+          rehydrateEmergency(effectiveIncidentId, true)
         }
+        prevConnStatusRef.current = status
       }
     })
 
@@ -672,7 +821,10 @@ export const useEmergencyState = (
 
     setCurrentState(EMERGENCY_STATE.CANCELLED)
     clearEmergencyCache()
-  }, [currentState, incidentId, rehydrateEmergency])
+    broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.EMERGENCY_CANCELLED, {
+      incidentId: incidentId || effectiveIncidentId,
+    })
+  }, [currentState, effectiveIncidentId, incidentId, rehydrateEmergency])
 
   const resetEmergency = useCallback(() => {
     setIsAutoPlaying(false)
@@ -687,6 +839,7 @@ export const useEmergencyState = (
     setLocationStatus('ACTIVE')
     setConnectivityStatus('CONNECTED')
     setSubmittingState('idle')
+    broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.CACHE_PURGED)
   }, [])
 
   const triggerSos = useCallback(() => {
@@ -698,15 +851,16 @@ export const useEmergencyState = (
     setSubmittingState('idle')
   }, [])
 
-  // Trigger real live demo incident with stable idempotency key across retries
+  // Trigger real live demo incident with stable idempotency key & cross-tab race protection
   const triggerLiveDemoSos = useCallback(async () => {
-    if (submittingState === 'submitting') {
+    if (submittingState === 'submitting' || isPeerSubmittingSos) {
       console.warn('[Citizen SOS] Submission already in progress. Ignoring duplicate click.')
       return
     }
 
     setIsAutoPlaying(false)
     setSubmittingState('submitting')
+    broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.SOS_IN_FLIGHT)
 
     // Maintain stable idempotency key across retries of the SAME logical SOS trigger
     if (!pendingSosIdempotencyKeyRef.current) {
@@ -744,14 +898,21 @@ export const useEmergencyState = (
         const uiState = normalizeToUiState(result.data.status)
         setCurrentState(uiState)
         saveEmergencyCache(result.data, null)
+        broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.SOS_COMPLETED, {
+          incidentId: result.data.id,
+        })
       } else {
         setSubmittingState(result.error?.code === 'ACTIVE_INCIDENT_EXISTS' ? 'conflict' : 'failure')
+        broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.SOS_COMPLETED, {
+          incidentId: result.data?.id || null,
+        })
       }
     } catch (err) {
       console.error('[Citizen SOS] Error during SOS broadcast:', err)
       setSubmittingState('failure')
+      broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.SOS_COMPLETED, { incidentId: null })
     }
-  }, [citizenProfile, submittingState])
+  }, [citizenProfile, isPeerSubmittingSos, submittingState])
 
   // Auto-play simulation effect: drives canonical state machine
   useEffect(() => {
@@ -787,6 +948,10 @@ export const useEmergencyState = (
     setLocationStatus,
     connectivityStatus,
     setConnectivityStatus,
+    isRehydrating,
+    rehydrationOutcome,
+    isPeerSubmittingSos,
+    reconnectRestoredNotice,
     submittingState,
     lastSyncedAt,
     syncFreshnessText,

@@ -21,6 +21,76 @@ This document provides the complete API contracts, authentication rules, request
   }
   ```
 
+### `POST /api/auth/login`
+
+Authenticates registered / seeded demo users using email and password credentials.
+
+- **Auth:** None (Public)
+- **Request Body:**
+  ```json
+  {
+    "email": "citizen@salvus.demo",
+    "password": "Salvus@Citizen2026"
+  }
+  ```
+- **Response (200 OK):**
+  ```json
+  {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token_type": "bearer",
+    "user": {
+      "id": "user-citizen-demo",
+      "email": "citizen@salvus.demo",
+      "full_name": "Aditi Mukherjee",
+      "role": "CITIZEN"
+    },
+    "expires_in": 604800
+  }
+  ```
+- **Error (401 Unauthorized):** Generic failure to prevent user enumeration (`code: "AUTHENTICATION_FAILED"`).
+
+### `GET /api/auth/me`
+
+Returns the currently authenticated user's profile and RBAC permissions.
+
+- **Auth:** `Bearer <JWT_TOKEN>` (Any valid role)
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "user": {
+      "user_id": "user-citizen-demo",
+      "role": "CITIZEN",
+      "name": "Aditi Mukherjee",
+      "email": "citizen@salvus.demo",
+      "scoped_incident_id": null,
+      "scoped_responder_id": null
+    },
+    "permissions": [
+      "incidents:create",
+      "incidents:read_own",
+      "incidents:cancel_own",
+      "hazards:read",
+      "shelters:read",
+      "routes:read",
+      "socket:join_own_incident"
+    ]
+  }
+  ```
+
+### `POST /api/auth/token` _(Development & Backward Compatibility)_
+
+Issues signed JWT token for development, integration tests, or simulation scripts.
+
+- **Auth:** None
+- **Request Body:**
+  ```json
+  {
+    "role": "AUTHORITY",
+    "name": "Duty Dispatcher"
+  }
+  ```
+
 ---
 
 ## 2. System Diagnostics

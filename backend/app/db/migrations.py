@@ -6,6 +6,20 @@ import aiosqlite
 async def run_migrations(db: aiosqlite.Connection) -> None:
     """Create tables and indexes if they do not exist."""
 
+    # 0. Users Table (Authentication Foundation)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'CITIZEN',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
     # 1. Incidents Table
     await db.execute("""
         CREATE TABLE IF NOT EXISTS incidents (
@@ -302,9 +316,11 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_idempotency_resource "
         "ON idempotency_keys(resource_type, resource_id)"
     )
+    await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)")
 
     await db.commit()
     print(
-        "[DB] Migrations complete with idempotency, concurrency locks, triage audit, "
+        "[DB] Migrations complete with users, idempotency, concurrency locks, triage audit, "
         "assignments, attachments, citizen profiles, and emergency contacts."
     )

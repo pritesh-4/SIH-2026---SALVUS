@@ -56,6 +56,7 @@ class AuthenticatedUser(BaseModel):
     user_id: str = Field(description="Unique identity subject ID")
     role: UserRole = Field(description="Role claim determining RBAC access")
     name: str = Field(default="Anonymous", description="Human-readable actor name")
+    email: str | None = Field(default=None, description="Authenticated user email address")
     scoped_incident_id: str | None = Field(
         default=None, description="Optional incident UUID scope for citizen ownership"
     )
@@ -100,6 +101,7 @@ def create_access_token(
     user_id: str,
     role: UserRole | str,
     name: str | None = None,
+    email: str | None = None,
     scoped_incident_id: str | None = None,
     scoped_responder_id: str | None = None,
     expires_delta: timedelta | None = None,
@@ -119,6 +121,9 @@ def create_access_token(
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
     }
+
+    if email:
+        to_encode["email"] = email
 
     if scoped_incident_id:
         to_encode["incident_id"] = scoped_incident_id
@@ -151,6 +156,7 @@ def verify_access_token(token: str) -> AuthenticatedUser:
         user_id=str(user_id),
         role=role_enum,
         name=str(payload.get("name", "User")),
+        email=payload.get("email"),
         scoped_incident_id=payload.get("incident_id"),
         scoped_responder_id=payload.get("responder_id"),
     )

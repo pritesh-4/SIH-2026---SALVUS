@@ -27,6 +27,9 @@ export const CitizenEmergency = () => {
     locationStatus,
     connectivityStatus,
     setConnectivityStatus,
+    isRehydrating,
+    rehydrationOutcome,
+    reconnectRestoredNotice,
     isAutoPlaying,
     simulationSpeed,
     setSimulationSpeed,
@@ -47,10 +50,79 @@ export const CitizenEmergency = () => {
     resetEmergency,
     triggerSos,
     triggerLiveDemoSos,
+    rehydrateEmergency,
     toggleAutoPlay,
   } = useEmergencyState('SOS_ACTIVE', urlIncidentId)
 
-  // Cancelled State Screen
+  // 1. Initial High-Assurance Rehydration State (prevents flashing false idle or wrong emergency state)
+  if (
+    isRehydrating &&
+    !incident?.rawId &&
+    rehydrationOutcome !== 'offline_unconfirmed' &&
+    rehydrationOutcome !== 'restoring_hint'
+  ) {
+    return (
+      <div className="min-h-screen bg-salvus-bg text-salvus-text-primary flex flex-col items-center justify-center p-6 transition-colors duration-200">
+        <div className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-md w-full p-8 text-center shadow-xl animate-fadeIn">
+          <div className="h-16 w-16 rounded-full bg-salvus-info/10 border border-salvus-info/30 mx-auto flex items-center justify-center text-3xl mb-4 animate-pulse">
+            🔄
+          </div>
+          <h2 className="text-xl font-bold text-salvus-text-primary tracking-tight">
+            Restoring emergency status…
+          </h2>
+          <p className="text-xs text-salvus-text-secondary mt-2 leading-relaxed">
+            Connecting to emergency command server and synchronizing authoritative incident state…
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-2 text-xs font-mono text-salvus-text-muted">
+            <span className="h-2 w-2 rounded-full bg-salvus-info animate-ping" />
+            <span>Verifying rescue team & triage telemetry</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // 2. Safe Direct Route Handling: No Active Emergency Found
+  if (!isRehydrating && rehydrationOutcome === 'no_active_emergency') {
+    return (
+      <div className="min-h-screen bg-salvus-bg text-salvus-text-primary flex flex-col items-center justify-center p-6 selection:bg-salvus-critical selection:text-white transition-colors duration-200">
+        <div className="bg-salvus-surface border border-salvus-border rounded-2xl max-w-md w-full p-8 text-center shadow-xl animate-fadeIn">
+          <div className="h-16 w-16 rounded-full bg-salvus-safe/10 border border-salvus-safe/30 mx-auto flex items-center justify-center text-3xl mb-4">
+            🛡️
+          </div>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-salvus-safe bg-salvus-safe-bg border border-salvus-safe-border px-2.5 py-1 rounded-full inline-block mb-2">
+            All Clear · No Active Emergency
+          </span>
+          <h2 className="text-2xl font-bold text-salvus-text-primary tracking-tight mt-1">
+            No Active Distress Beacon
+          </h2>
+          <p className="text-sm text-salvus-text-secondary mt-2 leading-relaxed">
+            You do not currently have an active emergency dispatch request on record. If you are
+            experiencing a disaster or need immediate assistance, activate the SOS Beacon below.
+          </p>
+          <div className="mt-6 flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/citizen')}
+              className="w-full py-3.5 rounded-xl bg-salvus-surface-elevated hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-primary text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer"
+            >
+              Return to Citizen Home
+            </button>
+            <button
+              type="button"
+              onClick={triggerLiveDemoSos}
+              className="w-full py-3.5 rounded-xl bg-salvus-critical hover:opacity-90 text-white text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-2"
+            >
+              <span>🚨</span>
+              <span>Activate Emergency SOS</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // 3. Cancelled State Screen
   if (currentState === 'CANCELLED') {
     return (
       <div className="min-h-screen bg-salvus-bg text-salvus-text-primary flex flex-col items-center justify-center p-6 selection:bg-salvus-critical selection:text-white transition-colors duration-200">
@@ -89,6 +161,8 @@ export const CitizenEmergency = () => {
   const isResolved = currentState === 'RESOLVED'
   const isNearby = currentState === 'NEARBY'
   const isOnScene = currentState === 'ON_SCENE'
+  const isOfflineUnconfirmed =
+    rehydrationOutcome === 'offline_unconfirmed' || connectivityStatus === 'OFFLINE'
 
   return (
     <div className="min-h-screen bg-salvus-bg text-salvus-text-primary flex flex-col selection:bg-salvus-critical selection:text-white pb-32 transition-colors duration-200">
@@ -117,7 +191,33 @@ export const CitizenEmergency = () => {
           location={incident.userLocation}
           locationStatus={locationStatus}
           connectivityStatus={connectivityStatus}
+          reconnectRestoredNotice={reconnectRestoredNotice}
         />
+
+        {/* Offline / Unconfirmed Status Callout */}
+        {isOfflineUnconfirmed && (
+          <div className="bg-salvus-warning-bg border border-salvus-warning-border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-salvus-warning-text animate-fadeIn">
+            <div className="flex items-center gap-3">
+              <span className="text-xl shrink-0">⚠️</span>
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider block">
+                  Offline / Unconfirmed Status
+                </span>
+                <p className="text-xs opacity-90 mt-0.5">
+                  Displaying last-known emergency guidance. Automatic reconnection in progress.
+                  Status is not yet confirmed by command center.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => rehydrateEmergency(urlIncidentId)}
+              className="px-3.5 py-1.5 rounded-xl bg-salvus-surface border border-salvus-border text-salvus-text-primary text-xs font-bold hover:bg-salvus-surface-hover shrink-0 cursor-pointer self-start sm:self-auto"
+            >
+              🔄 Retry Sync
+            </button>
+          </div>
+        )}
 
         {/* Resolved Dedicated Screen View */}
         {isResolved ? (

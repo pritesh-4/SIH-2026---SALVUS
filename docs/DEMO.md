@@ -4,13 +4,27 @@ This document provides the minute-by-minute live presentation script, dual-windo
 
 ---
 
+## 0. Demo Authentication Credentials
+
+Salvus uses real credential-validated authentication. The following demo accounts are pre-seeded on startup:
+
+| Role          | Email                   | Password               |
+| :------------ | :---------------------- | :--------------------- |
+| **Citizen**   | `citizen@salvus.demo`   | `Salvus@Citizen2026`   |
+| **Authority** | `authority@salvus.demo` | `Salvus@Authority2026` |
+
+> **Security Note**: Passwords are stored as bcrypt hashes in the database. These plaintext values are documented here solely for hackathon evaluation purposes.
+
+---
+
 ## 1. Demo Setup & Preparation (30 Seconds Pre-Demo)
 
-1. Open two browser windows arranged side-by-side:
-   - **Left Window:** Citizen Safety Console (`http://localhost:5173/citizen`)
-   - **Right Window:** Authority Command Center (`http://localhost:5173/authority`)
-2. In the Authority window, confirm the bottom-right connection status badge displays `LIVE` (green dot).
-3. If needed, click `🛠️ DEV DEMO CONTROLS` $\rightarrow$ **⚡ Seed Demo Data** to ensure baseline fleet and shelter records are present.
+1. Open your browser and navigate to `http://localhost:5173/login`.
+2. **For Citizen window**: Sign in with `citizen@salvus.demo` / `Salvus@Citizen2026`. You will be routed to the Citizen Safety Console.
+3. **For Authority window**: Open a second browser window, navigate to `http://localhost:5173/login`, sign in with `authority@salvus.demo` / `Salvus@Authority2026`. You will be routed to the Authority Command Center.
+4. Arrange both windows side-by-side.
+5. In the Authority window, confirm the bottom-right connection status badge displays `LIVE` (green dot).
+6. If needed, click `🛠️ DEV DEMO CONTROLS` → **⚡ Seed Demo Data** to ensure baseline fleet and shelter records are present.
 
 ---
 

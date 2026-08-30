@@ -12,7 +12,11 @@ import { StatusIndicator } from '../ui/StatusIndicator'
  * - Active Dispatcher & VHF Channel
  * - Live operational time
  */
-export const AuthorityHeader = ({ hub, dataProvenance = 'LIVE' }) => {
+export const AuthorityHeader = ({
+  hub,
+  dataProvenance = 'LIVE',
+  connectivityStatus = 'CONNECTED',
+}) => {
   const [currentTime, setCurrentTime] = useState(() =>
     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   )
@@ -28,6 +32,8 @@ export const AuthorityHeader = ({ hub, dataProvenance = 'LIVE' }) => {
 
   if (!hub) return null
 
+  const isReconnecting = connectivityStatus === 'RECONNECTING' || connectivityStatus === 'OFFLINE'
+
   return (
     <Card
       padding="sm"
@@ -40,9 +46,14 @@ export const AuthorityHeader = ({ hub, dataProvenance = 'LIVE' }) => {
             <h1 className="text-sm font-bold text-salvus-text-primary tracking-tight">
               {hub.name || 'Central Command Hub'} · Regional Operations District
             </h1>
-            <StatusIndicator status="safe" label="System Operational" showDot={true} size="sm" />
-            <Badge variant="neutral" isMono={true} size="sm">
-              {dataProvenance}
+            <StatusIndicator
+              status={isReconnecting ? 'warning' : 'safe'}
+              label={isReconnecting ? 'Live operations reconnecting…' : 'System Operational'}
+              showDot={true}
+              size="sm"
+            />
+            <Badge variant={isReconnecting ? 'warning' : 'neutral'} isMono={true} size="sm">
+              {isReconnecting ? 'RECONNECTING' : dataProvenance}
             </Badge>
           </div>
           <p className="text-xs text-salvus-text-secondary mt-0.5">

@@ -4,6 +4,8 @@ import json
 import uuid
 from datetime import UTC, datetime
 
+from app.auth.password import hash_password
+
 SEED_INCIDENTS = [
     {
         "id": "inc-2048",
@@ -195,8 +197,32 @@ SEED_SHELTERS = [
 ]
 
 
+# Demo authentication accounts — passwords are bcrypt-hashed at import time.
+# Plaintext passwords are ONLY documented in docs/DEMO.md for hackathon evaluators.
+SEED_DEMO_USERS = [
+    {
+        "id": "user-citizen-demo",
+        "email": "citizen@salvus.demo",
+        "password_hash": hash_password("Salvus@Citizen2026"),
+        "full_name": "Aditi Mukherjee",
+        "role": "CITIZEN",
+        "is_active": 1,
+    },
+    {
+        "id": "user-authority-demo",
+        "email": "authority@salvus.demo",
+        "password_hash": hash_password("Salvus@Authority2026"),
+        "full_name": "Duty Dispatcher",
+        "role": "AUTHORITY",
+        "is_active": 1,
+    },
+]
+
+
 async def seed_database(db) -> dict:
-    """Insert seed incidents, responders, and shelters. Returns dict of created counts."""
+    """Insert seed incidents, responders, shelters, and demo users.
+    Returns dict of created counts.
+    """
     now = datetime.now(UTC).isoformat()
     created_incidents = []
     created_responders = []
@@ -453,11 +479,41 @@ async def seed_database(db) -> dict:
         )
         created_contacts.append(ec)
 
+    # 6. Seed Demo Users (Authentication Foundation)
+    created_users = []
+    for usr in SEED_DEMO_USERS:
+        cursor = await db.execute("SELECT id FROM users WHERE email = ?", (usr["email"],))
+        existing = await cursor.fetchone()
+        if existing:
+            continue
+
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO users (
+                id, email, password_hash, full_name, role, is_active,
+                created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                usr["id"],
+                usr["email"],
+                usr["password_hash"],
+                usr["full_name"],
+                usr["role"],
+                usr["is_active"],
+                now,
+                now,
+            ),
+        )
+        created_users.append(usr)
+
     await db.commit()
     print(
         f"[SEED] Seeded {len(created_incidents)} incidents, "
         f"{len(created_responders)} responders, {len(created_shelters)} shelters, "
-        f"{len(created_profiles)} citizen profiles, {len(created_contacts)} emergency contacts."
+        f"{len(created_profiles)} citizen profiles, {len(created_contacts)} emergency contacts, "
+        f"{len(created_users)} demo users."
     )
     return {
         "incidents": len(created_incidents),
@@ -465,4 +521,5 @@ async def seed_database(db) -> dict:
         "shelters": len(created_shelters),
         "citizen_profiles": len(created_profiles),
         "emergency_contacts": len(created_contacts),
+        "users": len(created_users),
     }

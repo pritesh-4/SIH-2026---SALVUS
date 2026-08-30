@@ -1,9 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchIncidentById } from '../../services/api'
+import { fetchActiveIncident } from '../../services/api'
 import { joinRoom, leaveRoom, subscribeToEvent } from '../../lib/realtime/socket'
 import { shouldAcceptStatusUpdate, normalizeToBackendStatus } from '../../lib/stateMachine'
-import { loadEmergencyCache } from '../../lib/emergencyCache'
+import {
+  loadEmergencyCache,
+  clearEmergencyCache,
+  saveEmergencyCache,
+} from '../../lib/emergencyCache'
 import { Badge } from '../ui/Badge'
 
 export const ActiveEmergencyBanner = () => {
@@ -17,16 +21,57 @@ export const ActiveEmergencyBanner = () => {
     return cache?.cachedIncident || null
   })
 
+  // Synchronize with server truth & maintain cache
+  useEffect(() => {
+    let isMounted = true
+
+    const syncServerTruth = async () => {
+      try {
+        const res = await fetchActiveIncident({ incidentId: activeIncidentId || undefined })
+        if (!isMounted) return
+
+        if (res.success) {
+          if (res.data && !res.isTerminal && res.data.status !== 'CANCELLED') {
+            setActiveIncidentId(res.data.id)
+            const inc = {
+              ...res.data,
+              assigned_responder: res.responder || res.data.assigned_responder,
+            }
+            setIncidentData(inc)
+            saveEmergencyCache(inc, res.responder)
+          } else {
+            // Incident is resolved, cancelled, or no active incident exists
+            if (res.isTerminal || !res.data) {
+              clearEmergencyCache()
+              setActiveIncidentId(null)
+              setIncidentData(null)
+            }
+          }
+        }
+      } catch {
+        // Retain last known cache if offline
+      }
+    }
+
+    syncServerTruth()
+
+    return () => {
+      isMounted = false
+    }
+  }, [activeIncidentId])
+
   const checkStorage = useCallback(() => {
-    const id = localStorage.getItem('salvus_active_incident_id')
+    const cache = loadEmergencyCache()
+    const id = cache?.incidentId || localStorage.getItem('salvus_active_incident_id')
     if (id !== activeIncidentId) {
       setActiveIncidentId(id)
+      if (!id) setIncidentData(null)
     }
   }, [activeIncidentId])
 
   useEffect(() => {
     window.addEventListener('storage', checkStorage)
-    const interval = setInterval(checkStorage, 2000)
+    const interval = setInterval(checkStorage, 3000)
     return () => {
       window.removeEventListener('storage', checkStorage)
       clearInterval(interval)
@@ -37,17 +82,6 @@ export const ActiveEmergencyBanner = () => {
     if (!activeIncidentId) return
 
     let isMounted = true
-
-    const load = async () => {
-      const res = await fetchIncidentById(activeIncidentId)
-      if (res.success && res.data && isMounted) {
-        setIncidentData(res.data)
-      } else if (isMounted) {
-        setIncidentData(null)
-      }
-    }
-
-    load()
 
     const room = `incident:${activeIncidentId}`
     joinRoom(room)

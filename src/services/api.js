@@ -58,6 +58,22 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
+// Response interceptor: handle 401 Unauthorized centrally
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (
+      error.response?.status === 401 &&
+      typeof window !== 'undefined' &&
+      !error.config?.url?.includes('/api/auth/login')
+    ) {
+      // Dispatch custom event for AuthContext to handle logout/redirect
+      window.dispatchEvent(new CustomEvent('salvus:auth:unauthorized'))
+    }
+    return Promise.reject(error)
+  }
+)
+
 // ---------------------------------------------------------------------------
 // Incident API Calls
 // ---------------------------------------------------------------------------
@@ -108,6 +124,56 @@ export const fetchIncidentById = async (incidentId) => {
       success: false,
       error: { message, code: error.code || 'FETCH_ERROR' },
       data: null,
+    }
+  }
+}
+
+/**
+ * Authoritatively query server for active emergency incident for the current citizen.
+ * Supports optional incident ID hint or token-scoped lookup.
+ *
+ * @param {Object} [options]
+ * @param {string} [options.incidentId] - Optional incident ID hint
+ * @returns {Promise<{success: boolean, data: Object|null, responder: Object|null, isTerminal: boolean, isOffline?: boolean, error?: Object}>}
+ */
+export const fetchActiveIncident = async (options = {}) => {
+  try {
+    const params = {}
+    if (options.incidentId) {
+      params.incident_id = options.incidentId
+    }
+    const response = await apiClient.get('/api/incidents/active', { params })
+    return {
+      success: true,
+      data: response.data.data || null,
+      responder: response.data.responder || null,
+      isTerminal: Boolean(response.data.is_terminal),
+      isOffline: false,
+    }
+  } catch (error) {
+    const isOffline =
+      !error.response ||
+      error.code === 'ERR_NETWORK' ||
+      error.code === 'ECONNABORTED' ||
+      error.message?.includes('Network Error')
+
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to query active emergency status'
+
+    return {
+      success: false,
+      data: null,
+      responder: null,
+      isTerminal: false,
+      isOffline,
+      error: {
+        message,
+        code: error.code || 'FETCH_ACTIVE_ERROR',
+        status: error.response?.status,
+      },
     }
   }
 }

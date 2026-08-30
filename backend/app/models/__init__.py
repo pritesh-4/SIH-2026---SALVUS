@@ -465,6 +465,15 @@ class IncidentSingleResponse(BaseModel):
     data: IncidentResponse
 
 
+class IncidentActiveLookupResponse(BaseModel):
+    """Authoritative response envelope for citizen active incident lookup."""
+
+    success: bool = True
+    data: IncidentResponse | None = None
+    responder: ResponderResponse | None = None
+    is_terminal: bool = False
+
+
 # ---------------------------------------------------------------------------
 # Responder Models
 # ---------------------------------------------------------------------------

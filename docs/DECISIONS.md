@@ -141,3 +141,17 @@ This document formally records foundational architectural decisions, rationale, 
 - **Why:** Decouples the frontend from external routing APIs, eliminates rate-limit failures, and guarantees realistic curved path geometry even when routing servers are offline.
 - **Trade-offs:** Public demo server latency is mitigated via backend caching and 3.0s timeout fallbacks.
 - **Status:** **Active / Implemented ✅**
+
+---
+
+## ADR-015: Hackathon Authentication Gateway & Session Architecture
+
+- **Context:** Previous prototype accepted arbitrary credentials and auto-minted unverified role tokens. A realistic, secure authentication foundation was required to enforce real credential validation, persistent demo accounts, and RBAC authorization without introducing heavy enterprise SSO overhead.
+- **Decision:**
+  1. Store persistent demo users (`CITIZEN`, `AUTHORITY`) in a dedicated `users` table with standard bcrypt password hashing (`rounds=12`).
+  2. Implement `POST /api/auth/login` validating credentials against database hashes and issuing signed HMAC-SHA256 JWT tokens.
+  3. Derive role identity strictly from server-side database records, ignoring frontend role assertions to prevent privilege escalation.
+  4. Create a centralized `AuthContext` as the single frontend source of truth, backed by a 401 response interceptor for automatic session termination and clean stateless JWT logout.
+- **Why:** Eliminates fake authentication, secures API endpoints, guarantees repeatable hackathon judge evaluation, and establishes a production-grade session layer.
+- **Trade-offs:** Stateless JWT tokens are cleared client-side on logout (server-side token blacklists deferred to post-hackathon).
+- **Status:** **Active / Implemented ✅**

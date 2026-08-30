@@ -29,6 +29,7 @@ from app.auth.jwt_handler import (
 from app.db import get_database
 from app.models import (
     CandidateGenerationResponse,
+    IncidentActiveLookupResponse,
     IncidentCreate,
     IncidentListResponse,
     IncidentResponse,
@@ -140,6 +141,31 @@ async def list_incidents(
     # Unauthenticated / public overview: sanitize PII across all incidents
     sanitized_incidents = [_sanitize_incident_pii(inc) for inc in incidents]
     return IncidentListResponse(data=sanitized_incidents, count=len(sanitized_incidents))
+
+
+@router.get("/active", response_model=IncidentActiveLookupResponse)
+async def get_active_incident(
+    incident_id: str | None = Query(
+        None, description="Optional specific incident ID hint to check"
+    ),
+    user: AuthenticatedUser | None = Depends(get_optional_user),
+):
+    """Retrieve the authoritative current active emergency incident for an authenticated citizen.
+
+    If an active incident is found, returns the incident and assigned responder (if any).
+    If the incident is terminal (RESOLVED/CANCELLED), returns is_terminal=True.
+    If no active emergency exists, returns data=None.
+    """
+    db = await get_database()
+    incident, responder, is_terminal = await incident_service.get_active_incident_for_user(
+        db, user=user, incident_id=incident_id
+    )
+    return IncidentActiveLookupResponse(
+        success=True,
+        data=incident,
+        responder=responder,
+        is_terminal=is_terminal,
+    )
 
 
 @router.get("/{incident_id}/candidate-pool", response_model=CandidateGenerationResponse)

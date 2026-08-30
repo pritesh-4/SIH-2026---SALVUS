@@ -48,33 +48,34 @@ npm run build
 
 ---
 
-## 2. Verified Backend Test Suite Breakdown (349 Tests)
+## 2. Verified Backend Test Suite Breakdown (390 Tests)
 
-The backend test suite executes 349 automated tests across 29 specialized modules with 100% passing status:
+The backend test suite executes 390 automated tests across 30 specialized modules with 100% passing status:
 
-| Test Module                                                                             | Test Count | Domain Coverage                                                                                                            |
-| :-------------------------------------------------------------------------------------- | :--------: | :------------------------------------------------------------------------------------------------------------------------- |
-| [`test_state_machine.py`](../backend/tests/test_state_machine.py)                       |   **64**   | Exhaustive finite state machine matrix, forward transitions, terminal state immutability, role permissions.                |
-| [`test_profile_api.py`](../backend/tests/test_profile_api.py)                           |   **7**    | Citizen profile GET/PATCH endpoints, JWT subject binding, system-managed field protection, medical info preservation.      |
-| [`test_emergency_readiness_api.py`](../backend/tests/test_emergency_readiness_api.py)   |   **5**    | Contact CRUD, single-primary enforcement, priority ranking, automatic promotion on deletion, locked safety settings.       |
-| [`test_security_hardening.py`](../backend/tests/test_security_hardening.py)             |   **11**   | HMAC-SHA256 JWT minting, verification, expiration, RBAC dependency guards, middleware headers, payload limits.             |
-| [`test_allocation_engine.py`](../backend/tests/test_allocation_engine.py)               |   **10**   | 6-factor deterministic scoring, normalization formulas, explainable justifications, multi-level tie-breaking.              |
-| [`test_candidate_generation.py`](../backend/tests/test_candidate_generation.py)         |   **11**   | Responder eligibility partitioning, capability hard filtering, exclusion reasons.                                          |
-| [`test_routing_service.py`](../backend/tests/test_routing_service.py)                   |   **14**   | OSRM integration, profiles, 5-minute TTL cache hit/miss, 15-waypoint fallback vector corridor, Haversine accuracy.         |
-| [`test_ai_triage.py`](../backend/tests/test_ai_triage.py)                               |   **14**   | PII sanitization regex, strict Pydantic `LLMTriageOutputSchema` validation, Gemini/Groq providers, fallback to heuristics. |
-| [`test_assignments_api.py`](../backend/tests/test_assignments_api.py)                   |   **11**   | Assignment REST API, single active assignment constraints, score storage, milestone timestamps.                            |
-| [`test_incident_api.py`](../backend/tests/test_incident_api.py)                         |   **14**   | Distress beacon ingestion, 4-second deduplication window, status filtering, audit event creation.                          |
-| [`test_async_intelligence.py`](../backend/tests/test_async_intelligence.py)             |   **10**   | Async background worker tasks, telemetry logging, SHA-256 triage hash caching.                                             |
-| [`test_phase5_intelligence.py`](../backend/tests/test_phase5_intelligence.py)           |   **9**    | Grounded situation briefing synthesis, active incident metrics.                                                            |
-| [`test_responders_api.py`](../backend/tests/test_responders_api.py)                     |   **8**    | Fleet inventory, GPS telemetry updates, manual lifecycle overrides.                                                        |
-| [`test_shelters_api.py`](../backend/tests/test_shelters_api.py)                         |   **6**    | Shelter logistics, bed intake adjustments, occupancy percentage derivations.                                               |
-| [`test_production_deployment.py`](../backend/tests/test_production_deployment.py)       |   **6**    | Render health checks (`/health`), root identification (`/`), CORS origin parsing.                                          |
-| [`test_disaster_intelligence.py`](../backend/tests/test_disaster_intelligence.py)       |   **5**    | Normalized hazard feeds (Open-Meteo, USGS), spatial distance filters.                                                      |
-| [`test_realtime_assignment_sync.py`](../backend/tests/test_realtime_assignment_sync.py) |   **4**    | Socket.IO assignment event broadcast to `authorities` and `incident:{id}` rooms.                                           |
-| [`test_assignment_flow.py`](../backend/tests/test_assignment_flow.py)                   |   **4**    | Transactional consistency across incident, assignment, and responder state commits.                                        |
-| [`test_realtime_dispatch_loop.py`](../backend/tests/test_realtime_dispatch_loop.py)     |   **3**    | End-to-end realtime dispatch cycle from creation to verification and resolution.                                           |
-| _Other Domain Test Suites_                                                              |  **133**   | Evidence lightbox, photo validation, places clustering, weather parsing, and mock feeds.                                   |
-| **TOTAL**                                                                               |  **349**   | **100% Passed (0 Failures, 0 Errors, 0 Regressions)**                                                                      |
+| Test Module                                                                             | Test Count | Domain Coverage                                                                                                                             |
+| :-------------------------------------------------------------------------------------- | :--------: | :------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`test_auth_foundation.py`](../backend/tests/test_auth_foundation.py)                   |   **16**   | Real credential validation, citizen/authority logins, 401 generic failures, inactive users, JWT claims, bcrypt hashing, idempotent seeding. |
+| [`test_state_machine.py`](../backend/tests/test_state_machine.py)                       |   **64**   | Exhaustive finite state machine matrix, forward transitions, terminal state immutability, role permissions.                                 |
+| [`test_profile_api.py`](../backend/tests/test_profile_api.py)                           |   **7**    | Citizen profile GET/PATCH endpoints, JWT subject binding, system-managed field protection, medical info preservation.                       |
+| [`test_emergency_readiness_api.py`](../backend/tests/test_emergency_readiness_api.py)   |   **5**    | Contact CRUD, single-primary enforcement, priority ranking, automatic promotion on deletion, locked safety settings.                        |
+| [`test_security_hardening.py`](../backend/tests/test_security_hardening.py)             |   **11**   | HMAC-SHA256 JWT minting, verification, expiration, RBAC dependency guards, middleware headers, payload limits.                              |
+| [`test_allocation_engine.py`](../backend/tests/test_allocation_engine.py)               |   **10**   | 6-factor deterministic scoring, normalization formulas, explainable justifications, multi-level tie-breaking.                               |
+| [`test_candidate_generation.py`](../backend/tests/test_candidate_generation.py)         |   **11**   | Responder eligibility partitioning, capability hard filtering, exclusion reasons.                                                           |
+| [`test_routing_service.py`](../backend/tests/test_routing_service.py)                   |   **14**   | OSRM integration, profiles, 5-minute TTL cache hit/miss, 15-waypoint fallback vector corridor, Haversine accuracy.                          |
+| [`test_ai_triage.py`](../backend/tests/test_ai_triage.py)                               |   **14**   | PII sanitization regex, strict Pydantic `LLMTriageOutputSchema` validation, Gemini/Groq providers, fallback to heuristics.                  |
+| [`test_assignments_api.py`](../backend/tests/test_assignments_api.py)                   |   **11**   | Assignment REST API, single active assignment constraints, score storage, milestone timestamps.                                             |
+| [`test_incident_api.py`](../backend/tests/test_incident_api.py)                         |   **14**   | Distress beacon ingestion, 4-second deduplication window, status filtering, audit event creation.                                           |
+| [`test_async_intelligence.py`](../backend/tests/test_async_intelligence.py)             |   **10**   | Async background worker tasks, telemetry logging, SHA-256 triage hash caching.                                                              |
+| [`test_phase5_intelligence.py`](../backend/tests/test_phase5_intelligence.py)           |   **9**    | Grounded situation briefing synthesis, active incident metrics.                                                                             |
+| [`test_responders_api.py`](../backend/tests/test_responders_api.py)                     |   **8**    | Fleet inventory, GPS telemetry updates, manual lifecycle overrides.                                                                         |
+| [`test_shelters_api.py`](../backend/tests/test_shelters_api.py)                         |   **6**    | Shelter logistics, bed intake adjustments, occupancy percentage derivations.                                                                |
+| [`test_production_deployment.py`](../backend/tests/test_production_deployment.py)       |   **6**    | Render health checks (`/health`), root identification (`/`), CORS origin parsing.                                                           |
+| [`test_disaster_intelligence.py`](../backend/tests/test_disaster_intelligence.py)       |   **5**    | Normalized hazard feeds (Open-Meteo, USGS), spatial distance filters.                                                                       |
+| [`test_realtime_assignment_sync.py`](../backend/tests/test_realtime_assignment_sync.py) |   **4**    | Socket.IO assignment event broadcast to `authorities` and `incident:{id}` rooms.                                                            |
+| [`test_assignment_flow.py`](../backend/tests/test_assignment_flow.py)                   |   **4**    | Transactional consistency across incident, assignment, and responder state commits.                                                         |
+| [`test_realtime_dispatch_loop.py`](../backend/tests/test_realtime_dispatch_loop.py)     |   **3**    | End-to-end realtime dispatch cycle from creation to verification and resolution.                                                            |
+| _Other Domain Test Suites_                                                              |  **172**   | Evidence lightbox, photo validation, places clustering, weather parsing, and mock feeds.                                                    |
+| **TOTAL**                                                                               |  **390**   | **100% Passed (0 Failures, 0 Errors, 0 Regressions)**                                                                                       |
 
 ---
 

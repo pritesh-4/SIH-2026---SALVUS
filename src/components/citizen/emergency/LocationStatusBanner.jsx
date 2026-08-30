@@ -10,6 +10,7 @@ export const LocationStatusBanner = ({
   location = null,
   locationStatus = 'ACTIVE',
   connectivityStatus = 'CONNECTED',
+  reconnectRestoredNotice = false,
 }) => {
   const [showCoordinates, setShowCoordinates] = useState(false)
 
@@ -110,18 +111,34 @@ export const LocationStatusBanner = ({
         </div>
       </Card>
 
-      {/* Disruption Reassurance */}
+      {/* Disruption Reassurance: Citizen UX */}
       {isDisrupted && (
         <div className="bg-salvus-warning-bg border border-salvus-warning-border rounded-xl px-4 py-2.5 flex items-center justify-between text-xs text-salvus-warning-text animate-fadeIn">
           <div className="flex items-center gap-2">
             <span aria-hidden="true">⚠️</span>
             <span>
-              <strong>Live updates are temporarily unavailable.</strong> Your emergency request
-              remains active.
+              <strong>Live rescue updates temporarily unavailable.</strong> Your emergency request
+              remains active on server.
             </span>
           </div>
           <Badge variant="warning" isMono={true}>
-            SOS ACTIVE
+            RESCUE ACTIVE
+          </Badge>
+        </div>
+      )}
+
+      {/* Restored Notification: Citizen UX */}
+      {reconnectRestoredNotice && !isDisrupted && (
+        <div className="bg-salvus-safe-bg border border-salvus-safe-border rounded-xl px-4 py-2.5 flex items-center justify-between text-xs text-salvus-safe-text animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true">✅</span>
+            <span>
+              <strong>Live rescue updates restored.</strong> Telemetry is actively synchronizing
+              with command center.
+            </span>
+          </div>
+          <Badge variant="safe" isMono={true}>
+            SYNCHRONIZED
           </Badge>
         </div>
       )}

@@ -22,6 +22,7 @@ from app.models import (
     IncidentStatus,
     IncidentType,
     ResponderCapability,
+    ResponderResponse,
     TriageVerificationRequest,
 )
 from app.services.state_machine import is_terminal, validate_transition
@@ -647,3 +648,80 @@ async def reset_demo_database(db: aiosqlite.Connection) -> None:
     from app.db.seed import seed_database
 
     await seed_database(db)
+
+
+async def get_active_incident_for_user(
+    db: aiosqlite.Connection,
+    user=None,
+    incident_id: str | None = None,
+) -> tuple[IncidentResponse | None, ResponderResponse | None, bool]:
+    """Retrieve authoritative active incident for an authenticated citizen or hint.
+
+    Returns:
+        (incident, responder, is_terminal)
+    """
+    from app.services.assignment_service import get_assignments_for_incident
+    from app.services.responder_service import get_responder_by_id
+
+    matched_incident: IncidentResponse | None = None
+
+    # 1. If explicit incident_id hint is passed, check it first
+    if incident_id:
+        cand = await get_incident_by_id(db, incident_id)
+        if cand:
+            # Check ownership bounds if user is a citizen
+            if user and hasattr(user, "is_citizen") and user.is_citizen:
+                is_owner = (
+                    cand.id == getattr(user, "scoped_incident_id", None)
+                    or (
+                        cand.reporter_id is not None
+                        and cand.reporter_id == getattr(user, "user_id", None)
+                    )
+                    or getattr(user, "scoped_incident_id", None) is None
+                )
+                if is_owner:
+                    matched_incident = cand
+            else:
+                matched_incident = cand
+
+    # 2. If no incident found by explicit ID, query by user's identity
+    if not matched_incident and user:
+        scoped_id = getattr(user, "scoped_incident_id", None)
+        if scoped_id:
+            scoped_inc = await get_incident_by_id(db, scoped_id)
+            if scoped_inc:
+                matched_incident = scoped_inc
+
+        user_id = getattr(user, "user_id", None)
+        if not matched_incident and user_id:
+            cursor = await db.execute(
+                """
+                SELECT id FROM incidents
+                WHERE reporter_id = ? AND status NOT IN ('RESOLVED', 'CANCELLED')
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = await cursor.fetchone()
+            if row:
+                matched_incident = await get_incident_by_id(db, row["id"])
+
+    if not matched_incident:
+        return (None, None, False)
+
+    # 3. Check if matched incident is in a terminal state
+    if matched_incident.status in (IncidentStatus.RESOLVED.value, IncidentStatus.CANCELLED.value):
+        return (matched_incident, None, True)
+
+    # 4. Fetch active responder assignment if present
+    responder: ResponderResponse | None = None
+    assignments = await get_assignments_for_incident(db, matched_incident.id)
+    if assignments:
+        active_assign = next(
+            (a for a in assignments if a.status in ("ASSIGNED", "EN_ROUTE", "NEARBY", "ON_SCENE")),
+            None,
+        )
+        if active_assign:
+            responder = await get_responder_by_id(db, active_assign.responder_id)
+
+    return (matched_incident, responder, False)
