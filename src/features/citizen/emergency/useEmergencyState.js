@@ -327,18 +327,27 @@ export const useEmergencyState = (
     }
   }, [effectiveIncidentId, rehydrateEmergency])
 
+  // 3. Initial Authoritative State Sync (Runs on mount & when effectiveIncidentId changes)
   useEffect(() => {
-    if (!effectiveIncidentId) return
-
     let isMounted = true
 
-    // Initial authoritative reconciliation
     const syncAuthoritativeState = async () => {
       if (isMounted) {
         await rehydrateEmergency(effectiveIncidentId)
       }
     }
     syncAuthoritativeState()
+
+    return () => {
+      isMounted = false
+    }
+  }, [effectiveIncidentId, rehydrateEmergency])
+
+  // 4. Realtime Socket Subscription & Incident Room Management
+  useEffect(() => {
+    if (!effectiveIncidentId) return
+
+    let isMounted = true
 
     // Join the incident-specific Socket.IO room
     const roomName = `incident:${effectiveIncidentId}`
@@ -849,23 +858,15 @@ export const useEmergencyState = (
     broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.CACHE_PURGED)
   }, [])
 
-  const triggerSos = useCallback(() => {
-    setIsAutoPlaying(false)
-    setIsCancelModalOpen(false)
-    setCurrentState(EMERGENCY_STATE.SOS_ACTIVE)
-    setLocationStatus('ACTIVE')
-    setConnectivityStatus('CONNECTED')
-    setSubmittingState('idle')
-  }, [])
-
-  // Trigger real live demo incident with stable idempotency key & cross-tab race protection
-  const triggerLiveDemoSos = useCallback(async () => {
+  // Trigger real server-authoritative emergency SOS with stable idempotency key & cross-tab race protection
+  const triggerSos = useCallback(async () => {
     if (submittingState === 'submitting' || isPeerSubmittingSos) {
       console.warn('[Citizen SOS] Submission already in progress. Ignoring duplicate click.')
       return
     }
 
     setIsAutoPlaying(false)
+    setIsCancelModalOpen(false)
     setSubmittingState('submitting')
     broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.SOS_IN_FLIGHT)
 
@@ -887,12 +888,12 @@ export const useEmergencyState = (
       const result = await createIncident({
         type: 'flood',
         severity: 'CRITICAL',
-        description: `DEMO SOS Beacon [${emergencyId}] — Realtime Pipeline Test`,
+        description: `Emergency SOS Beacon [${emergencyId}] — Immediate Rescue Requested`,
         reporter_name: reporterName,
         reporter_phone: reporterPhone,
         latitude: lat,
         longitude: lng,
-        affected_count: 3,
+        affected_count: 1,
         is_sos: true,
         idempotency_key: idempotencyKey,
       })
@@ -909,7 +910,13 @@ export const useEmergencyState = (
           incidentId: result.data.id,
         })
       } else {
-        setSubmittingState(result.error?.code === 'ACTIVE_INCIDENT_EXISTS' ? 'conflict' : 'failure')
+        // If an active incident exists (e.g. 409 Conflict), recover authoritative emergency
+        if (result.error?.code === 'ACTIVE_INCIDENT_EXISTS' || result.error?.status === 409) {
+          setSubmittingState('conflict')
+          await rehydrateEmergency(result.data?.id || null)
+        } else {
+          setSubmittingState('failure')
+        }
         broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.SOS_COMPLETED, {
           incidentId: result.data?.id || null,
         })
@@ -919,7 +926,12 @@ export const useEmergencyState = (
       setSubmittingState('failure')
       broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.SOS_COMPLETED, { incidentId: null })
     }
-  }, [citizenProfile, isPeerSubmittingSos, submittingState])
+  }, [citizenProfile, isPeerSubmittingSos, rehydrateEmergency, submittingState])
+
+  // Trigger real live demo incident (alias for triggerSos)
+  const triggerLiveDemoSos = useCallback(async () => {
+    return triggerSos()
+  }, [triggerSos])
 
   // Auto-play simulation effect: drives canonical state machine
   useEffect(() => {

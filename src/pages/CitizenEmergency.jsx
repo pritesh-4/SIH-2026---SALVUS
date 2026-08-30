@@ -30,6 +30,7 @@ export const CitizenEmergency = () => {
     isRehydrating,
     rehydrationOutcome,
     reconnectRestoredNotice,
+    submittingState,
     isAutoPlaying,
     simulationSpeed,
     setSimulationSpeed,
@@ -104,17 +105,23 @@ export const CitizenEmergency = () => {
             <button
               type="button"
               onClick={() => navigate('/citizen')}
-              className="w-full py-3.5 rounded-xl bg-salvus-surface-elevated hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-primary text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer"
+              disabled={submittingState === 'submitting'}
+              className="w-full py-3.5 rounded-xl bg-salvus-surface-elevated hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-primary text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer disabled:opacity-50"
             >
               Return to Citizen Home
             </button>
             <button
               type="button"
-              onClick={triggerLiveDemoSos}
-              className="w-full py-3.5 rounded-xl bg-salvus-critical hover:opacity-90 text-white text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-2"
+              onClick={triggerSos}
+              disabled={submittingState === 'submitting'}
+              className="w-full py-3.5 rounded-xl bg-salvus-critical hover:opacity-90 text-white text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <span>🚨</span>
-              <span>Activate Emergency SOS</span>
+              <span>{submittingState === 'submitting' ? '⏳' : '🚨'}</span>
+              <span>
+                {submittingState === 'submitting'
+                  ? 'Transmitting Emergency SOS...'
+                  : 'Activate Emergency SOS'}
+              </span>
             </button>
           </div>
         </div>
@@ -141,16 +148,20 @@ export const CitizenEmergency = () => {
             <button
               type="button"
               onClick={() => navigate('/citizen')}
-              className="w-full py-3.5 rounded-xl bg-salvus-surface-elevated hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-primary text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer"
+              disabled={submittingState === 'submitting'}
+              className="w-full py-3.5 rounded-xl bg-salvus-surface-elevated hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-primary text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer disabled:opacity-50"
             >
               Return to Home
             </button>
             <button
               type="button"
               onClick={triggerSos}
-              className="w-full py-3.5 rounded-xl bg-salvus-critical hover:opacity-90 text-white text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer shadow-xs"
+              disabled={submittingState === 'submitting'}
+              className="w-full py-3.5 rounded-xl bg-salvus-critical hover:opacity-90 text-white text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer shadow-xs disabled:opacity-50"
             >
-              Re-activate SOS Beacon
+              {submittingState === 'submitting'
+                ? 'Transmitting Emergency SOS...'
+                : 'Re-activate SOS Beacon'}
             </button>
           </div>
         </div>

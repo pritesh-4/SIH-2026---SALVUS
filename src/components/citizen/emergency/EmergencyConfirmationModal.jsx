@@ -63,7 +63,7 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel, isLoad
         {/* Warning Tag */}
         <div className="flex items-center gap-2 mb-3">
           <Badge variant="critical" dot={true}>
-            EMERGENCY REQUEST
+            EMERGENCY SOS
           </Badge>
         </div>
 
@@ -72,7 +72,7 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel, isLoad
           id="confirm-modal-title"
           className="text-xl sm:text-2xl font-extrabold text-salvus-text-primary tracking-tight leading-snug"
         >
-          SEND EMERGENCY REQUEST?
+          Emergency SOS
         </h2>
 
         {/* Reassuring Plain Language Description */}
@@ -80,7 +80,7 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel, isLoad
           id="confirm-modal-desc"
           className="text-xs sm:text-sm text-salvus-text-secondary mt-2 leading-relaxed font-normal"
         >
-          Your current location will be shared with emergency coordinators.
+          Your current location will be shared with Salvus emergency coordination.
         </p>
 
         {/* Clear Safeguard Guidance */}
@@ -91,7 +91,7 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel, isLoad
           </div>
           <div className="flex items-center gap-2 font-medium text-salvus-text-primary">
             <span>🛡️</span>
-            <span>Nearest rescue teams are alerted.</span>
+            <span>Nearest rescue teams are alerted for response coordination.</span>
           </div>
         </div>
 
@@ -113,7 +113,7 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel, isLoad
             }
             className="font-extrabold text-sm tracking-wider min-h-[48px] py-3.5 cursor-pointer shadow-md active:scale-[0.98] transition-transform"
           >
-            {isLoading ? 'Transmitting SOS...' : 'SEND SOS'}
+            {isLoading ? 'Transmitting SOS...' : 'Confirm SOS'}
           </Button>
 
           <Button
@@ -124,7 +124,7 @@ export const EmergencyConfirmationModal = ({ isOpen, onConfirm, onCancel, isLoad
             disabled={isLoading}
             className="text-salvus-text-secondary hover:text-salvus-text-primary font-bold text-sm min-h-[48px]"
           >
-            CANCEL
+            Cancel
           </Button>
         </div>
       </div>

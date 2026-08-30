@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLocation } from '../hooks/useLocation'
+import { useAuth } from '../hooks/useAuth'
 import { SafetyStatusCard } from '../components/citizen/SafetyStatusCard'
 import { EmergencyCard } from '../components/citizen/EmergencyCard'
 import { ActiveAlertCard } from '../components/citizen/ActiveAlertCard'
@@ -19,6 +20,7 @@ import { LANDMARKS } from '../lib/location'
 
 export const CitizenHome = () => {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const { location, isAcquiring, requestLocation, selectLandmark } = useLocation()
 
   const [isConfirmingSos, setIsConfirmingSos] = useState(false)
@@ -109,7 +111,7 @@ export const CitizenHome = () => {
     setIsSubmittingSos(true)
 
     try {
-      // Acquire coordinates safely
+      // Acquire coordinates safely (browser GPS preferred)
       let locLat = location?.latitude
       let locLng = location?.longitude
 
@@ -121,24 +123,24 @@ export const CitizenHome = () => {
         }
       }
 
+      // Safe fallback if GPS unavailable: use primary district landmark coordinates
       if (!locLat || !locLng) {
-        setIsConfirmingSos(false)
-        setIsSubmittingSos(false)
-        alert(
-          'Location access is required to transmit your emergency SOS beacon. Please enable device GPS or select an approximate landmark.'
-        )
-        return
+        locLat = LANDMARKS[0].latitude
+        locLng = LANDMARKS[0].longitude
       }
 
       // Submit SOS Beacon to backend with idempotency key
       const idempotencyKey = generateIdempotencyKey('sos_cit')
+      const reporterName = user?.name || 'Citizen User'
+      const reporterPhone = user?.phone || null
+
       const result = await createIncident(
         {
           type: 'flood',
           severity: 'CRITICAL',
           description: 'Immediate emergency SOS beacon activated by citizen.',
-          reporter_name: 'Citizen User',
-          reporter_phone: null,
+          reporter_name: reporterName,
+          reporter_phone: reporterPhone,
           latitude: locLat,
           longitude: locLng,
           affected_count: 1,
