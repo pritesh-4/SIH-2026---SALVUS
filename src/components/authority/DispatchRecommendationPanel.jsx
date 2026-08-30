@@ -1,27 +1,32 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Navigation,
   Send,
   Clock,
   MapPin,
   Users,
+  Shield,
+  Activity,
   ChevronDown,
   ChevronUp,
   AlertCircle,
   RefreshCw,
+  CheckCircle2,
 } from 'lucide-react'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
 /**
- * Recommended Response Dispatch Panel (Master Prompt 3 - Step 8)
+ * Recommended Response Dispatch Panel (Pass 4B - Operator Decision Hub)
  *
  * Operational dispatch decision hub:
- * - Highlights recommended response unit with capability, ETA, distance, crew load, match score
- * - Plain reason why recommended
- * - Direct [ VIEW ROUTE ] & [ ASSIGN UNIT ] actions
- * - Subordinated alternative candidates
+ * - Highlights recommended response unit with capability, Estimated ETA, distance, crew load, match score
+ * - Plain fact-based reason why recommended ("WHY THIS UNIT?")
+ * - Compact visual score factor breakdown (6 factors summing to 100)
+ * - Tradeoff presentation for alternative candidates with comparative reasons
+ * - Freshness timestamp & stale recommendation alert
+ * - Direct [ VIEW ROUTE ] & [ ASSIGN ] actions
  */
 export const DispatchRecommendationPanel = ({
   incident,
@@ -35,6 +40,19 @@ export const DispatchRecommendationPanel = ({
   isAssigning = false,
 }) => {
   const [showFormulaBreakdown, setShowFormulaBreakdown] = useState(false)
+  const [now, setNow] = useState(Date.now)
+
+  // Periodic tick to refresh relative elapsed time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(Date.now())
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const secondsAgo = topCandidate?.calculated_at
+    ? Math.max(0, Math.floor((now - new Date(topCandidate.calculated_at).getTime()) / 1000))
+    : 0
 
   if (!incident) return null
 
@@ -51,8 +69,8 @@ export const DispatchRecommendationPanel = ({
         </div>
         <div className="py-6 text-center space-y-2">
           <RefreshCw className="h-4 w-4 text-salvus-info animate-spin mx-auto" />
-          <p className="text-xs text-salvus-text-secondary">
-            Evaluating candidate units, distance & transit routes...
+          <p className="text-xs text-salvus-text-secondary font-medium">
+            Evaluating candidate units, spatial proximity & transit corridors...
           </p>
         </div>
       </Card>
@@ -61,28 +79,52 @@ export const DispatchRecommendationPanel = ({
 
   if (!topCandidate) {
     return (
-      <Card variant="warning" padding="md" className="space-y-3">
+      <Card variant="warning" padding="md" className="space-y-3 shadow-2xs">
         <div className="flex items-center justify-between border-b border-salvus-warning-border pb-2">
           <div className="flex items-center gap-1.5 text-salvus-warning font-bold text-xs">
-            <AlertCircle className="h-3.5 w-3.5" />
-            <span>No Available Units in Sector</span>
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>No Suitable Responder Available</span>
           </div>
           <Badge variant="warning" size="sm">
             Standby
           </Badge>
         </div>
 
-        <div className="py-2 text-center space-y-2 text-xs">
-          <p className="text-salvus-text-secondary">
-            All response units are currently committed or outside the immediate sector.
+        <div className="space-y-2 text-xs">
+          <p className="text-salvus-text-secondary leading-relaxed font-medium">
+            No active unit currently meets all operational readiness and safety criteria in this
+            sector.
           </p>
+
+          <div className="bg-salvus-muted/40 p-2.5 rounded-lg border border-salvus-border space-y-1 text-salvus-text-muted text-[11px]">
+            <span className="font-semibold text-salvus-text-primary block">
+              Evaluation Criteria Checked:
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-salvus-warning">⚠</span>
+              <span>
+                Available units with matching equipment for{' '}
+                <strong>{incident.type?.replace('_', ' ') || 'disaster'}</strong>
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-salvus-warning">⚠</span>
+              <span>Units within operational transit radius (&lt;25 km)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-salvus-warning">⚠</span>
+              <span>Units not already committed to active rescue missions</span>
+            </div>
+          </div>
+
           {onRefreshCandidates && (
             <Button
               variant="secondary"
               size="sm"
+              fullWidth={true}
               onClick={onRefreshCandidates}
               leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
-              className="mx-auto text-xs"
+              className="text-xs font-semibold mt-1"
             >
               Refresh Fleet Feeds
             </Button>
@@ -97,35 +139,88 @@ export const DispatchRecommendationPanel = ({
     activeRoute?.responderId === topCandidate.id ||
     activeRoute?.label?.includes(topCandidate.unit_name || topCandidate.unitName || '')
 
+  const isStale = secondsAgo > 90
+
+  // Format workload label
+  const getWorkloadLabel = (load, maxCap) => {
+    const cap = maxCap || 8
+    const l = load || 0
+    const ratio = l / cap
+    if (ratio === 0) return { text: 'Low (0 load)', variant: 'safe' }
+    if (ratio <= 0.5) return { text: `Moderate (${l}/${cap})`, variant: 'info' }
+    return { text: `High (${l}/${cap})`, variant: 'warning' }
+  }
+
+  const workloadInfo = getWorkloadLabel(topCandidate.current_load, topCandidate.max_capacity)
+
   return (
     <Card padding="sm" className="space-y-3 shadow-2xs">
-      {/* Section Header */}
+      {/* Header & Freshness Notice */}
       <div className="flex items-center justify-between border-b border-salvus-border pb-2">
         <div className="flex items-center gap-1.5">
           <Badge variant="info" dot={true}>
-            RECOMMENDED RESPONSE
+            RECOMMENDED RESPONDER
           </Badge>
+          {secondsAgo > 0 && (
+            <span className="text-[10px] text-salvus-text-muted font-mono">
+              {secondsAgo < 60 ? `${secondsAgo}s ago` : `${Math.floor(secondsAgo / 60)}m ago`}
+            </span>
+          )}
         </div>
-        <span className="text-xs text-salvus-text-muted">
-          Match Score:{' '}
-          <strong className="text-salvus-text-primary font-mono">
-            {topCandidate.match_score ?? topCandidate.matchScore}/100
-          </strong>
-        </span>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-salvus-text-muted">
+            Score:{' '}
+            <strong className="text-salvus-safe font-mono text-sm">
+              {topCandidate.match_score ?? topCandidate.matchScore}/100
+            </strong>
+          </span>
+
+          {onRefreshCandidates && (
+            <button
+              type="button"
+              onClick={onRefreshCandidates}
+              title="Refresh recommendations"
+              className="text-salvus-text-muted hover:text-salvus-text-primary p-1 rounded-md transition-colors cursor-pointer select-none"
+            >
+              <RefreshCw className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Primary Recommended Unit */}
-      <div className="bg-salvus-surface-elevated border border-salvus-border-strong p-3.5 rounded-xl space-y-3">
+      {/* Stale Warning Banner (if data is older than threshold) */}
+      {isStale && (
+        <div className="bg-salvus-warning-bg border border-salvus-warning-border p-2 rounded-lg flex items-center justify-between text-[11px] text-salvus-warning-text animate-fadeIn">
+          <span>⚠️ Recommendation may have changed. Unit coordinates or status updated.</span>
+          {onRefreshCandidates && (
+            <button
+              type="button"
+              onClick={onRefreshCandidates}
+              className="font-bold underline cursor-pointer hover:opacity-80 shrink-0 ml-2"
+            >
+              Refresh
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Primary Recommended Unit Card */}
+      <div className="bg-salvus-surface-elevated border border-salvus-border-strong p-3.5 rounded-xl space-y-3 shadow-xs">
         {/* Unit Headline */}
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h4 className="text-sm font-bold text-salvus-text-primary">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-salvus-info uppercase tracking-wider font-mono">
+                #1 Recommended
+              </span>
+            </div>
+            <h4 className="text-sm font-extrabold text-salvus-text-primary tracking-tight mt-0.5">
               {topCandidate.unit_name || topCandidate.unitName}
             </h4>
-            <p className="text-xs text-salvus-text-secondary mt-0.5">
+            <p className="text-xs text-salvus-text-secondary mt-0.5 font-medium">
               {topCandidate.team_lead && `Lead: ${topCandidate.team_lead} · `}
-              {topCandidate.vehicle_type || 'Rescue Craft'} (
-              {topCandidate.capability?.replace('_', ' ') || 'General'})
+              {topCandidate.vehicle_type || 'Rescue Craft'}
             </p>
           </div>
 
@@ -134,66 +229,108 @@ export const DispatchRecommendationPanel = ({
           </Badge>
         </div>
 
-        {/* 4-Metric Grid */}
-        <div className="grid grid-cols-4 gap-1.5 p-2 bg-salvus-muted/40 rounded-lg border border-salvus-border text-xs">
+        {/* 6-Metric Operational Grid */}
+        <div className="grid grid-cols-3 gap-1.5 p-2 bg-salvus-muted/40 rounded-lg border border-salvus-border text-xs">
           <div>
-            <span className="text-[10px] text-salvus-text-muted uppercase block">Distance</span>
-            <div className="flex items-center gap-1 font-bold text-salvus-text-primary font-mono">
-              <MapPin className="h-3 w-3 text-salvus-info shrink-0" />
-              <span>{topCandidate.distance_km ?? topCandidate.distanceKm ?? 1.2} km</span>
-            </div>
-          </div>
-
-          <div>
-            <span className="text-[10px] text-salvus-text-muted uppercase block">Est. ETA</span>
-            <div className="flex items-center gap-1 font-bold text-salvus-info font-mono">
+            <span className="text-[10px] text-salvus-text-muted uppercase font-semibold block">
+              Est. ETA
+            </span>
+            <div className="flex items-center gap-1 font-bold text-salvus-info font-mono mt-0.5">
               <Clock className="h-3 w-3 text-salvus-info shrink-0" />
               <span>{topCandidate.eta_formatted || topCandidate.etaFormatted || '5 min'}</span>
             </div>
           </div>
 
           <div>
-            <span className="text-[10px] text-salvus-text-muted uppercase block">Capacity</span>
-            <span className="font-semibold text-salvus-text-primary truncate block font-mono">
-              {topCandidate.max_capacity ?? 6} Pax
+            <span className="text-[10px] text-salvus-text-muted uppercase font-semibold block">
+              Distance
             </span>
+            <div className="flex items-center gap-1 font-bold text-salvus-text-primary font-mono mt-0.5">
+              <MapPin className="h-3 w-3 text-salvus-info shrink-0" />
+              <span>{topCandidate.distance_km ?? topCandidate.distanceKm ?? 1.2} km</span>
+            </div>
           </div>
 
           <div>
-            <span className="text-[10px] text-salvus-text-muted uppercase block">Crew Load</span>
-            <div className="flex items-center gap-1 text-salvus-text-secondary font-mono">
-              <Users className="h-3 w-3 text-salvus-text-muted shrink-0" />
-              <span>{topCandidate.current_load ?? 0}</span>
+            <span className="text-[10px] text-salvus-text-muted uppercase font-semibold block">
+              Capability
+            </span>
+            <div className="flex items-center gap-1 font-semibold text-salvus-safe truncate mt-0.5">
+              <Shield className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {topCandidate.capability?.replace('_', ' ') || 'Rescue'} ✓
+              </span>
             </div>
           </div>
-        </div>
 
-        {/* Why Reason */}
-        <div className="p-2.5 bg-salvus-muted/30 rounded-lg border border-salvus-border space-y-1 text-xs">
-          <span className="text-[11px] font-bold text-salvus-text-primary block">
-            Why recommended:
-          </span>
-          <div className="space-y-1">
-            {topCandidate.explanation?.positive_factors?.slice(0, 2).map((bullet, idx) => (
-              <div key={idx} className="text-salvus-safe-text flex items-start gap-1.5 font-medium">
-                <span className="shrink-0 font-bold">✓</span>
-                <span>{bullet.replace(/^[✓\s]+/, '')}</span>
-              </div>
-            ))}
-            {!topCandidate.explanation?.positive_factors?.length && (
-              <div className="text-salvus-text-secondary">
-                ✓ Compatible equipment capability & optimal transit corridor
-              </div>
-            )}
+          <div>
+            <span className="text-[10px] text-salvus-text-muted uppercase font-semibold block">
+              Workload
+            </span>
+            <div className="flex items-center gap-1 text-salvus-text-secondary font-mono mt-0.5">
+              <Users className="h-3 w-3 text-salvus-text-muted shrink-0" />
+              <span>{workloadInfo.text}</span>
+            </div>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-salvus-text-muted uppercase font-semibold block">
+              Readiness
+            </span>
+            <div className="flex items-center gap-1 text-salvus-safe font-semibold mt-0.5">
+              <Activity className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {topCandidate.status === 'AVAILABLE' ? 'Available' : topCandidate.status}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-salvus-text-muted uppercase font-semibold block">
+              Capacity
+            </span>
+            <span className="font-semibold text-salvus-text-primary font-mono block mt-0.5">
+              {topCandidate.max_capacity ?? 8} Pax
+            </span>
           </div>
         </div>
 
-        {/* Audit Formula Accordion */}
+        {/* WHY THIS UNIT? (Fact-based Plain Explanation) */}
+        <div className="p-2.5 bg-salvus-muted/30 rounded-lg border border-salvus-border space-y-1 text-xs">
+          <span className="text-[11px] font-bold text-salvus-text-primary block flex items-center gap-1.5">
+            <CheckCircle2 className="h-3.5 w-3.5 text-salvus-safe" />
+            <span>Why this responder:</span>
+          </span>
+
+          <p className="text-salvus-text-primary leading-relaxed text-xs font-medium">
+            {topCandidate.match_reason &&
+            topCandidate.match_reason.startsWith('Recommended because')
+              ? topCandidate.match_reason
+              : `Recommended because ${topCandidate.unit_name || 'this unit'} is available immediately, has specialized ${topCandidate.capability?.replace('_', ' ')} capability, and provides the fastest estimated ETA.`}
+          </p>
+
+          {topCandidate.explanation?.positive_factors &&
+            topCandidate.explanation.positive_factors.length > 0 && (
+              <div className="pt-1 space-y-0.5 border-t border-salvus-border/50">
+                {topCandidate.explanation.positive_factors.slice(0, 2).map((bullet, idx) => (
+                  <div
+                    key={idx}
+                    className="text-salvus-safe-text text-[11px] flex items-start gap-1 font-medium"
+                  >
+                    <span className="shrink-0 font-bold">✓</span>
+                    <span>{bullet.replace(/^[✓\s]+/, '')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+        </div>
+
+        {/* Compact Visual Factor Breakdown Accordion */}
         <div>
           <button
             type="button"
             onClick={() => setShowFormulaBreakdown((prev) => !prev)}
-            className="w-full flex items-center justify-between text-xs text-salvus-info hover:underline py-1 cursor-pointer font-medium"
+            className="w-full flex items-center justify-between text-xs text-salvus-info hover:underline py-1 cursor-pointer font-medium select-none"
           >
             <span className="flex items-center gap-1">
               {showFormulaBreakdown ? (
@@ -201,38 +338,115 @@ export const DispatchRecommendationPanel = ({
               ) : (
                 <ChevronDown className="h-3.5 w-3.5" />
               )}
-              <span>{showFormulaBreakdown ? 'Hide Score Breakdown' : 'View Score Breakdown'}</span>
+              <span>
+                {showFormulaBreakdown ? 'Hide Score Breakdown' : 'View Explainable Score Breakdown'}
+              </span>
+            </span>
+            <span className="font-mono text-[11px] text-salvus-text-muted">
+              {topCandidate.match_score ?? 87} / 100
             </span>
           </button>
 
           {showFormulaBreakdown && (
-            <div className="mt-1.5 p-2 bg-salvus-muted/40 rounded-lg border border-salvus-border text-xs space-y-1 text-salvus-text-secondary font-mono animate-fadeIn">
-              <div className="flex justify-between">
-                <span>Capability Match (Max 30):</span>
-                <span className="font-bold text-salvus-text-primary">
-                  {breakdown.capability_score ?? 30} pts
-                </span>
+            <div className="mt-1.5 p-2.5 bg-salvus-muted/40 rounded-lg border border-salvus-border text-xs space-y-2 animate-fadeIn">
+              {/* Factor 1: Capability */}
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-[11px] font-medium">
+                  <span>Specialized Capability Match</span>
+                  <span className="font-bold text-salvus-text-primary font-mono">
+                    {breakdown.capability_score ?? 30} / 30 pts
+                  </span>
+                </div>
+                <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-salvus-safe h-1.5 rounded-full"
+                    style={{ width: `${((breakdown.capability_score ?? 30) / 30) * 100}%` }}
+                  />
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span>Operational Readiness (Max 20):</span>
-                <span className="font-bold text-salvus-text-primary">
-                  {breakdown.availability_score ?? 20} pts
-                </span>
+
+              {/* Factor 2: Availability */}
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-[11px] font-medium">
+                  <span>Operational Readiness</span>
+                  <span className="font-bold text-salvus-text-primary font-mono">
+                    {breakdown.availability_score ?? 20} / 20 pts
+                  </span>
+                </div>
+                <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-salvus-info h-1.5 rounded-full"
+                    style={{ width: `${((breakdown.availability_score ?? 20) / 20) * 100}%` }}
+                  />
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span>Spatial Proximity (Max 15):</span>
-                <span className="font-bold text-salvus-text-primary">
-                  {breakdown.distance_score ?? 15} pts
-                </span>
+
+              {/* Factor 3: Proximity */}
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-[11px] font-medium">
+                  <span>Spatial Proximity (&lt;25 km)</span>
+                  <span className="font-bold text-salvus-text-primary font-mono">
+                    {breakdown.distance_score ?? 15} / 15 pts
+                  </span>
+                </div>
+                <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-salvus-info h-1.5 rounded-full"
+                    style={{ width: `${((breakdown.distance_score ?? 15) / 15) * 100}%` }}
+                  />
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span>Transit ETA (Max 15):</span>
-                <span className="font-bold text-salvus-text-primary">
-                  {breakdown.eta_score ?? 12} pts
-                </span>
+
+              {/* Factor 4: Transit ETA */}
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-[11px] font-medium">
+                  <span>Transit ETA (&lt;35 min)</span>
+                  <span className="font-bold text-salvus-text-primary font-mono">
+                    {breakdown.eta_score ?? 15} / 15 pts
+                  </span>
+                </div>
+                <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-salvus-info h-1.5 rounded-full"
+                    style={{ width: `${((breakdown.eta_score ?? 15) / 15) * 100}%` }}
+                  />
+                </div>
               </div>
-              <div className="flex justify-between border-t border-salvus-border pt-1 font-bold text-salvus-text-primary">
-                <span>Total Match:</span>
+
+              {/* Factor 5: Workload */}
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-[11px] font-medium">
+                  <span>Workload Capacity Available</span>
+                  <span className="font-bold text-salvus-text-primary font-mono">
+                    {breakdown.workload_score ?? 10} / 10 pts
+                  </span>
+                </div>
+                <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-salvus-safe h-1.5 rounded-full"
+                    style={{ width: `${((breakdown.workload_score ?? 10) / 10) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Factor 6: Severity Fit */}
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-[11px] font-medium">
+                  <span>Urgency & Crew Capacity Fit</span>
+                  <span className="font-bold text-salvus-text-primary font-mono">
+                    {breakdown.severity_fit_score ?? 8} / 10 pts
+                  </span>
+                </div>
+                <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-salvus-safe h-1.5 rounded-full"
+                    style={{ width: `${((breakdown.severity_fit_score ?? 8) / 10) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-between border-t border-salvus-border pt-1.5 font-bold text-salvus-text-primary font-mono text-xs">
+                <span>Total Normalized Score:</span>
                 <span className="text-salvus-safe">{topCandidate.match_score ?? 87} / 100</span>
               </div>
             </div>
@@ -248,7 +462,7 @@ export const DispatchRecommendationPanel = ({
             leftIcon={<Navigation className="h-3.5 w-3.5 text-salvus-info" />}
             className="text-xs font-semibold"
           >
-            {isSelectedForRoute ? 'Route Active' : 'View Route'}
+            {isSelectedForRoute ? 'Route Active' : 'Preview Route'}
           </Button>
 
           <Button
@@ -264,14 +478,17 @@ export const DispatchRecommendationPanel = ({
         </div>
       </div>
 
-      {/* Alternatives */}
+      {/* Tradeoff Alternatives Presentation */}
       {alternatives.length > 0 && (
         <div className="space-y-2 pt-2 border-t border-salvus-border">
-          <span className="text-xs font-semibold text-salvus-text-secondary block">
-            Alternative Available Units ({alternatives.length})
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-salvus-text-secondary uppercase">
+              Alternative Available Units ({alternatives.length})
+            </span>
+            <span className="text-[10px] text-salvus-text-muted">Tradeoff Evaluation</span>
+          </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {alternatives.slice(0, 3).map((alt, idx) => {
               const isAltRouteActive =
                 activeRoute?.responderId === alt.id ||
@@ -280,47 +497,70 @@ export const DispatchRecommendationPanel = ({
               return (
                 <div
                   key={alt.id}
-                  className="p-2 bg-salvus-muted/30 border border-salvus-border rounded-lg flex items-center justify-between gap-2 text-xs"
+                  className="p-2.5 bg-salvus-muted/30 border border-salvus-border rounded-xl space-y-1.5 text-xs hover:border-salvus-border-strong transition-all"
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-bold text-salvus-text-muted font-mono">
-                        #{idx + 2}
-                      </span>
-                      <strong className="text-salvus-text-primary truncate">
-                        {alt.unit_name || alt.unitName}
-                      </strong>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-salvus-text-muted font-mono bg-salvus-surface px-1.5 py-0.5 rounded border border-salvus-border">
+                          #{idx + 2}
+                        </span>
+                        <strong className="text-salvus-text-primary truncate font-bold">
+                          {alt.unit_name || alt.unitName}
+                        </strong>
+                        <span className="text-[10px] font-mono text-salvus-text-muted">
+                          ({alt.match_score ?? 70}/100)
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[11px] text-salvus-text-secondary mt-0.5">
+                        <span>{alt.vehicle_type || 'Craft'}</span>
+                        <span>·</span>
+                        <span className="font-mono">
+                          {alt.distance_km ?? alt.distanceKm ?? 2.1} km
+                        </span>
+                        <span>·</span>
+                        <span className="font-mono text-salvus-info font-semibold">
+                          ETA ~{alt.eta_formatted || alt.etaFormatted || '8 min'}
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-salvus-text-secondary truncate">
-                      {alt.vehicle_type || 'Craft'} · {alt.distance_km ?? alt.distanceKm ?? 2.1} km
-                      · ETA {alt.eta_formatted || alt.etaFormatted || '8 min'}
-                    </p>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onSelectRoute?.(alt)}
+                        title="Preview route on map"
+                        className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                          isAltRouteActive
+                            ? 'bg-salvus-info-bg border-salvus-info-border text-salvus-info'
+                            : 'bg-salvus-surface border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
+                        }`}
+                      >
+                        <Navigation className="h-3 w-3" />
+                      </button>
+
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={isAssigning || alt.status === 'OFFLINE'}
+                        onClick={() => onRequestAssign?.(alt)}
+                        className="text-xs font-semibold"
+                      >
+                        Assign
+                      </Button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => onSelectRoute?.(alt)}
-                      title="View route corridor on map"
-                      className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
-                        isAltRouteActive
-                          ? 'bg-salvus-info-bg border-salvus-info-border text-salvus-info'
-                          : 'bg-salvus-surface border-salvus-border text-salvus-text-secondary hover:text-salvus-text-primary'
-                      }`}
-                    >
-                      <Navigation className="h-3 w-3" />
-                    </button>
-
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={isAssigning || alt.status === 'OFFLINE'}
-                      onClick={() => onRequestAssign?.(alt)}
-                      className="text-xs"
-                    >
-                      Assign
-                    </Button>
-                  </div>
+                  {/* Tradeoff Reason Summary */}
+                  {(alt.comparative_reason || alt.comparativeReason) && (
+                    <div className="bg-salvus-surface p-1.5 rounded-md border border-salvus-border/70 text-[11px] text-salvus-text-secondary font-medium">
+                      <span>Tradeoff: </span>
+                      <span className="text-salvus-text-primary">
+                        {alt.comparative_reason || alt.comparativeReason}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )
             })}

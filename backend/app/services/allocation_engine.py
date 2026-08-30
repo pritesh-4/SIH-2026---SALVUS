@@ -36,6 +36,7 @@ Normalization Rules:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Final
 
 from app.models import (
@@ -406,6 +407,66 @@ def is_eligible_candidate(responder: ResponderResponse) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _generate_primary_reason(
+    cand: CandidateResponderResponse,
+    incident: IncidentResponse,
+    cap_reason: str,
+    cap_pct: int,
+) -> str:
+    """Generate concise deterministic explanation of why unit is recommended."""
+    avail_phrase = (
+        "available immediately" if cand.status == "AVAILABLE" else f"active ({cand.status})"
+    )
+    load_phrase = (
+        "zero load backlog"
+        if cand.current_load == 0
+        else f"capacity for {cand.max_capacity - cand.current_load} additional pax"
+    )
+    return (
+        f"Recommended because {cand.unit_name} is {avail_phrase}, "
+        f"has {cap_reason} ({cap_pct}% match), "
+        f"and offers fastest transit corridor (~{cand.eta_formatted} / "
+        f"{cand.distance_km:.1f} km) with {load_phrase}."
+    )
+
+
+def _generate_comparative_reason(
+    alt: CandidateResponderResponse,
+    primary: CandidateResponderResponse,
+    alt_cap_pct: int,
+    primary_cap_pct: int,
+) -> str:
+    """Generate concise deterministic comparative explanation for alternative candidates."""
+    reasons: list[str] = []
+
+    # 1. Capability difference
+    if alt_cap_pct < primary_cap_pct:
+        reasons.append(f"secondary capability ({alt_cap_pct}% match vs {primary_cap_pct}%)")
+
+    # 2. Status difference
+    if alt.status != "AVAILABLE" and primary.status == "AVAILABLE":
+        reasons.append(f"status is {alt.status}")
+
+    # 3. ETA delta
+    eta_diff = round(alt.eta_minutes - primary.eta_minutes, 1)
+    if eta_diff >= 1.0:
+        reasons.append(f"ETA {int(round(eta_diff))} min slower")
+
+    # 4. Distance delta
+    dist_diff = round(alt.distance_km - primary.distance_km, 1)
+    if dist_diff >= 0.5:
+        reasons.append(f"{dist_diff} km farther")
+
+    # 5. Workload delta
+    if alt.current_load > primary.current_load:
+        reasons.append(f"higher crew load ({alt.current_load}/{alt.max_capacity})")
+
+    if not reasons:
+        return "Viable standby alternative; subordinated due to deterministic tie-breaking."
+
+    return f"Viable alternative, but {', '.join(reasons)}."
+
+
 def rank_and_explain_candidates(
     incident: IncidentResponse,
     responders: list[ResponderResponse],
@@ -435,7 +496,8 @@ def rank_and_explain_candidates(
     if not eligible_responders:
         return []
 
-    scored_candidates: list[CandidateResponderResponse] = []
+    now_iso = datetime.now(UTC).isoformat()
+    scored_candidates: list[tuple[CandidateResponderResponse, int]] = []
 
     for resp in eligible_responders:
         dist_km = haversine_distance_km(
@@ -526,54 +588,70 @@ def rank_and_explain_candidates(
             breakdown=breakdown,
         )
 
-        scored_candidates.append(
-            CandidateResponderResponse(
-                id=resp.id,
-                unit_name=resp.unit_name,
-                team_lead=resp.team_lead,
-                vehicle_type=resp.vehicle_type,
-                capability=resp.capability,
-                status=resp.status,
-                latitude=resp.latitude,
-                longitude=resp.longitude,
-                radio_channel=resp.radio_channel,
-                max_capacity=resp.max_capacity,
-                current_load=resp.current_load,
-                assigned_incident_id=resp.assigned_incident_id,
-                distance_km=round(dist_km, 2),
-                eta_minutes=eta_minutes,
-                eta_formatted=eta_formatted,
-                match_score=final_score,
-                match_reason=cap_reason,
-                is_recommended=False,
-                rank=1,
-                explanation=explanation,
-                route_geometry=[],
-                route_status="ESTIMATED",
-            )
+        candidate_obj = CandidateResponderResponse(
+            id=resp.id,
+            unit_name=resp.unit_name,
+            team_lead=resp.team_lead,
+            vehicle_type=resp.vehicle_type,
+            capability=resp.capability,
+            status=resp.status,
+            latitude=resp.latitude,
+            longitude=resp.longitude,
+            radio_channel=resp.radio_channel,
+            max_capacity=resp.max_capacity,
+            current_load=resp.current_load,
+            assigned_incident_id=resp.assigned_incident_id,
+            distance_km=round(dist_km, 2),
+            eta_minutes=eta_minutes,
+            eta_formatted=eta_formatted,
+            match_score=final_score,
+            match_reason=cap_reason,
+            is_recommended=False,
+            rank=1,
+            explanation=explanation,
+            comparative_reason=None,
+            calculated_at=now_iso,
+            route_geometry=[],
+            route_status="ESTIMATED",
         )
+        scored_candidates.append((candidate_obj, cap_pct))
 
     # 5. Deterministic Multi-Level Tie-Breaking:
     # 1st by match_score DESC, 2nd by distance_km ASC, 3rd by eta_minutes ASC,
     # 4th by current_load ASC, 5th by ID ASC (guarantees strict reproducible ordering)
     scored_candidates.sort(
-        key=lambda c: (
-            -c.match_score,
-            c.distance_km,
-            c.eta_minutes,
-            c.current_load,
-            c.id,
+        key=lambda item: (
+            -item[0].match_score,
+            item[0].distance_km,
+            item[0].eta_minutes,
+            item[0].current_load,
+            item[0].id,
         )
     )
 
-    # 6. Apply Top N Limit & Assign Explicit 1-based Ranks
-    top_candidates = scored_candidates[:limit] if limit > 0 else scored_candidates
+    # 6. Apply Top N Limit & Assign Explicit 1-based Ranks and Comparative Reasons
+    top_items = scored_candidates[:limit] if limit > 0 else scored_candidates
+    top_candidates = [item[0] for item in top_items]
 
-    for idx, cand in enumerate(top_candidates, start=1):
-        cand.rank = idx
-        if idx == 1:
-            cand.is_recommended = True
-            if cand.explanation:
-                cand.explanation.headline = f"★ PRIMARY RECOMMENDATION — {cand.unit_name}"
+    if top_candidates:
+        primary_cand = top_candidates[0]
+        primary_cap_pct = top_items[0][1]
+        primary_cand.rank = 1
+        primary_cand.is_recommended = True
+        if primary_cand.explanation:
+            primary_cand.explanation.headline = (
+                f"★ PRIMARY RECOMMENDATION — {primary_cand.unit_name}"
+            )
+            # Ensure match_reason has deterministic full primary explanation
+            primary_cand.match_reason = _generate_primary_reason(
+                primary_cand, incident, primary_cand.match_reason, primary_cap_pct
+            )
+
+        for idx, (alt_cand, alt_cap_pct) in enumerate(top_items[1:], start=2):
+            alt_cand.rank = idx
+            alt_cand.is_recommended = False
+            alt_cand.comparative_reason = _generate_comparative_reason(
+                alt_cand, primary_cand, alt_cap_pct, primary_cap_pct
+            )
 
     return top_candidates

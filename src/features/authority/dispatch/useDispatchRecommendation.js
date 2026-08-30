@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { fetchResponderCandidates } from '../../../services/api'
 import { fetchRoute } from '../../../services/routingService'
-import { calculateDistanceKm } from '../incidents/incidentUtils'
 
 export const useDispatchRecommendation = ({
   selectedIncident = null,
@@ -85,102 +84,12 @@ export const useDispatchRecommendation = ({
   }, [selectedIncident, liveResponders])
 
   // ---------------------------------------------------------------------------
-  // 2. Fallback Deterministic Candidate Ranking
+  // 2. Canonical Server-Authoritative Candidate Accessors
   // ---------------------------------------------------------------------------
   const candidateResponders = useMemo(() => {
     if (!selectedIncident) return []
-    if (candidateList.length > 0) return candidateList
-    if (!liveResponders.length) return []
-
-    const incLat = selectedIncident.latitude
-    const incLon = selectedIncident.longitude
-    const hasCoords = typeof incLat === 'number' && typeof incLon === 'number'
-    const incType = (selectedIncident.type || '').toLowerCase()
-
-    const list = liveResponders
-      .filter((r) => r.status !== 'OFFLINE')
-      .map((resp) => {
-        const hasRespCoords =
-          typeof resp.latitude === 'number' && typeof resp.longitude === 'number'
-        const distKm =
-          hasCoords && hasRespCoords
-            ? calculateDistanceKm(incLat, incLon, resp.latitude, resp.longitude)
-            : null
-
-        let capScore = 15
-        let matchReason = 'General Auxiliary Support'
-
-        if (incType === 'flood') {
-          if (resp.capability === 'FLOOD_BOAT') {
-            capScore = 35
-            matchReason = 'Specialized Inflatable Flood Rescue Watercraft'
-          } else if (resp.capability === 'AMBULANCE') {
-            capScore = 24
-            matchReason = 'High-Water Medical Evacuation Support'
-          } else if (resp.capability === 'STRETCHER_TEAM') {
-            capScore = 20
-            matchReason = 'Shallow Water Stretcher Extraction'
-          }
-        } else if (incType === 'medical') {
-          if (resp.capability === 'AMBULANCE') {
-            capScore = 35
-            matchReason = 'Primary Advanced Life Support Ambulance'
-          } else if (resp.capability === 'STRETCHER_TEAM') {
-            capScore = 28
-            matchReason = 'Field Triage & Stretcher Transfer'
-          }
-        }
-
-        let availScore = 0
-        if (resp.status === 'AVAILABLE') availScore = 20
-        else if (resp.status === 'NEARBY') availScore = 15
-        else if (resp.status === 'EN_ROUTE') availScore = 8
-
-        const sevScore = selectedIncident.severity === 'CRITICAL' ? 20 : 15
-        const proxScore =
-          distKm !== null ? (distKm < 1 ? 15 : distKm < 3 ? 12 : distKm < 6 ? 8 : 4) : 0
-        const loadPenalty = Math.round((resp.current_load / Math.max(1, resp.max_capacity)) * 10)
-
-        const totalScore = Math.max(
-          0,
-          Math.min(100, capScore + sevScore + availScore + proxScore - loadPenalty)
-        )
-
-        return {
-          ...resp,
-          distance_km: distKm,
-          eta_formatted:
-            distKm !== null ? `${Math.max(1, Math.round((distKm / 35) * 60))} min` : 'Unknown',
-          match_score: totalScore,
-          match_reason: matchReason,
-          is_recommended: false,
-          explanation: {
-            headline: 'Recommended Primary Unit',
-            positive_factors: [
-              `✓ ${matchReason}`,
-              resp.status === 'AVAILABLE'
-                ? '✓ Available immediately'
-                : `✓ Operating in adjacent sector (${resp.status})`,
-              `✓ Rapid transit (~${distKm} km)`,
-              `✓ Zero load backlog (${resp.current_load}/${resp.max_capacity} in use)`,
-            ],
-            negative_factors: [],
-            breakdown: {
-              capability_score: capScore,
-              severity_alignment: sevScore,
-              availability_score: availScore,
-              proximity_score: proxScore,
-              workload_penalty: loadPenalty,
-              total_score: totalScore,
-            },
-          },
-        }
-      })
-
-    list.sort((a, b) => b.match_score - a.match_score || a.distance_km - b.distance_km)
-    if (list.length > 0) list[0].is_recommended = true
-    return list
-  }, [candidateList, selectedIncident, liveResponders])
+    return candidateList || []
+  }, [candidateList, selectedIncident])
 
   const topRecommendedCandidate = useMemo(() => {
     return candidateResponders.find((c) => c.is_recommended) || candidateResponders[0] || null
@@ -188,7 +97,7 @@ export const useDispatchRecommendation = ({
 
   const alternativeCandidates = useMemo(() => {
     if (candidateResponders.length <= 1) return []
-    return candidateResponders.slice(1, 3)
+    return candidateResponders.slice(1, 4)
   }, [candidateResponders])
 
   const activeTargetResponder = useMemo(() => {

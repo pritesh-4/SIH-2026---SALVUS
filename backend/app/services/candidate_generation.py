@@ -139,7 +139,7 @@ def evaluate_responder_eligibility(
     if (
         responder.assigned_incident_id is not None
         and responder.assigned_incident_id != incident.id
-        and st in ("ASSIGNED", "ON_SCENE")
+        and st in ("ASSIGNED", "EN_ROUTE", "NEARBY", "ON_SCENE")
     ):
         return CandidateFilterItem(
             responder_id=responder.id,

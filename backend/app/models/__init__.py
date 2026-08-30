@@ -596,6 +596,8 @@ class CandidateResponderResponse(BaseModel):
     is_recommended: bool
     rank: int = 1
     explanation: CandidateExplanation | None = None
+    comparative_reason: str | None = None
+    calculated_at: str | None = None
     route_geometry: list[list[float]] = []
     route_status: str = "ESTIMATED"
 

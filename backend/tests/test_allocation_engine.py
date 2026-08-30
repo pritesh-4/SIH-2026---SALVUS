@@ -224,7 +224,7 @@ def test_deterministic_ties_handling():
 
 
 def test_top_3_candidates_limit():
-    """Verify allocation engine returns at most the top 3 candidates."""
+    """Verify allocation engine returns at most the top 3 candidates by default."""
     inc = _make_dummy_incident(inc_type="flood")
     fleet = [
         _make_dummy_responder(resp_id=f"r-{i}", name=f"Unit {i}", lat=22.574 + i * 0.005)
@@ -247,6 +247,182 @@ def test_no_candidates_returns_empty():
 
     candidates = rank_and_explain_candidates(inc, [resp_off, resp_busy])
     assert len(candidates) == 0
+
+
+def test_1_exact_capability_match():
+    """Scenario 1: Exact capability match scores highest on capability factor."""
+    inc = _make_dummy_incident(inc_type="flood")
+    resp_exact = _make_dummy_responder(resp_id="r-boat", cap="FLOOD_BOAT", name="Boat Unit")
+    resp_partial = _make_dummy_responder(resp_id="r-amb", cap="AMBULANCE", name="Ambulance Unit")
+
+    cands = rank_and_explain_candidates(inc, [resp_partial, resp_exact])
+    assert len(cands) == 2
+    assert cands[0].id == "r-boat"
+    assert cands[0].explanation.breakdown.capability_score == 30
+    assert cands[1].explanation.breakdown.capability_score == 21  # 70% of 30
+
+
+def test_2_capability_mismatch():
+    """Scenario 2: Responders with incompatible capability are hard-excluded."""
+    inc = _make_dummy_incident(inc_type="medical")
+    resp_incompatible = _make_dummy_responder(resp_id="r-haz", cap="HAZMAT", name="Hazmat Team")
+
+    # In medical incidents, HAZMAT is not in medical matrix
+    cands = rank_and_explain_candidates(inc, [resp_incompatible])
+    assert len(cands) == 0
+
+
+def test_3_closest_responder():
+    """Scenario 3: Closest responder receives maximum proximity points."""
+    inc = _make_dummy_incident(lat=22.5726, lon=88.3639)
+    resp_near = _make_dummy_responder(resp_id="r-near", lat=22.5730, lon=88.3640)  # ~50m
+    resp_far = _make_dummy_responder(resp_id="r-far", lat=22.6500, lon=88.4500)  # ~12km
+
+    cands = rank_and_explain_candidates(inc, [resp_far, resp_near])
+    assert len(cands) == 2
+    assert cands[0].id == "r-near"
+    assert (
+        cands[0].explanation.breakdown.distance_score
+        > cands[1].explanation.breakdown.distance_score
+    )
+
+
+def test_4_fastest_eta_responder():
+    """Scenario 4: Faster transit ETA yields superior ETA score."""
+    inc = _make_dummy_incident(lat=22.5726, lon=88.3639)
+    resp_fast = _make_dummy_responder(resp_id="r-fast", lat=22.5750, lon=88.3650)
+    resp_slow = _make_dummy_responder(resp_id="r-slow", lat=22.6200, lon=88.4200)
+
+    cands = rank_and_explain_candidates(inc, [resp_slow, resp_fast])
+    assert len(cands) == 2
+    assert cands[0].id == "r-fast"
+    assert cands[0].explanation.breakdown.eta_score > cands[1].explanation.breakdown.eta_score
+
+
+def test_5_overloaded_responder():
+    """Scenario 5: High workload load reduces score relative to idle unit."""
+    inc = _make_dummy_incident()
+    resp_idle = _make_dummy_responder(resp_id="r-idle", load=0, max_cap=8)
+    resp_loaded = _make_dummy_responder(resp_id="r-loaded", load=7, max_cap=8)
+
+    cands = rank_and_explain_candidates(inc, [resp_loaded, resp_idle])
+    assert len(cands) == 2
+    assert cands[0].id == "r-idle"
+    assert cands[0].explanation.breakdown.workload_score == 10
+    assert cands[1].explanation.breakdown.workload_score < 5
+
+
+def test_6_unavailable_responder():
+    """Scenario 6: OFFLINE and active busy units are hard-excluded."""
+    inc = _make_dummy_incident()
+    resp_off = _make_dummy_responder(resp_id="r-off", status="OFFLINE")
+    resp_enroute_other = _make_dummy_responder(
+        resp_id="r-enroute", status="EN_ROUTE", assigned_incident_id="inc-diff"
+    )
+
+    cands = rank_and_explain_candidates(inc, [resp_off, resp_enroute_other])
+    assert len(cands) == 0
+
+
+def test_7_missing_responder_coordinates():
+    """Scenario 7: Responders with missing or NaN coordinates are excluded."""
+    inc = _make_dummy_incident()
+    resp_nan = _make_dummy_responder(resp_id="r-nan", lat=float("nan"), lon=88.36)
+
+    cands = rank_and_explain_candidates(inc, [resp_nan])
+    assert len(cands) == 0
+
+
+@pytest.mark.asyncio
+async def test_8_stale_candidate_assignment_guard(test_db):
+    """Scenario 8: If responder becomes OFFLINE before assignment, assignment fails gracefully."""
+    from app.services.incident_service import get_all_incidents
+    from app.services.responder_service import (
+        assign_responder_to_incident,
+        get_all_responders,
+        update_responder_status,
+    )
+
+    incidents = await get_all_incidents(test_db)
+    assert len(incidents) > 0
+    target_inc = incidents[0]
+
+    responders = await get_all_responders(test_db)
+    assert len(responders) > 0
+    target_resp = responders[0]
+
+    # Change responder to OFFLINE
+    await update_responder_status(test_db, target_resp.id, status="OFFLINE")
+
+    with pytest.raises(ValueError, match="OFFLINE"):
+        await assign_responder_to_incident(
+            test_db,
+            responder_id=target_resp.id,
+            incident_id=target_inc.id,
+        )
+
+
+def test_9_equal_scores_deterministic_tie_breaking():
+    """Scenario 9: Identical score candidates tie-break deterministically.
+
+    Order: (distance -> ETA -> load -> ID).
+    """
+    inc = _make_dummy_incident()
+    resp_z = _make_dummy_responder(resp_id="resp-z", name="Unit Z")
+    resp_a = _make_dummy_responder(resp_id="resp-a", name="Unit A")
+
+    # Run multiple times to verify strict deterministic stability
+    for _ in range(5):
+        cands = rank_and_explain_candidates(inc, [resp_z, resp_a])
+        assert len(cands) == 2
+        assert cands[0].id == "resp-a"
+        assert cands[1].id == "resp-z"
+
+
+def test_10_critical_incident_severity_fit():
+    """Scenario 10: Critical incidents award maximum severity fit points to high-capacity units."""
+    inc_crit = _make_dummy_incident(severity="CRITICAL")
+    resp_large = _make_dummy_responder(resp_id="r-lg", max_cap=8, load=0)
+    resp_small = _make_dummy_responder(resp_id="r-sm", max_cap=2, load=0)
+
+    cands = rank_and_explain_candidates(inc_crit, [resp_small, resp_large])
+    assert len(cands) == 2
+    assert cands[0].id == "r-lg"
+    assert (
+        cands[0].explanation.breakdown.severity_fit_score
+        > cands[1].explanation.breakdown.severity_fit_score
+    )
+
+
+def test_11_alternative_ranking_and_comparative_reasons():
+    """Scenario 11: Alternative candidates include structured comparative explanations."""
+    inc = _make_dummy_incident(inc_type="flood")
+    resp_primary = _make_dummy_responder(
+        resp_id="r-1", name="Alpha Boat", cap="FLOOD_BOAT", lat=22.5730, lon=88.3640
+    )
+    resp_secondary = _make_dummy_responder(
+        resp_id="r-2", name="Bravo Ambulance", cap="AMBULANCE", lat=22.5900, lon=88.3800
+    )
+
+    cands = rank_and_explain_candidates(inc, [resp_secondary, resp_primary], limit=3)
+    assert len(cands) == 2
+    assert cands[0].id == "r-1"
+    assert cands[0].rank == 1
+    assert cands[0].is_recommended is True
+    assert cands[0].comparative_reason is None
+    assert "Recommended because" in cands[0].match_reason
+    assert cands[0].calculated_at is not None
+
+    assert cands[1].id == "r-2"
+    assert cands[1].rank == 2
+    assert cands[1].is_recommended is False
+    assert cands[1].comparative_reason is not None
+    assert "alternative" in cands[1].comparative_reason.lower()
+    assert (
+        "secondary capability" in cands[1].comparative_reason.lower()
+        or "slower" in cands[1].comparative_reason.lower()
+        or "farther" in cands[1].comparative_reason.lower()
+    )
 
 
 def test_score_explanation_and_breakdown_auditability():

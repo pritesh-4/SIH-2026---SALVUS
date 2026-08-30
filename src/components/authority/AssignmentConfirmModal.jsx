@@ -1,14 +1,16 @@
 import { useEffect, useRef } from 'react'
-import { AlertTriangle, Send } from 'lucide-react'
+import { AlertTriangle, Send, Clock, MapPin, Shield, Users, Activity } from 'lucide-react'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
 /**
- * Dispatch Assignment Confirmation Safeguard Modal (Master Prompt 3 - Step 8)
+ * Dispatch Assignment Confirmation Safeguard Modal (Pass 4B)
  *
  * Prevents accidental dispatch with clear structured confirmation:
- * - Unit name, capability, distance, ETA
- * - Target incident ID and ticket
+ * - Target incident ID, ticket, type & urgency
+ * - Unit name, craft type, team lead
+ * - Estimated arrival (ETA), distance
+ * - Capability match with status validation
  * - Keyboard accessible with Escape & Enter handling
  */
 export const AssignmentConfirmModal = ({
@@ -18,6 +20,7 @@ export const AssignmentConfirmModal = ({
   candidate,
   incident,
   isAssigning = false,
+  assignmentError = null,
 }) => {
   const confirmBtnRef = useRef(null)
 
@@ -50,6 +53,7 @@ export const AssignmentConfirmModal = ({
   const capability = candidate.capability?.replace('_', ' ') || 'General Rescue'
   const distanceKm = candidate.distance_km ?? candidate.distanceKm ?? 1.2
   const etaFormatted = candidate.eta_formatted || candidate.etaFormatted || '5 min'
+  const status = candidate.status || 'AVAILABLE'
 
   return (
     <div
@@ -88,49 +92,94 @@ export const AssignmentConfirmModal = ({
         {/* Content Body */}
         <div className="p-5 space-y-4 text-xs">
           <div>
+            <span className="text-[10px] font-bold text-salvus-info uppercase tracking-wider font-mono block">
+              Authority Dispatch Order
+            </span>
             <h3
               id="assignment-modal-title"
-              className="text-base font-bold text-salvus-text-primary"
+              className="text-base font-extrabold text-salvus-text-primary tracking-tight mt-0.5"
             >
-              Dispatch {unitName}?
+              Assign {unitName}?
             </h3>
-            <p className="text-xs text-salvus-text-secondary mt-0.5">
+            <p className="text-xs text-salvus-text-secondary mt-0.5 font-medium">
               Confirm authoritative deployment to incident #
-              {incident.ticket_id || incident.id?.slice(-4)}.
+              {incident.ticket_id || incident.id?.slice(-4)} (
+              {incident.type?.replace('_', ' ') || 'disaster'}).
             </p>
           </div>
 
-          {/* Structured Assignment Details */}
+          {/* Structured Assignment Details Card */}
           <div className="p-3.5 bg-salvus-muted/40 border border-salvus-border rounded-xl space-y-2 text-xs font-medium">
             <div className="flex items-center justify-between border-b border-salvus-border pb-1.5">
               <span className="text-salvus-text-muted">Target Incident:</span>
-              <strong className="text-salvus-text-primary font-mono font-bold">
-                #{incident.ticket_id || incident.id?.slice(-4)}
-              </strong>
+              <div className="flex items-center gap-1.5">
+                <strong className="text-salvus-text-primary font-mono font-bold">
+                  #{incident.ticket_id || incident.id?.slice(-4)}
+                </strong>
+                <span className="text-salvus-text-muted text-[11px]">
+                  ({incident.severity || 'HIGH'})
+                </span>
+              </div>
             </div>
 
             <div className="flex items-center justify-between border-b border-salvus-border pb-1.5">
-              <span className="text-salvus-text-muted">Estimated Arrival:</span>
-              <strong className="text-salvus-info font-mono font-bold">{etaFormatted}</strong>
+              <span className="text-salvus-text-muted flex items-center gap-1">
+                <Clock className="h-3 w-3 text-salvus-info" />
+                <span>Estimated Arrival:</span>
+              </span>
+              <strong className="text-salvus-info font-mono font-bold">~{etaFormatted}</strong>
             </div>
 
             <div className="flex items-center justify-between border-b border-salvus-border pb-1.5">
-              <span className="text-salvus-text-muted">Capability Match:</span>
-              <strong className="text-salvus-text-primary">{capability}</strong>
+              <span className="text-salvus-text-muted flex items-center gap-1">
+                <MapPin className="h-3 w-3 text-salvus-info" />
+                <span>Distance:</span>
+              </span>
+              <strong className="text-salvus-text-primary font-mono">{distanceKm} km</strong>
+            </div>
+
+            <div className="flex items-center justify-between border-b border-salvus-border pb-1.5">
+              <span className="text-salvus-text-muted flex items-center gap-1">
+                <Shield className="h-3 w-3 text-salvus-safe" />
+                <span>Capability Match:</span>
+              </span>
+              <strong className="text-salvus-text-primary">{capability} ✓</strong>
+            </div>
+
+            <div className="flex items-center justify-between border-b border-salvus-border pb-1.5">
+              <span className="text-salvus-text-muted flex items-center gap-1">
+                <Activity className="h-3 w-3 text-salvus-safe" />
+                <span>Current Status:</span>
+              </span>
+              <Badge variant={status === 'AVAILABLE' ? 'safe' : 'info'} size="sm">
+                {status === 'AVAILABLE' ? 'Available Now' : status}
+              </Badge>
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-salvus-text-muted">Distance:</span>
-              <strong className="text-salvus-text-primary font-mono">{distanceKm} km</strong>
+              <span className="text-salvus-text-muted flex items-center gap-1">
+                <Users className="h-3 w-3 text-salvus-text-muted" />
+                <span>Crew Load:</span>
+              </span>
+              <span className="font-mono text-salvus-text-primary">
+                {candidate.current_load ?? 0} / {candidate.max_capacity ?? 8} in use
+              </span>
             </div>
           </div>
+
+          {/* Revalidation Error Notice (if any) */}
+          {assignmentError && (
+            <div className="p-2.5 bg-salvus-danger-bg border border-salvus-danger-border rounded-lg text-xs text-salvus-danger-text font-medium animate-fadeIn">
+              ⚠️ {assignmentError}
+            </div>
+          )}
 
           {/* Operational Notice */}
           <div className="p-2.5 bg-salvus-warning-bg border border-salvus-warning-border rounded-lg flex items-start gap-2 text-xs text-salvus-warning-text font-medium">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <p>
-              Transitions incident status to <strong>ASSIGNED</strong>. Response telemetry will
-              initiate immediately upon confirmation.
+              Transitions incident status to <strong>ASSIGNED</strong>. Telemetry corridor tracking
+              will initiate immediately upon confirmation.
             </p>
           </div>
         </div>
