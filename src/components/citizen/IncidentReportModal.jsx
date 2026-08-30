@@ -7,6 +7,7 @@ import {
   LANDMARKS,
   INITIAL_LOCATION_STATE,
 } from '../../lib/location'
+import { loadNearbyLandmarks } from '../../services/placesService'
 import { validateAttachmentFile, formatFileSize, revokePreviewUrl } from '../../lib/attachmentUtils'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -56,6 +57,14 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
   })
   const [isAcquiringLocation, setIsAcquiringLocation] = useState(false)
   const [selectedLandmarkName, setSelectedLandmarkName] = useState('')
+
+  // Dynamic Nearby Landmarks Discovery State
+  const [nearbyLandmarks, setNearbyLandmarks] = useState([])
+  const [isLoadingLandmarks, setIsLoadingLandmarks] = useState(false)
+  const [landmarksError, setLandmarksError] = useState(null)
+  const [selectedLandmarkId, setSelectedLandmarkId] = useState('')
+  const landmarkSeqRef = useRef(0)
+
   const reportModalRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -72,6 +81,9 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     setSelectedPhoto(null)
     setPhotoValidationError(null)
     setPhotoUploadError(null)
+    setNearbyLandmarks([])
+    setSelectedLandmarkId('')
+    setSelectedLandmarkName('')
     setStep(1)
     setSubmissionPhase('IDLE')
     setSubmissionError(null)
@@ -123,11 +135,75 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     }
   }, [category, severity, description, reporterName, reporterPhone, affectedCount, step])
 
+  // Fetch real-world dynamic landmarks for specific GPS coordinates
+  const fetchLandmarksForLocation = useCallback(async (lat, lon) => {
+    if (typeof lat !== 'number' || typeof lon !== 'number' || isNaN(lat) || isNaN(lon)) {
+      return
+    }
+
+    const currentSeq = ++landmarkSeqRef.current
+    setIsLoadingLandmarks(true)
+    setLandmarksError(null)
+
+    try {
+      const res = await loadNearbyLandmarks({
+        latitude: lat,
+        longitude: lon,
+        radius: 3000,
+        maxResults: 15,
+      })
+
+      // Guard against out-of-order responses
+      if (currentSeq !== landmarkSeqRef.current) return
+
+      if (res.success) {
+        setNearbyLandmarks(res.landmarks || [])
+        setLandmarksError(null)
+      } else {
+        setNearbyLandmarks([])
+        setLandmarksError(res.error || 'Nearby landmarks are temporarily unavailable.')
+      }
+    } catch {
+      if (currentSeq !== landmarkSeqRef.current) return
+      setNearbyLandmarks([])
+      setLandmarksError('Failed to load nearby landmarks.')
+    } finally {
+      if (currentSeq === landmarkSeqRef.current) {
+        setIsLoadingLandmarks(false)
+      }
+    }
+  }, [])
+
+  // Trigger landmark lookup asynchronously whenever location coordinates change
+  useEffect(() => {
+    if (
+      isOpen &&
+      locationData.latitude != null &&
+      locationData.longitude != null &&
+      !locationData.isFallback &&
+      locationData.source === 'BROWSER'
+    ) {
+      const timer = setTimeout(() => {
+        fetchLandmarksForLocation(locationData.latitude, locationData.longitude)
+      }, 0)
+      return () => clearTimeout(timer)
+    }
+  }, [
+    isOpen,
+    locationData.latitude,
+    locationData.longitude,
+    locationData.isFallback,
+    locationData.source,
+    fetchLandmarksForLocation,
+  ])
+
   const fetchLocation = useCallback(async () => {
     setIsAcquiringLocation(true)
-    const result = await getCurrentLocation({ timeout: 8000 })
+    const result = await getCurrentLocation({ timeout: 8000, force: true })
     if (result.success && result.model) {
       setLocationData(result.model)
+      setSelectedLandmarkId('')
+      setSelectedLandmarkName('')
     } else if (selectedLandmarkName) {
       const found = LANDMARKS.find((l) => l.name === selectedLandmarkName)
       if (found) {
@@ -154,11 +230,28 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
   }, [isOpen, globalLocation, fetchLocation])
 
   const handleSelectLandmark = (e) => {
-    const name = e.target.value
-    setSelectedLandmarkName(name)
-    const found = LANDMARKS.find((l) => l.name === name)
-    if (found) {
-      setLocationData(createLandmarkLocation(found, locationData.permission))
+    const val = e.target.value
+    setSelectedLandmarkId(val)
+
+    if (!val || val === 'none') {
+      setSelectedLandmarkName('')
+      return
+    }
+
+    // In GPS mode: select from real dynamic nearbyLandmarks without replacing GPS coordinates
+    if (locationData.source === 'BROWSER' && !locationData.isFallback) {
+      const found = nearbyLandmarks.find((lm) => lm.id === val)
+      if (found) {
+        setSelectedLandmarkName(found.name)
+        // Note: locationData.latitude and locationData.longitude remain the user's exact GPS coordinates
+      }
+    } else {
+      // In Fallback mode: select from static LANDMARKS to establish approximate manual location
+      const found = LANDMARKS.find((l) => l.name === val)
+      if (found) {
+        setSelectedLandmarkName(found.name)
+        setLocationData(createLandmarkLocation(found, locationData.permission || 'DENIED'))
+      }
     }
   }
 
@@ -252,6 +345,16 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     const selectedCat = categories.find((c) => c.id === category)
     const incidentType = selectedCat?.type || 'flood'
 
+    const selectedLm = nearbyLandmarks.find((lm) => lm.id === selectedLandmarkId)
+    let incidentDescription = description.trim()
+    if (!incidentDescription) {
+      incidentDescription = selectedLm
+        ? `${selectedCat?.label || 'Hazard'} reported near ${selectedLm.name} (${selectedLm.distanceFormatted})`
+        : `${selectedCat?.label || 'Hazard'} reported at ${locationData.address || locationData.coordinates}`
+    } else if (selectedLm && !incidentDescription.includes(selectedLm.name)) {
+      incidentDescription = `${incidentDescription}\n[Reference Landmark: ${selectedLm.name} (${selectedLm.distanceFormatted})]`
+    }
+
     // Step 1: Create incident record
     let incident = createdIncident
     if (!incident) {
@@ -259,9 +362,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
       const result = await createIncident({
         type: incidentType,
         severity: severity.toUpperCase(),
-        description:
-          description.trim() ||
-          `${selectedCat?.label || 'Hazard'} reported at ${locationData.address || locationData.coordinates}`,
+        description: incidentDescription,
         reporter_name: reporterName.trim() || 'Community Member',
         reporter_phone: reporterPhone.trim() || null,
         latitude: locationData.latitude,
@@ -695,27 +796,91 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
                 </div>
               </div>
 
-              {/* Landmark Selection */}
-              <div>
-                <label
-                  htmlFor="landmark-select"
-                  className="text-xs font-semibold text-salvus-text-secondary block mb-1"
-                >
-                  Or Select Nearest Landmark:
-                </label>
-                <select
-                  id="landmark-select"
-                  value={selectedLandmarkName}
-                  onChange={handleSelectLandmark}
-                  className="w-full bg-salvus-surface border border-salvus-border rounded-lg p-2 text-xs text-salvus-text-primary focus:outline-none focus:border-salvus-info cursor-pointer"
-                >
-                  {LANDMARKS.map((lm) => (
-                    <option key={lm.name} value={lm.name}>
-                      {lm.name} ({lm.address})
+              {/* Landmark Selection (Dynamic Real-World GPS or Manual Fallback) */}
+              {locationData.source === 'BROWSER' && !locationData.isFallback ? (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label
+                      htmlFor="landmark-select"
+                      className="text-xs font-semibold text-salvus-text-secondary block"
+                    >
+                      Nearby Landmark (Optional Reference):
+                    </label>
+                    {isLoadingLandmarks && (
+                      <span className="text-[11px] text-salvus-info animate-pulse">
+                        Searching nearby places...
+                      </span>
+                    )}
+                  </div>
+
+                  <select
+                    id="landmark-select"
+                    value={selectedLandmarkId}
+                    onChange={handleSelectLandmark}
+                    disabled={isLoadingLandmarks && nearbyLandmarks.length === 0}
+                    className="w-full bg-salvus-surface border border-salvus-border rounded-lg p-2 text-xs text-salvus-text-primary focus:outline-none focus:border-salvus-info cursor-pointer disabled:opacity-60"
+                  >
+                    <option value="">📍 Current GPS Location (No landmark reference)</option>
+
+                    {isLoadingLandmarks && nearbyLandmarks.length === 0 && (
+                      <option value="" disabled>
+                        🔄 Searching nearby landmarks...
+                      </option>
+                    )}
+
+                    {landmarksError && nearbyLandmarks.length === 0 && (
+                      <option value="" disabled>
+                        ⚠️ Nearby landmarks unavailable
+                      </option>
+                    )}
+
+                    {!isLoadingLandmarks && !landmarksError && nearbyLandmarks.length === 0 && (
+                      <option value="" disabled>
+                        No recognizable landmarks found within 3 km
+                      </option>
+                    )}
+
+                    {nearbyLandmarks.map((lm) => (
+                      <option key={lm.id} value={lm.id}>
+                        {lm.name} — {lm.distanceFormatted} ({lm.categoryLabel})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-salvus-text-muted mt-1">
+                    {selectedLandmarkId && selectedLandmarkName
+                      ? `Selected reference: ${selectedLandmarkName}. Your exact device GPS coordinates are preserved.`
+                      : 'Exact GPS coordinates will be submitted as the primary incident location.'}
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label
+                    htmlFor="landmark-select"
+                    className="text-xs font-semibold text-salvus-text-secondary block mb-1"
+                  >
+                    Select Approximate Sector Landmark (GPS Inactive):
+                  </label>
+                  <select
+                    id="landmark-select"
+                    value={selectedLandmarkName}
+                    onChange={handleSelectLandmark}
+                    className="w-full bg-salvus-surface border border-salvus-border rounded-lg p-2 text-xs text-salvus-text-primary focus:outline-none focus:border-salvus-info cursor-pointer"
+                  >
+                    <option value="" disabled>
+                      Choose an approximate landmark...
                     </option>
-                  ))}
-                </select>
-              </div>
+                    {LANDMARKS.map((lm) => (
+                      <option key={lm.name} value={lm.name}>
+                        {lm.name} ({lm.address})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-salvus-warning-text mt-1">
+                    ⚠️ Location access is off. Landmark coordinates will be used as an approximate
+                    area estimate.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Actions */}

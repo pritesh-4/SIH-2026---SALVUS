@@ -20,6 +20,8 @@ import {
   normalizePlace,
   hasMovedSignificantly,
   sortPlacesForCategory,
+  getLandmarkPriorityTier,
+  loadNearbyLandmarks,
 } from '../../services/placesService.js'
 
 let passedTests = 0
@@ -49,7 +51,7 @@ function assertEqual(actual, expected, message) {
   }
 }
 
-function runTests() {
+async function runTests() {
   console.log('\n========================================')
   console.log('SALVUS PLACES PIPELINE TEST SUITE')
   console.log('========================================\n')
@@ -286,6 +288,35 @@ function runTests() {
   assertEqual(sortedPharm[0].id, 'p1', 'Closest pharmacy is ranked #1 in category tab')
   assertEqual(sortedPharm[1].id, 'p2', 'Farther pharmacy is ranked #2 in category tab')
 
+  // ---------------------------------------------------------------------------
+  // 7. Dynamic Nearby Landmark Priority & Scoring Tests
+  // ---------------------------------------------------------------------------
+  console.log('\n[Suite 7: Dynamic Nearby Landmark Discovery & Scoring]')
+  const hospPlace = { category: 'hospital', provenance: 'OSM_MAPPED' }
+  const verifiedShelter = { category: 'shelter', provenance: 'SALVUS_VERIFIED' }
+  const policePlace2 = { category: 'police', provenance: 'OSM_MAPPED' }
+  const firePlace2 = { category: 'fire_station', provenance: 'OSM_MAPPED' }
+  const unverifiedShelter = { category: 'shelter', provenance: 'OSM_MAPPED' }
+  const pharmacyPlace2 = { category: 'pharmacy', provenance: 'OSM_MAPPED' }
+  const civicPlace = { category: 'other', provenance: 'OSM_MAPPED' }
+
+  assertEqual(getLandmarkPriorityTier(hospPlace), 1, 'Hospital is Tier 1 landmark')
+  assertEqual(getLandmarkPriorityTier(policePlace2), 2, 'Police station is Tier 2 landmark')
+  assertEqual(getLandmarkPriorityTier(firePlace2), 2, 'Fire station is Tier 2 landmark')
+  assertEqual(getLandmarkPriorityTier(verifiedShelter), 3, 'Verified shelter is Tier 3 landmark')
+  assertEqual(getLandmarkPriorityTier(unverifiedShelter), 3, 'Mapped shelter is Tier 3 landmark')
+  assertEqual(getLandmarkPriorityTier(civicPlace), 4, 'Civic / public infrastructure is Tier 4')
+  assertEqual(getLandmarkPriorityTier(pharmacyPlace2), 5, 'Pharmacy is Tier 5 landmark')
+
+  // Validation: Invalid GPS coordinates return clean error without throwing
+  const invalidRes = await loadNearbyLandmarks({ latitude: null, longitude: null })
+  assertEqual(invalidRes.success, false, 'Null coordinates fail gracefully')
+  assertEqual(invalidRes.status, 'INVALID_COORDINATES', 'Status is INVALID_COORDINATES')
+  assertEqual(invalidRes.landmarks.length, 0, 'No landmarks returned on invalid coordinates')
+
+  const stringRes = await loadNearbyLandmarks({ latitude: 'invalid', longitude: 88.36 })
+  assertEqual(stringRes.success, false, 'Invalid string latitude fails gracefully')
+
   console.log(`\n========================================`)
   console.log(`RESULTS: ${passedTests} passed, ${failedTests} failed.`)
   console.log(`========================================\n`)
@@ -295,4 +326,7 @@ function runTests() {
   }
 }
 
-runTests()
+runTests().catch((err) => {
+  console.error('Test run failure:', err)
+  process.exit(1)
+})

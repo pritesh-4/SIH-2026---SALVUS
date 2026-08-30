@@ -472,4 +472,161 @@ export const loadNearbyPlaces = async ({
   }
 }
 
+/**
+ * Priority scoring for recognizable emergency landmarks:
+ * Tier 1: Major Hospitals & Emergency Trauma Centers
+ * Tier 2: Police, Fire & Civil Defense Stations
+ * Tier 3: Designated Shelters, Evacuation Assembly Points, Town Halls
+ * Tier 4: Notable Civic & Transit Infrastructure (Train/Bus stations, Public Facilities)
+ * Tier 5: Pharmacies & Local Facilities
+ */
+export const getLandmarkPriorityTier = (place) => {
+  if (!place) return 99
+  const cat = normalizePlaceCategory(place.category)
+  const isVerified = place.provenance === 'SALVUS_VERIFIED' || place.verified === true
+
+  if (cat === 'hospital' || cat === 'emergency') return 1
+  if (cat === 'police' || cat === 'fire_station') return 2
+  if (cat === 'shelter' || isVerified) return 3
+  if (cat === 'pharmacy') return 5
+  return 4 // Other public facilities / civic points / transit
+}
+
+/**
+ * Load and rank real nearby landmarks for hazard reporting.
+ *
+ * - Queries nearby facilities within a focused 2.5–3.0km radius (auto-expanding up to 5km if sparse).
+ * - Filters for recognizable, non-empty named entities.
+ * - Sorts by emergency recognizability tier, then proximity distance.
+ * - Formats human-friendly labels: "City Hospital — 450 m".
+ * - Never invents fake coordinates or silently falls back to static cities.
+ */
+export const loadNearbyLandmarks = async ({
+  latitude,
+  longitude,
+  radius = 3000,
+  maxResults = 15,
+} = {}) => {
+  if (
+    typeof latitude !== 'number' ||
+    typeof longitude !== 'number' ||
+    isNaN(latitude) ||
+    isNaN(longitude)
+  ) {
+    return {
+      success: false,
+      status: 'INVALID_COORDINATES',
+      landmarks: [],
+      count: 0,
+      error: 'Valid GPS coordinates are required for live landmark discovery.',
+    }
+  }
+
+  try {
+    // 1. Initial targeted search (default 3km)
+    let placesResult = await loadNearbyPlaces({
+      latitude,
+      longitude,
+      radius,
+      includeVerified: true,
+    })
+
+    // 2. Adaptive radius expansion if very few results in rural/suburban areas
+    if (placesResult.success && placesResult.data.length < 3 && radius < 5000) {
+      const expandedResult = await loadNearbyPlaces({
+        latitude,
+        longitude,
+        radius: 5000,
+        includeVerified: true,
+      })
+      if (expandedResult.success && expandedResult.data.length > placesResult.data.length) {
+        placesResult = expandedResult
+      }
+    }
+
+    if (!placesResult.success) {
+      return {
+        success: false,
+        status: placesResult.status || 'UNAVAILABLE',
+        landmarks: [],
+        count: 0,
+        error: placesResult.error || 'Nearby landmarks are temporarily unavailable.',
+      }
+    }
+
+    const rawPlaces = placesResult.data || []
+
+    // 3. Filter valid places with meaningful names (exclude generic/empty)
+    const validPlaces = rawPlaces.filter((p) => {
+      if (!p || !p.name) return false
+      const trimmed = p.name.trim()
+      return trimmed.length >= 2 && trimmed !== 'Unnamed Facility' && trimmed !== 'Unknown'
+    })
+
+    // Deduplicate by name
+    const seenNames = new Set()
+    const uniquePlaces = []
+    for (const p of validPlaces) {
+      const key = p.name.toLowerCase().trim()
+      if (!seenNames.has(key)) {
+        seenNames.add(key)
+        uniquePlaces.push(p)
+      }
+    }
+
+    // 4. Rank landmarks by recognizability tier then proximity
+    const ranked = uniquePlaces.sort((a, b) => {
+      const tierA = getLandmarkPriorityTier(a)
+      const tierB = getLandmarkPriorityTier(b)
+      if (tierA !== tierB) return tierA - tierB
+
+      const distA = a.distance_meters != null ? a.distance_meters : Infinity
+      const distB = b.distance_meters != null ? b.distance_meters : Infinity
+      if (distA !== distB) return distA - distB
+
+      const confA = typeof a.confidence === 'number' ? a.confidence : 0.5
+      const confB = typeof b.confidence === 'number' ? b.confidence : 0.5
+      return confB - confA
+    })
+
+    // 5. Slice to maxResults and shape into structured landmark items
+    const landmarks = ranked.slice(0, maxResults).map((p) => {
+      const catInfo = getCategoryInfo(p.category)
+      const distFormatted = p.distance_formatted || formatDistance(p.distance_meters)
+      return {
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        categoryLabel: catInfo.label,
+        icon: catInfo.icon,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        distanceMeters: p.distance_meters,
+        distanceFormatted: distFormatted,
+        address: p.address || p.city || '',
+        provenance: p.provenance,
+        label: `${p.name} — ${distFormatted}`,
+        fullLabel: `${p.name} — ${distFormatted} (${catInfo.label})`,
+      }
+    })
+
+    return {
+      success: true,
+      status: landmarks.length > 0 ? 'AVAILABLE' : 'NO_RESULTS',
+      landmarks,
+      count: landmarks.length,
+      searchedRadiusMeters: placesResult.radiusMeters || radius,
+      fetchedAt: placesResult.fetchedAt || new Date().toISOString(),
+    }
+  } catch (err) {
+    return {
+      success: false,
+      status: 'UNAVAILABLE',
+      landmarks: [],
+      count: 0,
+      error: err.message || 'Failed to load nearby landmarks.',
+    }
+  }
+}
+
 export { fetchPlaceRoute }
