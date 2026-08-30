@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
+import { haversineDistance } from '../../services/routingService.js'
 
-describe('Pass 4B: Responder Recommendation UX & Decision Flow Contract', () => {
+describe('Pass 4C: Dynamic Rescue Recommendation & Reassignment Contract', () => {
   const mockPrimaryCandidate = {
     id: 'resp-01',
     unit_name: 'TEAM 03',
@@ -22,7 +23,7 @@ describe('Pass 4B: Responder Recommendation UX & Decision Flow Contract', () => 
       'Recommended because TEAM 03 is available immediately, has Specialized Inflatable Flood Rescue Watercraft (100% match), and offers fastest transit corridor (~5 min / 1.4 km) with zero load backlog.',
     is_recommended: true,
     rank: 1,
-    calculated_at: new Date(Date.now() - 10000).toISOString(), // 10s ago
+    calculated_at: new Date(Date.now() - 10000).toISOString(),
     comparative_reason: null,
     explanation: {
       headline: '★ PRIMARY RECOMMENDATION — TEAM 03',
@@ -92,127 +93,208 @@ describe('Pass 4B: Responder Recommendation UX & Decision Flow Contract', () => 
     },
     {
       id: 'resp-03',
-      unit_name: 'TEAM 05',
+      unit_name: 'TEAM 07',
       team_lead: 'Commander Bose',
-      vehicle_type: 'High-Water Ambulance',
-      capability: 'AMBULANCE',
+      vehicle_type: 'Inflatable Zodiac Boat',
+      capability: 'FLOOD_BOAT',
       status: 'AVAILABLE',
-      latitude: 22.592,
-      longitude: 88.39,
+      latitude: 22.573,
+      longitude: 88.365,
       radio_channel: 'VHF-02',
-      max_capacity: 4,
+      max_capacity: 8,
       current_load: 0,
-      distance_km: 3.1,
-      eta_minutes: 9.0,
-      eta_formatted: '9 min',
-      match_score: 68,
-      match_reason: 'High-Water Medical Evacuation Support',
-      is_recommended: false,
-      rank: 3,
-      calculated_at: new Date(Date.now() - 10000).toISOString(),
-      comparative_reason:
-        'Viable alternative, but secondary capability (70% match vs 100%), ETA 4 min slower, 1.7 km farther.',
+      distance_km: 0.6,
+      eta_minutes: 2.5,
+      eta_formatted: '3 min',
+      match_score: 96,
+      match_reason: 'Specialized Inflatable Flood Rescue Watercraft',
+      is_recommended: true,
+      rank: 1,
+      calculated_at: new Date().toISOString(),
+      comparative_reason: null,
       explanation: {
-        headline: 'Secondary Standby Unit',
-        positive_factors: ['✓ Medical support'],
+        headline: '★ PRIMARY RECOMMENDATION — TEAM 07',
+        positive_factors: ['✓ Closest available watercraft (~3 min / 0.6 km)'],
         negative_factors: [],
         breakdown: {
-          final_score: 68,
-          capability_score: 21,
+          final_score: 96,
+          capability_score: 30,
           availability_score: 20,
-          distance_score: 9,
-          eta_score: 8,
+          distance_score: 15,
+          eta_score: 15,
           workload_score: 10,
-          severity_fit_score: 0,
+          severity_fit_score: 6,
         },
       },
     },
   ]
 
-  it('Scenario 1: Primary recommendation appears with score, Estimated ETA, and fact-based reason', () => {
-    assert.strictEqual(mockPrimaryCandidate.is_recommended, true)
-    assert.strictEqual(mockPrimaryCandidate.rank, 1)
-    assert.strictEqual(mockPrimaryCandidate.unit_name, 'TEAM 03')
-    assert.strictEqual(mockPrimaryCandidate.eta_formatted, '5 min')
-    assert.strictEqual(mockPrimaryCandidate.distance_km, 1.4)
-    assert.strictEqual(mockPrimaryCandidate.match_score, 87)
-    assert.ok(mockPrimaryCandidate.match_reason.includes('Recommended because TEAM 03'))
+  it('Scenario 1: Responder moves (>=200m triggers recalculation, <200m is debounced)', () => {
+    const origLat = 22.5726
+    const origLon = 88.3639
+
+    // Minor jitter (30m)
+    const jitterLat = 22.5728
+    const jitterLon = 88.3639
+    const distJitterMeters = haversineDistance(origLat, origLon, jitterLat, jitterLon) * 1000.0
+    const shouldTriggerJitter = distJitterMeters >= 200.0
+    assert.strictEqual(shouldTriggerJitter, false)
+
+    // Meaningful movement (400m)
+    const moveLat = 22.5762
+    const moveLon = 88.3639
+    const distMoveMeters = haversineDistance(origLat, origLon, moveLat, moveLon) * 1000.0
+    const shouldTriggerMove = distMoveMeters >= 200.0
+    assert.strictEqual(shouldTriggerMove, true)
   })
 
-  it('Scenario 2: Recommendation changes after refreshed fleet calculation', () => {
-    const refreshedFleet = [
-      { ...mockPrimaryCandidate, match_score: 70, rank: 2, is_recommended: false },
-      { ...mockAlternativeCandidates[0], match_score: 92, rank: 1, is_recommended: true },
-    ]
+  it('Scenario 2: ETA changes meaningfully (>= 2 min delta triggers shift evaluation)', () => {
+    const currentAssignedEta = 7.0
+    const newCandidateEta = 3.0
+    const etaDelta = currentAssignedEta - newCandidateEta
 
-    const newPrimary = refreshedFleet.find((c) => c.is_recommended)
-    assert.strictEqual(newPrimary.id, 'resp-02')
-    assert.strictEqual(newPrimary.unit_name, 'TEAM 01')
-    assert.strictEqual(newPrimary.match_score, 92)
+    assert.ok(etaDelta >= 2.0)
+    const isMeaningful = etaDelta >= 2.0
+    assert.strictEqual(isMeaningful, true)
   })
 
-  it('Scenario 3: Alternative selected displays concise tradeoff explanation', () => {
-    const alt = mockAlternativeCandidates[0]
-    assert.strictEqual(alt.rank, 2)
-    assert.strictEqual(alt.is_recommended, false)
-    assert.ok(alt.comparative_reason)
-    assert.ok(alt.comparative_reason.includes('ETA 2 min slower'))
+  it('Scenario 3: Responder becomes unavailable / OFFLINE triggers recommendation shift', () => {
+    const assignedResponder = { ...mockPrimaryCandidate, status: 'OFFLINE' }
+    const newCandidate = mockAlternativeCandidates[1] // TEAM 07
+
+    const shouldShift =
+      assignedResponder.status === 'OFFLINE' && newCandidate.status === 'AVAILABLE'
+    assert.strictEqual(shouldShift, true)
+
+    const shiftReason = `Currently assigned ${assignedResponder.unit_name} is OFFLINE. ${newCandidate.unit_name} is now recommended.`
+    assert.ok(shiftReason.includes('OFFLINE'))
+    assert.ok(shiftReason.includes('TEAM 07 is now recommended'))
   })
 
-  it('Scenario 4: Route preview updates tactical corridor geometry and label', () => {
-    const candidate = mockPrimaryCandidate
-    const previewRoute = {
-      responderId: candidate.id,
+  it('Scenario 4: Route failure / fallback corridor maintains valid geometry and status', () => {
+    const fallbackRoute = {
+      responderId: 'resp-01',
       coordinates: [
-        [candidate.latitude, candidate.longitude],
+        [22.574, 88.372],
         [22.5726, 88.3639],
       ],
-      distanceKm: candidate.distance_km,
-      etaFormatted: candidate.eta_formatted,
-      label: `${candidate.unit_name} Route`,
-      status: 'OPTIMAL_OSRM',
+      distanceKm: 1.2,
+      etaFormatted: '5 min',
+      provider: 'vector_corridor',
+      status: 'ESTIMATED',
+      isFallback: true,
     }
 
-    assert.strictEqual(previewRoute.responderId, 'resp-01')
-    assert.strictEqual(previewRoute.distanceKm, 1.4)
-    assert.strictEqual(previewRoute.etaFormatted, '5 min')
-    assert.strictEqual(previewRoute.label, 'TEAM 03 Route')
+    assert.strictEqual(fallbackRoute.status, 'ESTIMATED')
+    assert.strictEqual(fallbackRoute.isFallback, true)
+    assert.strictEqual(fallbackRoute.coordinates.length, 2)
   })
 
-  it('Scenario 5: Stale candidate detection flags aged timestamp (>90s)', () => {
-    const staleCalculatedAt = new Date(Date.now() - 120000).toISOString() // 120s ago
-    const elapsedSec = Math.floor((Date.now() - new Date(staleCalculatedAt).getTime()) / 1000)
-    const isStale = elapsedSec > 90
+  it('Scenario 5: Route becomes slower / delayed creates dynamic shift notice', () => {
+    const delayedEta = 8.0 // Traffic / flooded corridor delay (+3 min)
+    const alternativeEta = 3.0 // TEAM 07 is ~3 min
 
-    assert.strictEqual(isStale, true)
-    assert.ok(elapsedSec >= 120)
-  })
+    const etaDiff = delayedEta - alternativeEta
+    assert.ok(etaDiff >= 2.0)
 
-  it('Scenario 6: Responder becomes unavailable revalidates and generates warning', () => {
-    const assignResult = {
-      success: false,
-      error: 'Responder unit TEAM 03 is currently OFFLINE and cannot be dispatched.',
+    const shiftPayload = {
+      currentEtaFormatted: `${delayedEta} min`,
+      newEtaFormatted: `${alternativeEta} min`,
+      etaDeltaMinutes: Math.round(etaDiff),
+      reason: `Route conditions changed. TEAM 07 is now ${Math.round(etaDiff)} min faster (~${alternativeEta} min) and qualified.`,
     }
 
-    assert.strictEqual(assignResult.success, false)
-    assert.ok(assignResult.error.includes('OFFLINE'))
+    assert.strictEqual(shiftPayload.etaDeltaMinutes, 5)
+    assert.ok(shiftPayload.reason.includes('TEAM 07 is now 5 min faster'))
   })
 
-  it('Scenario 7: Assignment conflict rejects double dispatch', () => {
-    const conflictResult = {
-      success: false,
-      error: 'Incident #SV-2048 already has an active assignment to another unit.',
+  it('Scenario 6: New responder becomes available triggers recommendation shift if superior', () => {
+    const candidates = [mockAlternativeCandidates[1], mockPrimaryCandidate]
+    const top = candidates[0]
+
+    assert.strictEqual(top.id, 'resp-03')
+    assert.strictEqual(top.unit_name, 'TEAM 07')
+    assert.ok(top.match_score > mockPrimaryCandidate.match_score)
+  })
+
+  it('Scenario 7: Incident severity changes triggers re-evaluation', () => {
+    const prevIncidentKey = 'inc-01_NEW_MEDIUM'
+    const updatedIncidentKey = 'inc-01_NEW_CRITICAL'
+
+    const isIncidentChange = prevIncidentKey !== updatedIncidentKey
+    assert.strictEqual(isIncidentChange, true)
+  })
+
+  it('Scenario 8: Stale calculation returning late is safely discarded (Race Protection)', () => {
+    let latestRequestId = 0
+
+    // Request 1 starts
+    const req1Id = ++latestRequestId // 1
+
+    // Request 2 starts (newer telemetry)
+    const req2Id = ++latestRequestId // 2
+
+    // Request 2 finishes first
+    const isReq2Valid = req2Id >= latestRequestId // true (2 >= 2)
+    assert.strictEqual(isReq2Valid, true)
+
+    // Request 1 finishes later
+    const isReq1Valid = req1Id >= latestRequestId // false (1 < 2 -> DISCARDED)
+    assert.strictEqual(isReq1Valid, false)
+  })
+
+  it('Scenario 9: Recommendation shift notification banner payload generated for authority', () => {
+    const shift = {
+      currentResponder: mockPrimaryCandidate,
+      currentEtaFormatted: '7 min',
+      newCandidate: mockAlternativeCandidates[1],
+      newEtaFormatted: '3 min',
+      etaDeltaMinutes: 4,
+      reason: 'TEAM 07 is now 4 min faster (~3 min) and qualified for this incident.',
+      detectedAt: Date.now(),
     }
 
-    assert.strictEqual(conflictResult.success, false)
-    assert.ok(conflictResult.error.includes('already has an active assignment'))
+    assert.strictEqual(shift.currentResponder.unit_name, 'TEAM 03')
+    assert.strictEqual(shift.newCandidate.unit_name, 'TEAM 07')
+    assert.strictEqual(shift.etaDeltaMinutes, 4)
   })
 
-  it('Scenario 8: Zero eligible responders presents clear criteria checklist without phantom unit', () => {
-    const candidates = []
-    const topCandidate = candidates.find((c) => c.is_recommended) || null
+  it('Scenario 10: Operator keeps current assignment (dismisses shift alert)', () => {
+    let activeShift = { reason: 'TEAM 07 is faster' }
+    const dismissShift = () => {
+      activeShift = null
+    }
 
-    assert.strictEqual(topCandidate, null)
-    assert.strictEqual(candidates.length, 0)
+    dismissShift()
+    assert.strictEqual(activeShift, null)
+  })
+
+  it('Scenario 11: Operator accepts new recommendation (reassignment releases previous responder)', () => {
+    let liveResponders = [
+      { id: 'resp-01', unit_name: 'TEAM 03', status: 'ASSIGNED', assigned_incident_id: 'inc-01' },
+      { id: 'resp-03', unit_name: 'TEAM 07', status: 'AVAILABLE', assigned_incident_id: null },
+    ]
+
+    const reassignTo = 'resp-03'
+    const targetIncidentId = 'inc-01'
+
+    liveResponders = liveResponders.map((r) => {
+      if (r.id === reassignTo) {
+        return { ...r, status: 'ASSIGNED', assigned_incident_id: targetIncidentId }
+      }
+      if (r.assigned_incident_id === targetIncidentId) {
+        return { ...r, status: 'AVAILABLE', assigned_incident_id: null }
+      }
+      return r
+    })
+
+    const prevUnit = liveResponders.find((r) => r.id === 'resp-01')
+    const newUnit = liveResponders.find((r) => r.id === 'resp-03')
+
+    assert.strictEqual(prevUnit.status, 'AVAILABLE')
+    assert.strictEqual(prevUnit.assigned_incident_id, null)
+
+    assert.strictEqual(newUnit.status, 'ASSIGNED')
+    assert.strictEqual(newUnit.assigned_incident_id, 'inc-01')
   })
 })

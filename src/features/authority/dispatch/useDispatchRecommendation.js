@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { fetchResponderCandidates } from '../../../services/api'
-import { fetchRoute } from '../../../services/routingService'
+import { fetchResponderCandidates, reassignResponder } from '../../../services/api'
+import { fetchRoute, haversineDistance } from '../../../services/routingService'
+
+const MOVEMENT_THRESHOLD_METERS = 200 // 200m minimum movement to trigger re-evaluation
+const RECALC_DEBOUNCE_MS = 4000 // Minimum 4s interval between dynamic calculations
 
 export const useDispatchRecommendation = ({
   selectedIncident = null,
@@ -11,10 +14,16 @@ export const useDispatchRecommendation = ({
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false)
   const [activeRoute, setActiveRoute] = useState(null)
   const [previewRoute, setPreviewRoute] = useState(null)
+  const [recommendationShift, setRecommendationShift] = useState(null)
+
   const lastRouteKeyRef = useRef(null)
+  const latestRequestIdRef = useRef(0)
+  const lastEvaluatedCoordsRef = useRef(new Map())
+  const lastEvaluatedTimeRef = useRef(0)
+  const lastIncidentKeyRef = useRef(null)
 
   // ---------------------------------------------------------------------------
-  // 1. Fetch Candidates & Compute Route on Incident Selection
+  // 1. Dynamic Trigger Evaluation & Stale Request Protection
   // ---------------------------------------------------------------------------
   useEffect(() => {
     let isMounted = true
@@ -25,13 +34,105 @@ export const useDispatchRecommendation = ({
       }
     }
 
+    const incidentKey = `${selectedIncident.id}_${selectedIncident.status}_${selectedIncident.severity}`
+    const isIncidentChange = lastIncidentKeyRef.current !== incidentKey
+    const now = Date.now()
+    const elapsedSinceLastEval = now - lastEvaluatedTimeRef.current
+
+    // Check if any responder had meaningful movement (>= 200m) or status change
+    let hasMeaningfulTelemetryShift = false
+    const currentCoordsMap = new Map()
+
+    for (const resp of liveResponders) {
+      if (!resp.latitude || !resp.longitude) continue
+      currentCoordsMap.set(resp.id, {
+        lat: resp.latitude,
+        lon: resp.longitude,
+        status: resp.status,
+      })
+
+      const prev = lastEvaluatedCoordsRef.current.get(resp.id)
+      if (!prev) {
+        hasMeaningfulTelemetryShift = true
+      } else {
+        if (prev.status !== resp.status) {
+          hasMeaningfulTelemetryShift = true
+        } else {
+          const distKm = haversineDistance(prev.lat, prev.lon, resp.latitude, resp.longitude)
+          if (distKm * 1000 >= MOVEMENT_THRESHOLD_METERS) {
+            hasMeaningfulTelemetryShift = true
+          }
+        }
+      }
+    }
+
+    // Evaluate trigger criteria
+    const shouldRecalculate =
+      isIncidentChange ||
+      (hasMeaningfulTelemetryShift && elapsedSinceLastEval >= RECALC_DEBOUNCE_MS) ||
+      lastEvaluatedTimeRef.current === 0
+
+    if (!shouldRecalculate) {
+      return () => {
+        isMounted = false
+      }
+    }
+
+    // Update evaluation markers
+    lastIncidentKeyRef.current = incidentKey
+    lastEvaluatedTimeRef.current = now
+    lastEvaluatedCoordsRef.current = currentCoordsMap
+
+    const currentReqId = ++latestRequestIdRef.current
+
     const loadCandidatesAndRoute = async () => {
       setIsLoadingCandidates(true)
       const candRes = await fetchResponderCandidates(selectedIncident.id)
-      if (!isMounted) return
+
+      // Discard stale out-of-order response if newer request started
+      if (!isMounted || currentReqId < latestRequestIdRef.current) return
 
       if (candRes.success && candRes.data.length > 0) {
         setCandidateList(candRes.data)
+
+        // Evaluate Dynamic Recommendation Shift if incident is already ASSIGNED
+        if (currentlyAssignedResponder) {
+          const topCand = candRes.data.find((c) => c.is_recommended) || candRes.data[0]
+          if (topCand && topCand.id !== currentlyAssignedResponder.id) {
+            // Compute assigned unit's approximate ETA
+            const speedKmh = currentlyAssignedResponder.capability === 'FLOOD_BOAT' ? 30.0 : 40.0
+            const assignedDistKm = haversineDistance(
+              currentlyAssignedResponder.latitude,
+              currentlyAssignedResponder.longitude,
+              selectedIncident.latitude,
+              selectedIncident.longitude
+            )
+            const assignedEtaMin = (assignedDistKm / Math.max(1, speedKmh)) * 60.0
+            const topCandEtaMin = topCand.eta_minutes || 5.0
+            const etaDeltaMin = Math.round(assignedEtaMin - topCandEtaMin)
+
+            // Trigger shift notification if candidate is >= 2 min faster or assigned unit is OFFLINE
+            if (etaDeltaMin >= 2 || currentlyAssignedResponder.status === 'OFFLINE') {
+              setRecommendationShift({
+                currentResponder: currentlyAssignedResponder,
+                currentEtaFormatted: `${Math.max(1, Math.round(assignedEtaMin))} min`,
+                newCandidate: topCand,
+                newEtaFormatted:
+                  topCand.eta_formatted || `${Math.max(1, Math.round(topCandEtaMin))} min`,
+                etaDeltaMinutes: etaDeltaMin,
+                reason:
+                  currentlyAssignedResponder.status === 'OFFLINE'
+                    ? `Currently assigned ${currentlyAssignedResponder.unit_name} is OFFLINE. ${topCand.unit_name} is now recommended.`
+                    : `${topCand.unit_name} is now ${etaDeltaMin} min faster (~${topCand.eta_formatted || '5 min'}) and qualified for this incident.`,
+                detectedAt: Date.now(),
+              })
+            }
+          } else {
+            setRecommendationShift(null)
+          }
+        } else {
+          setRecommendationShift(null)
+        }
 
         const assigned = liveResponders.find((r) => r.assigned_incident_id === selectedIncident.id)
         const primaryTarget =
@@ -69,8 +170,10 @@ export const useDispatchRecommendation = ({
       } else if (isMounted) {
         setCandidateList([])
         setActiveRoute(null)
+        setRecommendationShift(null)
         lastRouteKeyRef.current = null
       }
+
       if (isMounted) {
         setIsLoadingCandidates(false)
       }
@@ -81,7 +184,7 @@ export const useDispatchRecommendation = ({
     return () => {
       isMounted = false
     }
-  }, [selectedIncident, liveResponders])
+  }, [selectedIncident, liveResponders, currentlyAssignedResponder])
 
   // ---------------------------------------------------------------------------
   // 2. Canonical Server-Authoritative Candidate Accessors
@@ -173,12 +276,32 @@ export const useDispatchRecommendation = ({
   const refreshCandidates = useCallback(async () => {
     if (!selectedIncident) return
     setIsLoadingCandidates(true)
+    const currentReqId = ++latestRequestIdRef.current
     const candRes = await fetchResponderCandidates(selectedIncident.id)
+    if (currentReqId < latestRequestIdRef.current) return
+
     if (candRes.success) {
       setCandidateList(candRes.data || [])
     }
     setIsLoadingCandidates(false)
   }, [selectedIncident])
+
+  const dismissRecommendationShift = useCallback(() => {
+    setRecommendationShift(null)
+  }, [])
+
+  const executeReassignment = useCallback(
+    async (newResponderId, reason) => {
+      if (!selectedIncident) return { success: false, error: 'No incident selected' }
+      const res = await reassignResponder(newResponderId, selectedIncident.id, reason)
+      if (res.success) {
+        setRecommendationShift(null)
+        await refreshCandidates()
+      }
+      return res
+    },
+    [selectedIncident, refreshCandidates]
+  )
 
   const clearRoute = useCallback(() => {
     setActiveRoute(null)
@@ -197,8 +320,13 @@ export const useDispatchRecommendation = ({
     setActiveRoute,
     previewRoute,
     setPreviewRoute,
+    recommendationShift,
+    dismissRecommendationShift,
+    executeReassignment,
     selectCandidateRoute,
     refreshCandidates,
     clearRoute,
   }
 }
+
+export default useDispatchRecommendation

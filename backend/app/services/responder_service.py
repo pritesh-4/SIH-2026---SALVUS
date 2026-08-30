@@ -285,6 +285,177 @@ async def assign_responder_to_incident(
     return updated_responder, updated_incident
 
 
+async def reassign_responder_to_incident(
+    db: aiosqlite.Connection,
+    new_responder_id: str,
+    incident_id: str,
+    reason: str = "Operational reassignment due to updated transit and capability assessment",
+    actor: str = "authority",
+) -> tuple[ResponderResponse, IncidentResponse, ResponderResponse | None] | None:
+    """Authoritatively and atomically reassign an incident to a new responder unit."""
+    new_responder = await get_responder_by_id(db, new_responder_id)
+    if not new_responder:
+        return None
+
+    incident = await get_incident_by_id(db, incident_id)
+    if not incident:
+        return None
+
+    # Check terminal incident state guard
+    if incident.status in ("RESOLVED", "CANCELLED"):
+        raise ValueError(
+            f"Cannot reassign incident #{incident.ticket_id} "
+            f"with terminal status '{incident.status}'."
+        )
+
+    # Check new responder availability guards
+    if new_responder.status == "OFFLINE":
+        raise ValueError(
+            f"Target responder '{new_responder.unit_name}' is OFFLINE and cannot be dispatched."
+        )
+
+    # If already assigned to another incident
+    if (
+        new_responder.assigned_incident_id
+        and new_responder.assigned_incident_id != incident_id
+        and new_responder.status in ("ASSIGNED", "ON_SCENE", "EN_ROUTE", "NEARBY")
+    ):
+        raise ValueError(
+            f"Target responder '{new_responder.unit_name}' is already assigned "
+            "to another active mission."
+        )
+
+    # Find existing active assignment
+    cursor = await db.execute(
+        """
+        SELECT id, responder_id, status FROM assignments
+        WHERE incident_id = ?
+          AND status IN ('PROPOSED', 'ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE')
+        LIMIT 1
+        """,
+        (incident_id,),
+    )
+    active_assign = await cursor.fetchone()
+    previous_responder = None
+    if active_assign:
+        prev_resp_id = active_assign["responder_id"]
+        if prev_resp_id == new_responder_id:
+            # Reassigning to the same responder is an idempotent no-op
+            return new_responder, incident, None
+        previous_responder = await get_responder_by_id(db, prev_resp_id)
+
+    now = datetime.now(UTC).isoformat()
+    new_assignment_id = str(uuid.uuid4())
+
+    try:
+        # 1. Cancel previous assignment and release previous responder back to AVAILABLE
+        if active_assign:
+            await db.execute(
+                """
+                UPDATE assignments
+                SET status = 'CANCELLED', cancelled_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (now, now, active_assign["id"]),
+            )
+            await db.execute(
+                """
+                UPDATE responders
+                SET status = 'AVAILABLE', assigned_incident_id = NULL, updated_at = ?
+                WHERE id = ?
+                """,
+                (now, active_assign["responder_id"]),
+            )
+
+        # 2. Insert new assignment
+        await db.execute(
+            """
+            INSERT INTO assignments (
+                id, incident_id, responder_id, status, assigned_by,
+                assigned_at, accepted_at, started_at, nearby_at,
+                arrived_at, completed_at, cancelled_at,
+                score, score_breakdown, assignment_reason, created_at, updated_at
+            )
+            VALUES (?, ?, ?, 'ASSIGNED', ?, ?, ?,
+                    NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)
+            """,
+            (
+                new_assignment_id,
+                incident_id,
+                new_responder_id,
+                actor,
+                now,
+                now,
+                reason,
+                now,
+                now,
+            ),
+        )
+
+        # 3. Update new responder
+        await db.execute(
+            """
+            UPDATE responders
+            SET status = 'ASSIGNED', assigned_incident_id = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (incident_id, now, new_responder_id),
+        )
+
+        # 4. Update incident status
+        await db.execute(
+            """
+            UPDATE incidents
+            SET status = 'ASSIGNED', updated_at = ?
+            WHERE id = ?
+            """,
+            (now, incident_id),
+        )
+
+        # 5. Add audit event to incident timeline
+        event_id = str(uuid.uuid4())
+        event_metadata = json.dumps(
+            {
+                "previous_responder_id": previous_responder.id if previous_responder else None,
+                "previous_unit_name": (
+                    previous_responder.unit_name if previous_responder else None
+                ),
+                "new_responder_id": new_responder.id,
+                "new_unit_name": new_responder.unit_name,
+                "reassignment_reason": reason,
+                "actor": actor,
+            }
+        )
+        await db.execute(
+            """
+            INSERT INTO incident_events (id, incident_id, event_type, previous_status,
+                new_status, actor, metadata, created_at)
+            VALUES (?, ?, 'assignment.reassigned', ?, 'ASSIGNED', ?, ?, ?)
+            """,
+            (
+                event_id,
+                incident_id,
+                incident.status,
+                actor,
+                event_metadata,
+                now,
+            ),
+        )
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    updated_new_responder = await get_responder_by_id(db, new_responder_id)
+    updated_incident = await get_incident_by_id(db, incident_id)
+    updated_prev_responder = (
+        await get_responder_by_id(db, previous_responder.id) if previous_responder else None
+    )
+
+    return updated_new_responder, updated_incident, updated_prev_responder
+
+
 async def advance_responder_lifecycle(
     db: aiosqlite.Connection,
     responder_id: str,

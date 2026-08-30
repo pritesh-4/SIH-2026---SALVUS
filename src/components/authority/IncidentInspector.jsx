@@ -35,6 +35,9 @@ export const IncidentInspector = ({
   isSimulatingMovement = false,
   simulationSpeedMultiplier = 1,
   actionSuccessMessage = null,
+  recommendationShift = null,
+  onDismissRecommendationShift,
+  onReviewReassign,
   onClearRoute,
   onSelectCandidateRoute,
   onRequestAssign,
@@ -224,6 +227,24 @@ export const IncidentInspector = ({
         )}
 
         {/* Assigned Unit OR Recommended Unit */}
+        {/* Dynamic Recommendation Shift Notification (Pass 4C) */}
+        {currentlyAssignedResponder && recommendationShift && (
+          <DispatchRecommendationPanel
+            incident={selectedIncident}
+            topCandidate={recommendationShift.newCandidate}
+            alternatives={alternativeCandidates}
+            activeRoute={activeRoute}
+            isLoading={isLoadingCandidates}
+            recommendationShift={recommendationShift}
+            onDismissRecommendationShift={onDismissRecommendationShift}
+            onReviewReassign={onReviewReassign}
+            onSelectRoute={onSelectCandidateRoute}
+            onRequestAssign={onRequestAssign}
+            onRefreshCandidates={onRefreshCandidates}
+            isAssigning={isAssigningUnit}
+          />
+        )}
+
         {currentlyAssignedResponder ? (
           /* Active Dispatched Unit View */
           <Card variant="info" padding="sm" className="space-y-2.5 shadow-2xs">
@@ -345,6 +366,9 @@ export const IncidentInspector = ({
             alternatives={alternativeCandidates}
             activeRoute={activeRoute}
             isLoading={isLoadingCandidates}
+            recommendationShift={recommendationShift}
+            onDismissRecommendationShift={onDismissRecommendationShift}
+            onReviewReassign={onReviewReassign}
             onSelectRoute={onSelectCandidateRoute}
             onRequestAssign={onRequestAssign}
             onRefreshCandidates={onRefreshCandidates}

@@ -110,8 +110,8 @@ export const ActiveEmergencyBanner = () => {
         setIncidentData((prev) => {
           if (!prev) return null
           const next = { ...prev }
-          if (payload.responder) {
-            next.assigned_responder = payload.responder
+          if (payload.new_responder || payload.responder) {
+            next.assigned_responder = payload.new_responder || payload.responder
           }
           if (shouldAcceptStatusUpdate(prev.status, incomingStatus)) {
             next.status = incomingStatus
@@ -124,6 +124,7 @@ export const ActiveEmergencyBanner = () => {
     const unsub1 = subscribeToEvent('incident.response_state_changed', handleStatus)
     const unsub2 = subscribeToEvent('assignment.created', handleAssign)
     const unsub3 = subscribeToEvent('assignment.status_changed', handleAssign)
+    const unsub4 = subscribeToEvent('assignment.reassigned', handleAssign)
 
     return () => {
       isMounted = false
@@ -131,6 +132,7 @@ export const ActiveEmergencyBanner = () => {
       unsub1()
       unsub2()
       unsub3()
+      unsub4()
     }
   }, [activeIncidentId])
 

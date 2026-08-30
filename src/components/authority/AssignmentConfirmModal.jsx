@@ -1,16 +1,26 @@
 import { useEffect, useRef } from 'react'
-import { AlertTriangle, Send, Clock, MapPin, Shield, Users, Activity } from 'lucide-react'
+import {
+  AlertTriangle,
+  Send,
+  Clock,
+  MapPin,
+  Shield,
+  Users,
+  Activity,
+  RefreshCw,
+} from 'lucide-react'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
 /**
- * Dispatch Assignment Confirmation Safeguard Modal (Pass 4B)
+ * Dispatch Assignment & Reassignment Confirmation Safeguard Modal (Pass 4C)
  *
- * Prevents accidental dispatch with clear structured confirmation:
+ * Prevents accidental dispatch or reassignment with clear structured confirmation:
  * - Target incident ID, ticket, type & urgency
  * - Unit name, craft type, team lead
  * - Estimated arrival (ETA), distance
  * - Capability match with status validation
+ * - Dynamic reassignment comparison (releases old unit, dispatches new unit)
  * - Keyboard accessible with Escape & Enter handling
  */
 export const AssignmentConfirmModal = ({
@@ -21,6 +31,9 @@ export const AssignmentConfirmModal = ({
   incident,
   isAssigning = false,
   assignmentError = null,
+  isReassign = false,
+  previousResponder = null,
+  reassignmentReason = null,
 }) => {
   const confirmBtnRef = useRef(null)
 
@@ -74,8 +87,8 @@ export const AssignmentConfirmModal = ({
         {/* Header */}
         <div className="px-5 py-4 bg-salvus-surface-elevated border-b border-salvus-border flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Badge variant="info" dot={true}>
-              Confirm Dispatch Assignment
+            <Badge variant={isReassign ? 'warning' : 'info'} dot={true}>
+              {isReassign ? 'Confirm Dynamic Reassignment' : 'Confirm Dispatch Assignment'}
             </Badge>
           </div>
           <button
@@ -93,13 +106,13 @@ export const AssignmentConfirmModal = ({
         <div className="p-5 space-y-4 text-xs">
           <div>
             <span className="text-[10px] font-bold text-salvus-info uppercase tracking-wider font-mono block">
-              Authority Dispatch Order
+              {isReassign ? 'Dynamic Tactical Reassignment' : 'Authority Dispatch Order'}
             </span>
             <h3
               id="assignment-modal-title"
               className="text-base font-extrabold text-salvus-text-primary tracking-tight mt-0.5"
             >
-              Assign {unitName}?
+              {isReassign ? `Reassign to ${unitName}?` : `Assign ${unitName}?`}
             </h3>
             <p className="text-xs text-salvus-text-secondary mt-0.5 font-medium">
               Confirm authoritative deployment to incident #
@@ -107,6 +120,29 @@ export const AssignmentConfirmModal = ({
               {incident.type?.replace('_', ' ') || 'disaster'}).
             </p>
           </div>
+
+          {/* Reassignment Context Notice */}
+          {isReassign && previousResponder && (
+            <div className="p-2.5 bg-salvus-muted/50 border border-salvus-border rounded-xl space-y-1.5 text-xs">
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-salvus-text-muted">Currently Assigned:</span>
+                <strong className="text-salvus-text-secondary font-mono">
+                  {previousResponder.unit_name}
+                </strong>
+              </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-salvus-info font-medium">New Candidate:</span>
+                <strong className="text-salvus-safe font-mono">
+                  {unitName} (~{etaFormatted})
+                </strong>
+              </div>
+              {reassignmentReason && (
+                <p className="text-[11px] text-salvus-text-muted pt-1 border-t border-salvus-border/50">
+                  {reassignmentReason}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Structured Assignment Details Card */}
           <div className="p-3.5 bg-salvus-muted/40 border border-salvus-border rounded-xl space-y-2 text-xs font-medium">
@@ -178,8 +214,9 @@ export const AssignmentConfirmModal = ({
           <div className="p-2.5 bg-salvus-warning-bg border border-salvus-warning-border rounded-lg flex items-start gap-2 text-xs text-salvus-warning-text font-medium">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <p>
-              Transitions incident status to <strong>ASSIGNED</strong>. Telemetry corridor tracking
-              will initiate immediately upon confirmation.
+              {isReassign
+                ? `Releases ${previousResponder?.unit_name || 'previous unit'} back to AVAILABLE status and redirects citizen tracking to ${unitName}.`
+                : 'Transitions incident status to ASSIGNED. Telemetry corridor tracking will initiate immediately upon confirmation.'}
             </p>
           </div>
         </div>
@@ -193,7 +230,7 @@ export const AssignmentConfirmModal = ({
             onClick={onClose}
             className="text-xs"
           >
-            Cancel
+            {isReassign ? 'Keep Current Unit' : 'Cancel'}
           </Button>
 
           <Button
@@ -201,11 +238,13 @@ export const AssignmentConfirmModal = ({
             variant="primary"
             size="md"
             loading={isAssigning}
-            onClick={() => onConfirm(candidate.id)}
-            leftIcon={<Send className="h-3.5 w-3.5" />}
+            onClick={() => onConfirm(candidate.id, reassignmentReason)}
+            leftIcon={
+              isReassign ? <RefreshCw className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />
+            }
             className="font-bold text-xs shadow-xs"
           >
-            Confirm Assignment
+            {isReassign ? 'Confirm Reassignment' : 'Confirm Assignment'}
           </Button>
         </div>
       </div>

@@ -12,21 +12,24 @@ import {
   AlertCircle,
   RefreshCw,
   CheckCircle2,
+  ArrowRight,
+  Zap,
 } from 'lucide-react'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
 /**
- * Recommended Response Dispatch Panel (Pass 4B - Operator Decision Hub)
+ * Recommended Response Dispatch Panel (Pass 4C - Dynamic Intelligence Decision Hub)
  *
  * Operational dispatch decision hub:
  * - Highlights recommended response unit with capability, Estimated ETA, distance, crew load, match score
  * - Plain fact-based reason why recommended ("WHY THIS UNIT?")
+ * - Dynamic recommendation shift detection when assigned incident has a superior alternative
  * - Compact visual score factor breakdown (6 factors summing to 100)
  * - Tradeoff presentation for alternative candidates with comparative reasons
  * - Freshness timestamp & stale recommendation alert
- * - Direct [ VIEW ROUTE ] & [ ASSIGN ] actions
+ * - Direct [ PREVIEW ROUTE ], [ ASSIGN ], and [ REVIEW REASSIGNMENT ] actions
  */
 export const DispatchRecommendationPanel = ({
   incident,
@@ -37,6 +40,9 @@ export const DispatchRecommendationPanel = ({
   onSelectRoute,
   onRequestAssign,
   onRefreshCandidates,
+  recommendationShift = null,
+  onDismissRecommendationShift,
+  onReviewReassign,
   isAssigning = false,
 }) => {
   const [showFormulaBreakdown, setShowFormulaBreakdown] = useState(false)
@@ -189,8 +195,82 @@ export const DispatchRecommendationPanel = ({
         </div>
       </div>
 
+      {/* DYNAMIC RECOMMENDATION SHIFT ALERT (Pass 4C) */}
+      {recommendationShift && (
+        <div className="p-3 bg-salvus-info-bg/70 border border-salvus-info-border rounded-xl space-y-2 text-xs animate-fadeIn">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 font-bold text-salvus-info text-xs">
+              <Zap className="h-4 w-4 shrink-0" />
+              <span>Dynamic Recommendation Update</span>
+            </div>
+            <Badge variant="info" size="sm">
+              Change Detected
+            </Badge>
+          </div>
+
+          <p className="text-salvus-text-primary text-[11px] font-medium leading-relaxed">
+            {recommendationShift.reason}
+          </p>
+
+          {/* Current vs New Side-by-Side Comparison */}
+          <div className="grid grid-cols-2 gap-2 p-2 bg-salvus-surface rounded-lg border border-salvus-border text-[11px]">
+            <div className="border-r border-salvus-border pr-2">
+              <span className="text-[10px] text-salvus-text-muted uppercase block font-semibold">
+                Current Unit
+              </span>
+              <strong className="text-salvus-text-secondary truncate block">
+                {recommendationShift.currentResponder.unit_name}
+              </strong>
+              <span className="text-salvus-text-muted font-mono text-[10px]">
+                ETA ~{recommendationShift.currentEtaFormatted}
+              </span>
+            </div>
+
+            <div>
+              <span className="text-[10px] text-salvus-info uppercase block font-semibold">
+                New Recommended
+              </span>
+              <strong className="text-salvus-text-primary truncate block font-bold">
+                {recommendationShift.newCandidate.unit_name}
+              </strong>
+              <span className="text-salvus-safe font-mono text-[10px] font-bold">
+                ETA ~{recommendationShift.newEtaFormatted} (
+                {recommendationShift.etaDeltaMinutes > 0
+                  ? `-${recommendationShift.etaDeltaMinutes}m`
+                  : 'faster'}
+                )
+              </span>
+            </div>
+          </div>
+
+          {/* Authority Confirmation Actions */}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            {onDismissRecommendationShift && (
+              <Button
+                variant="quiet"
+                size="sm"
+                onClick={onDismissRecommendationShift}
+                className="text-[11px]"
+              >
+                Keep Current
+              </Button>
+            )}
+
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => onReviewReassign?.(recommendationShift.newCandidate)}
+              rightIcon={<ArrowRight className="h-3 w-3" />}
+              className="text-[11px] font-bold shadow-xs"
+            >
+              Review Reassignment
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Stale Warning Banner (if data is older than threshold) */}
-      {isStale && (
+      {isStale && !recommendationShift && (
         <div className="bg-salvus-warning-bg border border-salvus-warning-border p-2 rounded-lg flex items-center justify-between text-[11px] text-salvus-warning-text animate-fadeIn">
           <span>⚠️ Recommendation may have changed. Unit coordinates or status updated.</span>
           {onRefreshCandidates && (

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { authorityData } from '../data/authority/authorityMock'
-import { assignResponder } from '../services/api'
+import { assignResponder, reassignResponder } from '../services/api'
 import {
   useAuthorityIncidents,
   useAuthorityFleet,
@@ -95,6 +95,8 @@ export const AuthorityCommandCenter = () => {
     selectCandidateRoute,
     refreshCandidates,
     clearRoute,
+    recommendationShift,
+    dismissRecommendationShift,
   } = useDispatchRecommendation({
     selectedIncident,
     liveResponders,
@@ -117,6 +119,7 @@ export const AuthorityCommandCenter = () => {
   const [actionSuccessMessage, setActionSuccessMessage] = useState(null)
   const [isAssigningUnit, setIsAssigningUnit] = useState(false)
   const [assignConfirmCandidate, setAssignConfirmCandidate] = useState(null)
+  const [reassignModalCandidate, setReassignModalCandidate] = useState(null)
   const statusTimeoutRef = useRef(null)
 
   // Cleanup timeout on unmount
@@ -207,6 +210,48 @@ export const AuthorityCommandCenter = () => {
       )
       refreshCandidates()
       setAssignConfirmCandidate(null)
+    }
+  }
+
+  const handleConfirmReassignment = async (responderId, reason) => {
+    if (!selectedIncident || isAssigningUnit) return
+
+    setIsAssigningUnit(true)
+    const result = await reassignResponder(
+      responderId,
+      selectedIncident.id,
+      reason || 'Operational reassignment due to updated transit and capability assessment'
+    )
+    setIsAssigningUnit(false)
+
+    if (result.success) {
+      setReassignModalCandidate(null)
+      dismissRecommendationShift?.()
+      showStatusMessage(
+        `✓ Dynamically reassigned #${selectedIncident.ticket_id} to ${result.data.unit_name}`,
+        3500
+      )
+      setLiveResponders((prev) =>
+        prev.map((r) => {
+          if (r.id === responderId) {
+            return {
+              ...r,
+              ...result.data,
+              status: 'ASSIGNED',
+              assigned_incident_id: selectedIncident.id,
+            }
+          }
+          if (r.assigned_incident_id === selectedIncident.id) {
+            return { ...r, status: 'AVAILABLE', assigned_incident_id: null }
+          }
+          return r
+        })
+      )
+      refetchIncidents(true)
+      refreshCandidates()
+    } else {
+      showStatusMessage(`❌ ${result.error?.message || 'Reassignment failed'}`, 4500)
+      refreshCandidates()
     }
   }
 
@@ -393,6 +438,9 @@ export const AuthorityCommandCenter = () => {
                 isSimulatingMovement={isSimulatingMovement}
                 simulationSpeedMultiplier={simulationSpeedMultiplier}
                 actionSuccessMessage={actionSuccessMessage}
+                recommendationShift={recommendationShift}
+                onDismissRecommendationShift={dismissRecommendationShift}
+                onReviewReassign={(candidate) => setReassignModalCandidate(candidate)}
                 onClearRoute={clearRoute}
                 onSelectCandidateRoute={selectCandidateRoute}
                 onRequestAssign={setAssignConfirmCandidate}
@@ -441,7 +489,7 @@ export const AuthorityCommandCenter = () => {
         </Card>
       </div>
 
-      {/* Assignment Confirmation Modal */}
+      {/* Assignment Confirmation Safeguard Modal */}
       <AssignmentConfirmModal
         isOpen={Boolean(assignConfirmCandidate)}
         candidate={assignConfirmCandidate}
@@ -449,6 +497,19 @@ export const AuthorityCommandCenter = () => {
         isAssigning={isAssigningUnit}
         onClose={() => setAssignConfirmCandidate(null)}
         onConfirm={handleConfirmAssignment}
+      />
+
+      {/* Dynamic Reassignment Safeguard Modal (Pass 4C) */}
+      <AssignmentConfirmModal
+        isOpen={Boolean(reassignModalCandidate)}
+        candidate={reassignModalCandidate}
+        incident={selectedIncident}
+        isAssigning={isAssigningUnit}
+        isReassign={true}
+        previousResponder={currentlyAssignedResponder}
+        reassignmentReason={recommendationShift?.reason}
+        onClose={() => setReassignModalCandidate(null)}
+        onConfirm={handleConfirmReassignment}
       />
     </div>
   )

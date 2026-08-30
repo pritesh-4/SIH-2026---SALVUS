@@ -10,7 +10,8 @@ Endpoints:
     POST   /api/responders/{id}/location       — Update GPS telemetry (Responder/Authority)
 """
 
-from __future__ import annotations
+import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -30,18 +31,26 @@ from app.models import (
     ResponderLifecycleAdvanceRequest,
     ResponderListResponse,
     ResponderLocationUpdate,
+    ResponderReassignRequest,
     ResponderSingleResponse,
     ResponderStatusUpdate,
 )
 from app.realtime.socket_manager import (
     emit_assignment_created,
+    emit_assignment_reassigned,
     emit_assignment_status_changed,
     emit_incident_status_changed,
     emit_responder_location_updated,
     emit_responder_status_changed,
 )
-from app.services import assignment_service, candidate_generation, responder_service
+from app.services import (
+    assignment_service,
+    candidate_generation,
+    incident_service,
+    responder_service,
+)
 from app.services.allocation_engine import rank_and_explain_candidates
+from app.services.routing_service import haversine_distance_km
 
 router = APIRouter(prefix="/api/responders", tags=["responders"])
 
@@ -113,12 +122,69 @@ async def get_candidate_responders(
 
     allocation_status = "RECOMMENDED" if candidates else "NO_AVAILABLE_RESPONDER"
     message = "No suitable response unit is currently available." if not candidates else None
+
+    # Dynamic shift detection
+    now_iso = datetime.now(UTC).isoformat()
+    calc_id = str(uuid.uuid4())
+
+    cursor = await db.execute(
+        """
+        SELECT id, responder_id, status FROM assignments
+        WHERE incident_id = ?
+          AND status IN ('PROPOSED', 'ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE')
+        LIMIT 1
+        """,
+        (incident_id,),
+    )
+    active_assign = await cursor.fetchone()
+    assigned_resp_id = active_assign["responder_id"] if active_assign else None
+
+    is_recommendation_changed = False
+    change_reason = None
+    assigned_eta = None
+
+    if assigned_resp_id:
+        assigned_resp = await responder_service.get_responder_by_id(db, assigned_resp_id)
+        if assigned_resp and candidates:
+            top_cand = candidates[0]
+            if top_cand.id != assigned_resp_id:
+                inc = await incident_service.get_incident_by_id(db, incident_id)
+                if inc:
+                    dist_km = haversine_distance_km(
+                        assigned_resp.latitude,
+                        assigned_resp.longitude,
+                        inc.latitude,
+                        inc.longitude,
+                    )
+                    speed_kmh = 30.0 if assigned_resp.capability == "FLOOD_BOAT" else 40.0
+                    assigned_eta = round((dist_km / max(1.0, speed_kmh)) * 60.0, 1)
+
+                    if (assigned_eta - top_cand.eta_minutes) >= 2.0:
+                        is_recommendation_changed = True
+                        diff_min = max(1, round(assigned_eta - top_cand.eta_minutes))
+                        change_reason = (
+                            f"Recommendation updated: {top_cand.unit_name} is now {diff_min} min "
+                            f"faster (~{top_cand.eta_formatted}) and qualified for this incident."
+                        )
+                    elif assigned_resp.status == "OFFLINE":
+                        is_recommendation_changed = True
+                        change_reason = (
+                            f"Assigned unit {assigned_resp.unit_name} went OFFLINE. "
+                            f"{top_cand.unit_name} is now recommended."
+                        )
+
     return ResponderCandidateListResponse(
         incident_id=incident_id,
         allocation_status=allocation_status,
         message=message,
         data=candidates,
         count=len(candidates),
+        calculation_id=calc_id,
+        calculated_at=now_iso,
+        is_recommendation_changed=is_recommendation_changed,
+        change_reason=change_reason,
+        assigned_responder_id=assigned_resp_id,
+        current_assignment_eta_minutes=assigned_eta,
     )
 
 
@@ -278,6 +344,72 @@ async def assign_responder(
         pass
 
     return ResponderSingleResponse(data=updated_responder)
+
+
+@router.post("/{responder_id}/reassign", response_model=ResponderSingleResponse)
+async def reassign_responder(
+    responder_id: str,
+    payload: ResponderReassignRequest,
+    user: AuthenticatedUser = Depends(require_authority),
+):
+    """Authoritatively and dynamically reassign an active incident to a new responder unit."""
+    db = await get_database()
+
+    try:
+        result = await responder_service.reassign_responder_to_incident(
+            db,
+            new_responder_id=responder_id,
+            incident_id=payload.incident_id,
+            reason=payload.reason or "Dynamic recommendation reassignment",
+            actor=user.name,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "INVALID_REASSIGNMENT",
+                    "message": str(e),
+                },
+            },
+        ) from e
+
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "REASSIGNMENT_FAILED",
+                    "message": (
+                        f"Failed to reassign responder '{responder_id}' to "
+                        f"incident '{payload.incident_id}'. Verify IDs exist."
+                    ),
+                },
+            },
+        )
+
+    updated_new_responder, updated_incident, previous_responder = result
+
+    # Broadcast real-time reassignment, responder status, and incident status events
+    try:
+        await emit_assignment_reassigned(
+            new_responder=updated_new_responder,
+            incident=updated_incident,
+            previous_responder=previous_responder,
+            reassignment_reason=payload.reason,
+        )
+        await emit_responder_status_changed(updated_new_responder)
+        if previous_responder:
+            await emit_responder_status_changed(previous_responder)
+        await emit_incident_status_changed(
+            updated_incident, updated_incident.status, responder=updated_new_responder
+        )
+    except Exception:
+        pass
+
+    return ResponderSingleResponse(data=updated_new_responder)
 
 
 @router.post("/{responder_id}/lifecycle", response_model=ResponderSingleResponse)

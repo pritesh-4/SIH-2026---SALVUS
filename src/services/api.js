@@ -505,6 +505,37 @@ export const assignResponder = async (
 }
 
 /**
+ * Reassign an active incident to a new responder unit with atomic safety.
+ */
+export const reassignResponder = async (
+  newResponderId,
+  incidentId,
+  reason = 'Operational reassignment due to updated transit and capability assessment'
+) => {
+  try {
+    const response = await apiClient.post(`/api/responders/${newResponderId}/reassign`, {
+      incident_id: incidentId,
+      reason,
+    })
+    return {
+      success: true,
+      data: response.data.data,
+    }
+  } catch (error) {
+    const message =
+      error.response?.data?.detail?.error?.message ||
+      error.response?.data?.detail?.message ||
+      error.message ||
+      'Failed to reassign responder'
+    return {
+      success: false,
+      error: { message, code: error.code || 'REASSIGN_ERROR' },
+      data: null,
+    }
+  }
+}
+
+/**
  * Update responder operational status or incident assignment.
  */
 export const updateResponderStatus = async (

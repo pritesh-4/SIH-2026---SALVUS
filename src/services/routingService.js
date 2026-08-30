@@ -33,6 +33,8 @@ export const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   return Math.round(R * c * 100) / 100
 }
 
+export const haversineDistance = haversineDistanceKm
+
 /**
  * Check if coordinate has moved beyond minimum threshold in meters.
  */

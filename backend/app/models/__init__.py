@@ -495,6 +495,14 @@ class ResponderAssignmentRequest(BaseModel):
     actor: str = Field(default="authority", max_length=200)
 
 
+class ResponderReassignRequest(BaseModel):
+    """Payload for dynamically reassigning an active incident to a new responder unit."""
+
+    incident_id: str
+    reason: str | None = "Operational reassignment due to updated transit and capability assessment"
+    actor: str = Field(default="authority", max_length=200)
+
+
 class ResponderLocationUpdate(BaseModel):
     """Payload for updating real-time coordinates of a response unit."""
 
@@ -611,6 +619,13 @@ class ResponderCandidateListResponse(BaseModel):
     message: str | None = None
     data: list[CandidateResponderResponse]
     count: int
+    calculation_id: str | None = None
+    calculation_version: int = 1
+    calculated_at: str | None = None
+    is_recommendation_changed: bool = False
+    change_reason: str | None = None
+    assigned_responder_id: str | None = None
+    current_assignment_eta_minutes: float | None = None
 
 
 class CandidateEvaluationRequest(BaseModel):
@@ -618,6 +633,8 @@ class CandidateEvaluationRequest(BaseModel):
 
     incident: IncidentResponse
     responders: list[ResponderResponse]
+    currently_assigned_responder_id: str | None = None
+    calculation_version: int = 1
 
 
 class CandidateEvaluationResponse(BaseModel):
@@ -629,6 +646,13 @@ class CandidateEvaluationResponse(BaseModel):
     message: str | None = None
     data: list[CandidateResponderResponse]
     count: int
+    calculation_id: str | None = None
+    calculation_version: int = 1
+    calculated_at: str | None = None
+    is_recommendation_changed: bool = False
+    change_reason: str | None = None
+    assigned_responder_id: str | None = None
+    current_assignment_eta_minutes: float | None = None
 
 
 # ---------------------------------------------------------------------------

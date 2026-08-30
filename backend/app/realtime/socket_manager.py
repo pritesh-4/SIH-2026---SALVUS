@@ -370,6 +370,52 @@ async def emit_assignment_updated(assignment: AssignmentResponse) -> None:
         await sio.emit("assignment.updated", payload, room=incident_room)
 
 
+async def emit_assignment_reassigned(
+    new_responder: ResponderResponse,
+    incident: IncidentResponse,
+    previous_responder: ResponderResponse | None = None,
+    reassignment_reason: str | None = None,
+) -> None:
+    """Broadcast dynamic responder reassignment to authority and citizen rooms."""
+    payload = {
+        "incident_id": incident.id,
+        "id": incident.id,
+        "ticket_id": incident.ticket_id,
+        "status": "ASSIGNED",
+        "new_responder": new_responder.model_dump(),
+        "responder": new_responder.model_dump(),
+        "previous_responder": previous_responder.model_dump() if previous_responder else None,
+        "reassignment_reason": reassignment_reason,
+        "message": f"Rescue team updated: {new_responder.unit_name} is now assigned.",
+    }
+
+    # Broadcast to Authority Command Center
+    await sio.emit("assignment.reassigned", payload, room="authorities")
+    await sio.emit("assignment.created", payload, room="authorities")
+
+    # Broadcast to Citizen Emergency room
+    if incident.id:
+        incident_room = f"incident:{incident.id}"
+        await sio.emit("assignment.reassigned", payload, room=incident_room)
+        await sio.emit("assignment.created", payload, room=incident_room)
+        await sio.emit(
+            "incident.status_changed",
+            {
+                "incident": incident.model_dump(),
+                "status": "ASSIGNED",
+                "responder": new_responder.model_dump(),
+                "notification": f"Your rescue team has been updated to {new_responder.unit_name}.",
+            },
+            room=incident_room,
+        )
+
+    print(
+        f"[Socket.IO] Emitted assignment.reassigned → {incident.ticket_id}: "
+        f"{previous_responder.unit_name if previous_responder else 'None'} "
+        f"→ {new_responder.unit_name}"
+    )
+
+
 async def emit_shelter_updated(shelter: ShelterResponse) -> None:
     """Broadcast shelter capacity or status updates."""
     payload = shelter.model_dump()
