@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { citizenProfileData } from '../data/citizen/profile.mock'
 import {
   fetchCitizenProfile,
   updateCitizenProfile,
@@ -15,6 +14,8 @@ import {
   checkPassStatus,
   saveProfileSnapshotLocal,
   getCachedProfileSnapshot,
+  deriveInitials,
+  formatLastSyncedTime,
 } from '../services/profileService'
 import { playTestEmergencySiren } from '../lib/emergencyAudio'
 import { Card } from '../components/ui/Card'
@@ -26,6 +27,11 @@ import { Input, Select, Label, Checkbox } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { LoadingState } from '../components/ui/LoadingState'
 import { ErrorState } from '../components/ui/ErrorState'
+
+const APP_METADATA = {
+  version: 'Salvus Citizen v1.2.0-beta',
+  build: 'Build 2026.08',
+}
 
 const BLOOD_GROUPS = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'UNKNOWN']
 const MOBILITY_OPTIONS = [
@@ -55,6 +61,13 @@ export const CitizenProfile = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
   const [isOfflineFallback, setIsOfflineFallback] = useState(false)
+  const [lastSyncedAt, setLastSyncedAt] = useState(null)
+
+  // Granular section states for partial API failure resilience
+  const [contactsLoading, setContactsLoading] = useState(false)
+  const [contactsError, setContactsError] = useState(null)
+  const [privacyLoading, setPrivacyLoading] = useState(false)
+  const [privacyError, setPrivacyError] = useState(null)
 
   // 2. Identity Edit Form State
   const [isEditingIdentity, setIsEditingIdentity] = useState(false)
@@ -126,7 +139,7 @@ export const CitizenProfile = () => {
 
     const runInit = async () => {
       try {
-        const [profRes, contRes, privRes] = await Promise.all([
+        const results = await Promise.allSettled([
           fetchCitizenProfile(),
           fetchEmergencyContacts(),
           fetchPrivacySettings(),
@@ -134,8 +147,22 @@ export const CitizenProfile = () => {
 
         if (!isMounted) return
 
+        const profRes =
+          results[0].status === 'fulfilled'
+            ? results[0].value
+            : { success: false, error: { message: results[0].reason?.message } }
+        const contRes =
+          results[1].status === 'fulfilled'
+            ? results[1].value
+            : { success: false, error: { message: results[1].reason?.message } }
+        const privRes =
+          results[2].status === 'fulfilled'
+            ? results[2].value
+            : { success: false, error: { message: results[2].reason?.message } }
+
         if (profRes.success && profRes.data) {
           setIsOfflineFallback(false)
+          setLastSyncedAt(null)
           setProfile(profRes.data)
           setIdentityForm({
             full_name: profRes.data.full_name || '',
@@ -145,22 +172,38 @@ export const CitizenProfile = () => {
             registered_address: profRes.data.registered_address || '',
           })
 
-          const loadedContacts = contRes.success && Array.isArray(contRes.data) ? contRes.data : []
-          const loadedPriv = privRes.success && Array.isArray(privRes.data) ? privRes.data : []
+          let loadedContacts = []
+          if (contRes.success && Array.isArray(contRes.data)) {
+            loadedContacts = contRes.data
+            setContacts(loadedContacts)
+            setContactsError(null)
+          } else {
+            setContactsError(contRes.error?.message || 'Emergency contacts unavailable.')
+          }
 
-          setContacts(loadedContacts)
-          setPrivacySettings(loadedPriv)
+          let loadedPriv = []
+          if (privRes.success && Array.isArray(privRes.data)) {
+            loadedPriv = privRes.data
+            setPrivacySettings(loadedPriv)
+            setPrivacyError(null)
+          } else {
+            setPrivacyError(privRes.error?.message || 'Privacy settings unavailable.')
+          }
 
           saveProfileSnapshotLocal(profRes.data, loadedContacts, loadedPriv)
           setPassStatus(checkPassStatus(profRes.data, loadedContacts))
           setCachedPassData(getOfflinePassLocal())
         } else {
+          // Attempt graceful fallback to offline snapshot if available on device
           const offlineSnapshot = getCachedProfileSnapshot()
           if (offlineSnapshot?.profile) {
             setIsOfflineFallback(true)
+            setLastSyncedAt(offlineSnapshot.cachedAt || null)
             setProfile(offlineSnapshot.profile)
             setContacts(offlineSnapshot.contacts || [])
             setPrivacySettings(offlineSnapshot.settings || [])
+            setContactsError(null)
+            setPrivacyError(null)
             setPassStatus(checkPassStatus(offlineSnapshot.profile, offlineSnapshot.contacts || []))
             setCachedPassData(getOfflinePassLocal())
           } else {
@@ -174,9 +217,12 @@ export const CitizenProfile = () => {
         const offlineSnapshot = getCachedProfileSnapshot()
         if (offlineSnapshot?.profile) {
           setIsOfflineFallback(true)
+          setLastSyncedAt(offlineSnapshot.cachedAt || null)
           setProfile(offlineSnapshot.profile)
           setContacts(offlineSnapshot.contacts || [])
           setPrivacySettings(offlineSnapshot.settings || [])
+          setContactsError(null)
+          setPrivacyError(null)
           setPassStatus(checkPassStatus(offlineSnapshot.profile, offlineSnapshot.contacts || []))
           setCachedPassData(getOfflinePassLocal())
         } else {
@@ -201,10 +247,24 @@ export const CitizenProfile = () => {
   const handleRetry = () => {
     setIsLoading(true)
     setLoadError(null)
-    Promise.all([fetchCitizenProfile(), fetchEmergencyContacts(), fetchPrivacySettings()])
-      .then(([profRes, contRes, privRes]) => {
+    Promise.allSettled([fetchCitizenProfile(), fetchEmergencyContacts(), fetchPrivacySettings()])
+      .then((results) => {
+        const profRes =
+          results[0].status === 'fulfilled'
+            ? results[0].value
+            : { success: false, error: { message: results[0].reason?.message } }
+        const contRes =
+          results[1].status === 'fulfilled'
+            ? results[1].value
+            : { success: false, error: { message: results[1].reason?.message } }
+        const privRes =
+          results[2].status === 'fulfilled'
+            ? results[2].value
+            : { success: false, error: { message: results[2].reason?.message } }
+
         if (profRes.success && profRes.data) {
           setIsOfflineFallback(false)
+          setLastSyncedAt(null)
           setProfile(profRes.data)
           setIdentityForm({
             full_name: profRes.data.full_name || '',
@@ -213,10 +273,25 @@ export const CitizenProfile = () => {
             blood_group: profRes.data.blood_group || 'UNKNOWN',
             registered_address: profRes.data.registered_address || '',
           })
-          const loadedContacts = contRes.success && Array.isArray(contRes.data) ? contRes.data : []
-          const loadedPriv = privRes.success && Array.isArray(privRes.data) ? privRes.data : []
-          setContacts(loadedContacts)
-          setPrivacySettings(loadedPriv)
+
+          let loadedContacts = []
+          if (contRes.success && Array.isArray(contRes.data)) {
+            loadedContacts = contRes.data
+            setContacts(loadedContacts)
+            setContactsError(null)
+          } else {
+            setContactsError(contRes.error?.message || 'Emergency contacts unavailable.')
+          }
+
+          let loadedPriv = []
+          if (privRes.success && Array.isArray(privRes.data)) {
+            loadedPriv = privRes.data
+            setPrivacySettings(loadedPriv)
+            setPrivacyError(null)
+          } else {
+            setPrivacyError(privRes.error?.message || 'Privacy settings unavailable.')
+          }
+
           saveProfileSnapshotLocal(profRes.data, loadedContacts, loadedPriv)
           setPassStatus(checkPassStatus(profRes.data, loadedContacts))
           setCachedPassData(getOfflinePassLocal())
@@ -232,6 +307,33 @@ export const CitizenProfile = () => {
       .finally(() => {
         setIsLoading(false)
       })
+  }
+
+  const handleRetryContacts = async () => {
+    setContactsLoading(true)
+    setContactsError(null)
+    const res = await fetchEmergencyContacts()
+    if (res.success && Array.isArray(res.data)) {
+      setContacts(res.data)
+      saveProfileSnapshotLocal(profile, res.data, privacySettings)
+      setPassStatus(checkPassStatus(profile, res.data))
+    } else {
+      setContactsError(res.error?.message || 'Failed to reload emergency contacts.')
+    }
+    setContactsLoading(false)
+  }
+
+  const handleRetrySettings = async () => {
+    setPrivacyLoading(true)
+    setPrivacyError(null)
+    const res = await fetchPrivacySettings()
+    if (res.success && Array.isArray(res.data)) {
+      setPrivacySettings(res.data)
+      saveProfileSnapshotLocal(profile, contacts, res.data)
+    } else {
+      setPrivacyError(res.error?.message || 'Failed to reload privacy settings.')
+    }
+    setPrivacyLoading(false)
   }
 
   // -------------------------------------------------------------------------
@@ -581,11 +683,11 @@ export const CitizenProfile = () => {
     const secondaryContact = contacts.find((c) => c.id !== primaryContact?.id) || null
 
     const passPayload = {
-      emergencyId: profile?.emergency_id || 'SLV-CIT-7829',
+      emergencyId: profile?.emergency_id || '—',
       fullName: profile?.full_name || 'Citizen User',
       bloodGroup: profile?.blood_group || 'UNKNOWN',
       phone: profile?.phone || 'Not registered',
-      registeredAddress: profile?.registered_address || 'Kolkata, WB',
+      registeredAddress: profile?.registered_address || 'No residential address on file',
       primaryContact: primaryContact
         ? {
             name: primaryContact.name,
@@ -625,11 +727,7 @@ export const CitizenProfile = () => {
           <div className="h-4 w-44 bg-salvus-muted rounded-md animate-pulse mb-2" />
           <div className="h-8 w-64 bg-salvus-muted rounded-md animate-pulse" />
         </div>
-        <LoadingState
-          variant="skeleton"
-          lines={6}
-          label="Loading your emergency readiness data..."
-        />
+        <LoadingState variant="skeleton" lines={6} label="Loading your emergency profile..." />
       </div>
     )
   }
@@ -653,8 +751,9 @@ export const CitizenProfile = () => {
     email: profile?.email || 'Not registered',
     registeredAddress: profile?.registered_address || 'No residential address on file',
     bloodGroup: profile?.blood_group || 'UNKNOWN',
-    avatarInitials: profile?.avatar_initials || 'AM',
-    emergencyId: profile?.emergency_id || 'SLV-CIT-7829',
+    avatarInitials: profile?.avatar_initials || deriveInitials(profile?.full_name),
+    emergencyId: profile?.emergency_id || '—',
+    isVerified: Boolean(profile?.is_verified),
     medicalInfo: profile?.medical_info || {
       conditions: [],
       allergies: [],
@@ -695,18 +794,26 @@ export const CitizenProfile = () => {
 
       {/* Offline Mode Indicator if loaded from local cache */}
       {isOfflineFallback && (
-        <div className="bg-salvus-warning-bg border border-salvus-warning-border rounded-2xl p-4 text-salvus-warning-text flex items-center justify-between gap-4 text-xs font-medium animate-fadeIn shadow-xs">
-          <div className="flex items-center gap-2.5">
-            <span className="text-lg">📡</span>
-            <span>
+        <div className="bg-salvus-warning-bg border border-salvus-warning-border rounded-2xl p-4 text-salvus-warning-text flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-medium animate-fadeIn shadow-xs">
+          <div className="flex items-start sm:items-center gap-2.5">
+            <span className="text-lg shrink-0">📡</span>
+            <div>
               <strong>Offline Mode Active:</strong> Viewing locally stored emergency readiness
-              records. Changes will sync when connection returns.
-            </span>
+              records
+              {lastSyncedAt && (
+                <span>
+                  {' '}
+                  (Last synced:{' '}
+                  <span className="font-mono">{formatLastSyncedTime(lastSyncedAt)}</span>)
+                </span>
+              )}
+              . Changes will sync when connection returns.
+            </div>
           </div>
           <button
             type="button"
             onClick={handleRetry}
-            className="underline font-bold hover:opacity-80 shrink-0 cursor-pointer"
+            className="underline font-bold hover:opacity-80 shrink-0 cursor-pointer self-start sm:self-auto"
           >
             Try Reconnecting
           </button>
@@ -800,7 +907,9 @@ export const CitizenProfile = () => {
                     <h2 className="text-xl font-bold text-salvus-text-primary tracking-tight">
                       {identity.fullName}
                     </h2>
-                    <Badge variant="safe">Verified</Badge>
+                    <Badge variant={identity.isVerified ? 'safe' : 'neutral'}>
+                      {identity.isVerified ? 'Verified Citizen' : 'Registered'}
+                    </Badge>
                   </div>
                   <p className="text-xs text-salvus-text-muted mt-0.5 font-mono">
                     Emergency ID: <span className="font-bold">{identity.emergencyId}</span>
@@ -855,7 +964,7 @@ export const CitizenProfile = () => {
                       onChange={(e) =>
                         setIdentityForm((prev) => ({ ...prev, full_name: e.target.value }))
                       }
-                      placeholder="e.g. Aditi Mukherjee"
+                      placeholder="e.g. Full Legal Name"
                       disabled={identitySaveStatus === 'saving'}
                     />
                   </div>
@@ -887,7 +996,7 @@ export const CitizenProfile = () => {
                       onChange={(e) =>
                         setIdentityForm((prev) => ({ ...prev, phone: e.target.value }))
                       }
-                      placeholder="+91 98300 00000"
+                      placeholder="e.g. +91 98300 00000"
                       disabled={identitySaveStatus === 'saving'}
                     />
                   </div>
@@ -901,7 +1010,7 @@ export const CitizenProfile = () => {
                       onChange={(e) =>
                         setIdentityForm((prev) => ({ ...prev, email: e.target.value }))
                       }
-                      placeholder="user@example.com"
+                      placeholder="e.g. user@example.com"
                       disabled={identitySaveStatus === 'saving'}
                     />
                   </div>
@@ -918,7 +1027,7 @@ export const CitizenProfile = () => {
                         registered_address: e.target.value,
                       }))
                     }
-                    placeholder="Residential address for localized disaster zone matching"
+                    placeholder="e.g. Flat / Street, Sector, City"
                     disabled={identitySaveStatus === 'saving'}
                   />
                 </div>
@@ -1061,7 +1170,7 @@ export const CitizenProfile = () => {
                 </p>
               </div>
 
-              {contacts.length < 5 && (
+              {contacts.length < 5 && !contactsError && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -1074,7 +1183,28 @@ export const CitizenProfile = () => {
             </div>
 
             <div className="space-y-3">
-              {contacts.length === 0 ? (
+              {contactsLoading ? (
+                <div className="p-6 text-center">
+                  <div className="h-4 w-40 bg-salvus-muted rounded mx-auto animate-pulse mb-2" />
+                  <p className="text-xs text-salvus-text-muted">Loading emergency contacts...</p>
+                </div>
+              ) : contactsError ? (
+                <div className="p-4 bg-salvus-critical-bg/30 border border-salvus-critical-border rounded-xl text-xs space-y-2">
+                  <div className="flex items-center gap-2 text-salvus-critical font-bold">
+                    <span>⚠️</span>
+                    <span>Emergency contacts unavailable</span>
+                  </div>
+                  <p className="text-salvus-text-secondary">{contactsError}</p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleRetryContacts}
+                    className="text-xs mt-1"
+                  >
+                    Retry Contacts
+                  </Button>
+                </div>
+              ) : contacts.length === 0 ? (
                 <div className="p-6 text-center bg-salvus-warning-bg border border-salvus-warning-border rounded-xl">
                   <span className="text-2xl block mb-2">⚠️</span>
                   <p className="text-xs font-bold text-salvus-warning-text">
@@ -1187,40 +1317,65 @@ export const CitizenProfile = () => {
 
           {/* Privacy & Permissions Controls */}
           <Card padding="md">
-            <h3 className="text-sm font-bold text-salvus-text-primary mb-3">
-              Emergency Permissions & Privacy
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-salvus-text-primary">
+                Emergency Permissions & Privacy
+              </h3>
+            </div>
 
             <div className="space-y-3.5">
-              {privacySettings.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-start justify-between gap-3 pb-3 border-b border-salvus-border last:border-none last:pb-0"
-                >
-                  <div className="pr-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-xs font-semibold text-salvus-text-primary">
-                        {item.title}
-                      </h4>
-                      {item.badge && (
-                        <Badge variant="info" size="sm">
-                          {item.badge}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-salvus-text-secondary mt-0.5 leading-relaxed font-normal">
-                      {item.description}
-                    </p>
-                  </div>
-
-                  <Toggle
-                    checked={item.value}
-                    disabled={item.locked}
-                    onChange={() => handleTogglePrivacySetting(item.id)}
-                    ariaLabel={item.title}
-                  />
+              {privacyLoading ? (
+                <div className="p-4 text-center">
+                  <div className="h-4 w-32 bg-salvus-muted rounded mx-auto animate-pulse mb-2" />
+                  <p className="text-xs text-salvus-text-muted">Loading preferences...</p>
                 </div>
-              ))}
+              ) : privacyError ? (
+                <div className="p-3.5 bg-salvus-critical-bg/30 border border-salvus-critical-border rounded-xl text-xs space-y-2">
+                  <div className="flex items-center gap-2 text-salvus-critical font-bold">
+                    <span>⚠️</span>
+                    <span>Privacy settings unavailable</span>
+                  </div>
+                  <p className="text-salvus-text-secondary">{privacyError}</p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleRetrySettings}
+                    className="text-xs"
+                  >
+                    Retry Settings
+                  </Button>
+                </div>
+              ) : (
+                privacySettings.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-start justify-between gap-3 pb-3 border-b border-salvus-border last:border-none last:pb-0"
+                  >
+                    <div className="pr-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-xs font-semibold text-salvus-text-primary">
+                          {item.title}
+                        </h4>
+                        {item.badge && (
+                          <Badge variant="info" size="sm">
+                            {item.badge}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-salvus-text-secondary mt-0.5 leading-relaxed font-normal">
+                        {item.description}
+                      </p>
+                    </div>
+
+                    <Toggle
+                      checked={item.value}
+                      disabled={item.locked}
+                      onChange={() => handleTogglePrivacySetting(item.id)}
+                      ariaLabel={item.title}
+                    />
+                  </div>
+                ))
+              )}
             </div>
           </Card>
 
@@ -1309,7 +1464,7 @@ export const CitizenProfile = () => {
           {/* App Info & Safe Local Architecture Note */}
           <div className="text-xs text-salvus-text-muted text-center space-y-1">
             <p>
-              {citizenProfileData.appInfo.version} · {citizenProfileData.appInfo.build}
+              {APP_METADATA.version} · {APP_METADATA.build}
             </p>
             <p>🔒 Local Offline Storage Active · Zero-Data Resilience</p>
           </div>
@@ -1461,7 +1616,7 @@ export const CitizenProfile = () => {
               id="contact-name"
               value={contactForm.name}
               onChange={(e) => setContactForm((prev) => ({ ...prev, name: e.target.value }))}
-              placeholder="e.g. Dr. Sourav Mukherjee"
+              placeholder="e.g. Primary Contact Name"
               disabled={contactSaveStatus === 'saving'}
             />
           </div>
@@ -1494,7 +1649,7 @@ export const CitizenProfile = () => {
                 type="tel"
                 value={contactForm.phone}
                 onChange={(e) => setContactForm((prev) => ({ ...prev, phone: e.target.value }))}
-                placeholder="+91 98300 00000"
+                placeholder="e.g. +91 98300 00000"
                 disabled={contactSaveStatus === 'saving'}
               />
             </div>
@@ -1579,7 +1734,7 @@ export const CitizenProfile = () => {
               Cancel
             </Button>
             <Button
-              type="button"
+              type="submit"
               variant="critical"
               size="sm"
               onClick={handleConfirmDeleteContact}
@@ -1695,10 +1850,7 @@ export const CitizenProfile = () => {
               <span className="font-mono">
                 Cached:{' '}
                 {cachedPassData?.cachedAt
-                  ? new Date(cachedPassData.cachedAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
+                  ? formatLastSyncedTime(cachedPassData.cachedAt)
                   : 'Just now'}
               </span>
             </div>

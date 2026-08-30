@@ -1,10 +1,11 @@
 /**
- * Salvus Citizen Profile — Design Fixture & Phase 2/3 Reference Templates
+ * Salvus Citizen Profile — Design Fixture & Component Storyboard Mock
  *
- * NOTE: Production citizen identity is authoritatively fetched from the
+ * CRITICAL ARCHITECTURE RULE:
+ * Production citizen identity is ALWAYS authoritatively fetched from the
  * backend API via `src/services/profileService.js` (GET /api/profile/me).
- * This mock file is retained for component storyboards, test fixtures,
- * and upcoming Phase 2 (Emergency Contacts & Preferences) template schemas.
+ * This mock file is strictly reserved for unit test fixtures and isolated
+ * UI storyboards. It must NEVER be imported by production page components.
  */
 export const citizenProfileData = {
   identity: {

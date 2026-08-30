@@ -482,7 +482,34 @@ export const clearProfileSnapshotLocal = () => {
   }
 }
 
+/**
+ * Generate 1-2 letter uppercase initials from a full name.
+ */
+export const deriveInitials = (name) => {
+  if (!name || typeof name !== 'string') return 'CZ'
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return 'CZ'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+}
+
+/**
+ * Format ISO timestamp into a human-readable local time string.
+ */
+export const formatLastSyncedTime = (isoString) => {
+  if (!isoString) return 'Unknown'
+  try {
+    const date = new Date(isoString)
+    if (isNaN(date.getTime())) return 'Unknown'
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return 'Unknown'
+  }
+}
+
 export default {
+  deriveInitials,
+  formatLastSyncedTime,
   fetchCitizenProfile,
   updateCitizenProfile,
   fetchEmergencyContacts,
