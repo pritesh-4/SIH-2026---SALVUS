@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 
-export const BottomNav = ({ unreadAlertsCount = 1 }) => {
+export const BottomNav = ({ unreadAlertsCount = 0 }) => {
   const navItems = [
     {
       id: 'home',
@@ -37,7 +37,7 @@ export const BottomNav = ({ unreadAlertsCount = 1 }) => {
       id: 'alerts',
       label: 'Alerts',
       path: '/citizen/alerts',
-      badge: unreadAlertsCount,
+      badge: Math.max(0, Number(unreadAlertsCount) || 0),
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
@@ -77,6 +77,11 @@ export const BottomNav = ({ unreadAlertsCount = 1 }) => {
             key={item.id}
             to={item.path}
             end={item.end}
+            aria-label={
+              item.badge > 0
+                ? `${item.label} (${item.badge} unread active alert${item.badge === 1 ? '' : 's'})`
+                : item.label
+            }
             className={({ isActive }) =>
               `flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all duration-150 relative min-w-[56px] min-h-[48px] ${
                 isActive
@@ -88,8 +93,11 @@ export const BottomNav = ({ unreadAlertsCount = 1 }) => {
             <div className="relative">
               {item.icon}
               {item.badge > 0 && (
-                <span className="absolute -top-1 -right-1 h-3.5 min-w-3.5 px-0.5 rounded-full bg-salvus-critical text-[9px] font-bold text-white flex items-center justify-center">
-                  {item.badge}
+                <span
+                  className="absolute -top-1 -right-1 h-3.5 min-w-3.5 px-0.5 rounded-full bg-salvus-critical text-[9px] font-bold text-white flex items-center justify-center"
+                  aria-hidden="true"
+                >
+                  {item.badge > 99 ? '99+' : item.badge}
                 </span>
               )}
             </div>

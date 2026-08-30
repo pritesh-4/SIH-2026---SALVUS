@@ -4,15 +4,18 @@ import { BottomNav } from '../components/citizen/BottomNav'
 import { ActiveEmergencyBanner } from '../components/citizen/ActiveEmergencyBanner'
 import { DevDemoControls } from '../components/common/DevDemoControls'
 import { GlobalNotificationBanner } from '../components/common/GlobalNotificationBanner'
+import { useAlerts } from '../hooks/useAlerts'
 
 export const CitizenLayout = () => {
+  const { badgeCount } = useAlerts()
+
   return (
     <div className="min-h-screen bg-salvus-bg text-salvus-text-primary flex flex-col selection:bg-salvus-critical selection:text-white transition-colors duration-200">
       {/* Calm System Notifications */}
       <GlobalNotificationBanner />
 
       {/* Top Persistent Navigation */}
-      <Navbar unreadAlertsCount={1} />
+      <Navbar unreadAlertsCount={badgeCount} />
 
       {/* Active Emergency Cross-Page Status Banner */}
       <ActiveEmergencyBanner />
@@ -23,7 +26,7 @@ export const CitizenLayout = () => {
       </main>
 
       {/* Mobile Persistent Bottom Navigation */}
-      <BottomNav unreadAlertsCount={1} />
+      <BottomNav unreadAlertsCount={badgeCount} />
 
       {/* Developer Demo & Resilience Panel */}
       <DevDemoControls />

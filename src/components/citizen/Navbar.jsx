@@ -1,11 +1,16 @@
 import { NavLink, Link } from 'react-router-dom'
 import { CitizenThemeToggle } from '../ui'
 
-export const Navbar = ({ unreadAlertsCount = 1 }) => {
+export const Navbar = ({ unreadAlertsCount = 0 }) => {
   const navItems = [
     { id: 'home', label: 'Home', path: '/citizen', end: true },
     { id: 'map', label: 'Map', path: '/citizen/map' },
-    { id: 'alerts', label: 'Alerts', path: '/citizen/alerts', badge: unreadAlertsCount },
+    {
+      id: 'alerts',
+      label: 'Alerts',
+      path: '/citizen/alerts',
+      badge: Math.max(0, Number(unreadAlertsCount) || 0),
+    },
     { id: 'profile', label: 'Profile', path: '/citizen/profile' },
   ]
 
@@ -23,12 +28,20 @@ export const Navbar = ({ unreadAlertsCount = 1 }) => {
         </Link>
 
         {/* Center Nav Pills (Desktop) */}
-        <nav className="hidden md:flex items-center bg-salvus-muted border border-salvus-border rounded-full p-1 shadow-inner">
+        <nav
+          aria-label="Main Navigation"
+          className="hidden md:flex items-center bg-salvus-muted border border-salvus-border rounded-full p-1 shadow-inner"
+        >
           {navItems.map((item) => (
             <NavLink
               key={item.id}
               to={item.path}
               end={item.end}
+              aria-label={
+                item.badge > 0
+                  ? `${item.label} (${item.badge} unread active alert${item.badge === 1 ? '' : 's'})`
+                  : item.label
+              }
               className={({ isActive }) =>
                 `px-5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 flex items-center gap-1.5 ${
                   isActive
@@ -39,8 +52,11 @@ export const Navbar = ({ unreadAlertsCount = 1 }) => {
             >
               <span>{item.label}</span>
               {item.badge > 0 && (
-                <span className="h-4 min-w-4 px-1 rounded-full bg-salvus-critical text-[10px] font-bold text-white flex items-center justify-center">
-                  {item.badge}
+                <span
+                  className="h-4 min-w-4 px-1 rounded-full bg-salvus-critical text-[10px] font-bold text-white flex items-center justify-center"
+                  aria-hidden="true"
+                >
+                  {item.badge > 99 ? '99+' : item.badge}
                 </span>
               )}
             </NavLink>

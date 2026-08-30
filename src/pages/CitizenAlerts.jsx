@@ -1,11 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLocation } from '../hooks/useLocation'
-import { fetchHazards, fetchRecommendedShelters, fetchWeatherIntelligence } from '../services/api'
-import {
-  fetchAreaSafetyStatus,
-  formatRelativeFreshness,
-} from '../services/locationIntelligenceService'
+import { useAlerts } from '../hooks/useAlerts'
+import { formatRelativeFreshness } from '../services/locationIntelligenceService'
 import { LANDMARKS } from '../lib/location'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -14,44 +11,42 @@ import { StatusIndicator } from '../components/ui/StatusIndicator'
 import { LocalConditionsBar } from '../components/citizen/LocalConditionsBar'
 import { ShortTermForecast } from '../components/citizen/ShortTermForecast'
 import { LocalStatusBanner } from '../components/citizen/LocalStatusBanner'
+import { AlertInteractionStatus } from '../lib/alertNormalization'
 
 export const CitizenAlerts = () => {
   const navigate = useNavigate()
   const { location, isAcquiring, requestLocation, selectLandmark } = useLocation()
 
+  // Centralized Single Source of Truth
+  const {
+    alerts,
+    badgeCount,
+    criticalCount,
+    warningCount,
+    watchCount,
+    status,
+    fetchError,
+    lastFetchedAt,
+    sourcesHealth,
+    sourceSummary,
+    weatherData,
+    isWeatherLoading,
+    areaSafety,
+    isDemoMode,
+    setIsDemoMode,
+    setIsRegionalMode,
+    refreshAlerts,
+    markAsRead,
+    markAllAsRead,
+    userInteractions,
+  } = useAlerts()
+
   // Filter & modal state
   const [selectedFilter, setSelectedFilter] = useState('all')
   const [activeAlertDetail, setActiveAlertDetail] = useState(null)
-
-  // API data state
-  const [liveHazards, setLiveHazards] = useState([])
-  const [weatherData, setWeatherData] = useState(null)
-  const [sourceSummary, setSourceSummary] = useState(
-    'SACHET NDMA · GDACS · USGS Earthquakes · Open-Meteo Weather'
-  )
-  const [sourcesHealth, setSourcesHealth] = useState([])
-  const [areaSafety, setAreaSafety] = useState(null)
-  const [recommendedShelters, setRecommendedShelters] = useState([])
-
-  // UI state
-  const [isLoading, setIsLoading] = useState(false)
-  const [isWeatherLoading, setIsWeatherLoading] = useState(false)
-  const [fetchError, setFetchError] = useState(null)
-  const [lastFetchedAt, setLastFetchedAt] = useState(null)
-  const [isDemoMode, setIsDemoMode] = useState(false)
-  const [isRegionalMode, setIsRegionalMode] = useState(false)
   const [, setFreshnessTick] = useState(0)
 
   const alertModalRef = useRef(null)
-  const isMountedRef = useRef(true)
-  const lastFetchTimestampRef = useRef(0)
-
-  useEffect(() => {
-    isMountedRef.current = true
-    return () => {
-      isMountedRef.current = false
-    }
-  }, [])
 
   // Auto-updating relative timestamp tick (every 30 seconds)
   useEffect(() => {
@@ -84,215 +79,13 @@ export const CitizenAlerts = () => {
   const hasCoordinates =
     typeof location?.latitude === 'number' && typeof location?.longitude === 'number'
 
-  /**
-   * Load real normalized hazards, weather telemetry, and grounded area context
-   */
-  const loadAlerts = useCallback(
-    async (force = false) => {
-      const now = Date.now()
-      // Cooldown throttle: minimum 8 seconds between programmatic refetches unless forced
-      if (!force && now - lastFetchTimestampRef.current < 8000) {
-        return
-      }
-
-      setIsLoading(true)
-      setIsWeatherLoading(true)
-      setFetchError(null)
-
-      try {
-        let lat = null
-        let lon = null
-        let maxDist = null
-
-        if (hasCoordinates && !isRegionalMode) {
-          lat = location.latitude
-          lon = location.longitude
-          maxDist = 25.0
-        } else if (hasCoordinates && isRegionalMode) {
-          lat = location.latitude
-          lon = location.longitude
-          maxDist = 75.0
-        } else {
-          lat = null
-          lon = null
-          maxDist = null
-        }
-
-        // Parallel requests across hazards, shelters, area safety, and weather telemetry
-        const [hazardsRes, sheltersRes, safetyRes, weatherRes] = await Promise.allSettled([
-          fetchHazards(lat, lon, maxDist, isDemoMode),
-          lat && lon
-            ? fetchRecommendedShelters(lat, lon, null, {
-                maxRadiusKm: isRegionalMode ? 75.0 : 25.0,
-                demo: isDemoMode,
-              })
-            : Promise.resolve({ data: [] }),
-          lat && lon ? fetchAreaSafetyStatus(lat, lon) : Promise.resolve(null),
-          lat && lon ? fetchWeatherIntelligence(lat, lon, force) : Promise.resolve(null),
-        ])
-
-        if (!isMountedRef.current) return
-
-        // 1. Process Hazards
-        if (hazardsRes.status === 'fulfilled' && hazardsRes.value?.success) {
-          setLiveHazards(hazardsRes.value.data || [])
-          if (hazardsRes.value.sourceSummary) {
-            setSourceSummary(hazardsRes.value.sourceSummary)
-          }
-          if (hazardsRes.value.sourcesHealth) {
-            setSourcesHealth(hazardsRes.value.sourcesHealth)
-          }
-          setLastFetchedAt(new Date().toISOString())
-          lastFetchTimestampRef.current = Date.now()
-        } else {
-          const errMsg =
-            hazardsRes.status === 'fulfilled'
-              ? hazardsRes.value?.error?.message
-              : hazardsRes.reason?.message || 'Failed to query disaster feeds'
-          setFetchError(errMsg)
-          setLiveHazards([])
-        }
-
-        // 2. Process Shelters
-        if (sheltersRes.status === 'fulfilled' && sheltersRes.value?.success) {
-          setRecommendedShelters(sheltersRes.value.data || [])
-        }
-
-        // 3. Process Area Safety
-        if (safetyRes.status === 'fulfilled' && safetyRes.value) {
-          setAreaSafety(safetyRes.value)
-        }
-
-        // 4. Process Weather Intelligence
-        if (weatherRes.status === 'fulfilled' && weatherRes.value?.success) {
-          setWeatherData(weatherRes.value)
-        }
-      } catch (err) {
-        if (isMountedRef.current) {
-          setFetchError(err.message || 'Disaster intelligence service unavailable')
-          setLiveHazards([])
-        }
-      } finally {
-        if (isMountedRef.current) {
-          setIsLoading(false)
-          setIsWeatherLoading(false)
-        }
-      }
-    },
-    [hasCoordinates, isRegionalMode, location.latitude, location.longitude, isDemoMode]
-  )
-
-  // Initial fetch and trigger on location / mode changes
-  useEffect(() => {
-    let isCancelled = false
-
-    const executeFetch = async () => {
-      setIsLoading(true)
-      setIsWeatherLoading(true)
-      setFetchError(null)
-
-      try {
-        let lat = null
-        let lon = null
-        let maxDist = null
-
-        if (hasCoordinates && !isRegionalMode) {
-          lat = location.latitude
-          lon = location.longitude
-          maxDist = 25.0
-        } else if (hasCoordinates && isRegionalMode) {
-          lat = location.latitude
-          lon = location.longitude
-          maxDist = 75.0
-        } else {
-          lat = null
-          lon = null
-          maxDist = null
-        }
-
-        const [hazardsRes, sheltersRes, safetyRes, weatherRes] = await Promise.allSettled([
-          fetchHazards(lat, lon, maxDist, isDemoMode),
-          lat && lon ? fetchRecommendedShelters(lat, lon) : Promise.resolve({ data: [] }),
-          lat && lon ? fetchAreaSafetyStatus(lat, lon) : Promise.resolve(null),
-          lat && lon ? fetchWeatherIntelligence(lat, lon) : Promise.resolve(null),
-        ])
-
-        if (isCancelled || !isMountedRef.current) return
-
-        if (hazardsRes.status === 'fulfilled' && hazardsRes.value?.success) {
-          setLiveHazards(hazardsRes.value.data || [])
-          if (hazardsRes.value.sourceSummary) {
-            setSourceSummary(hazardsRes.value.sourceSummary)
-          }
-          if (hazardsRes.value.sourcesHealth) {
-            setSourcesHealth(hazardsRes.value.sourcesHealth)
-          }
-          setLastFetchedAt(new Date().toISOString())
-          lastFetchTimestampRef.current = Date.now()
-        } else {
-          const errMsg =
-            hazardsRes.status === 'fulfilled'
-              ? hazardsRes.value?.error?.message
-              : hazardsRes.reason?.message || 'Failed to query disaster feeds'
-          setFetchError(errMsg)
-          setLiveHazards([])
-        }
-
-        if (sheltersRes.status === 'fulfilled' && sheltersRes.value?.success) {
-          setRecommendedShelters(sheltersRes.value.data || [])
-        }
-
-        if (safetyRes.status === 'fulfilled' && safetyRes.value) {
-          setAreaSafety(safetyRes.value)
-        }
-
-        if (weatherRes.status === 'fulfilled' && weatherRes.value?.success) {
-          setWeatherData(weatherRes.value)
-        }
-      } catch (err) {
-        if (!isCancelled && isMountedRef.current) {
-          setFetchError(err.message || 'Disaster intelligence service unavailable')
-          setLiveHazards([])
-        }
-      } finally {
-        if (!isCancelled && isMountedRef.current) {
-          setIsLoading(false)
-          setIsWeatherLoading(false)
-        }
-      }
+  const handleOpenAlertDetail = (alertItem) => {
+    const matched = alerts.find((a) => a.id === alertItem.id) || alertItem
+    setActiveAlertDetail(matched)
+    if (matched?.id) {
+      markAsRead(matched.id)
     }
-
-    executeFetch()
-
-    return () => {
-      isCancelled = true
-    }
-  }, [hasCoordinates, isRegionalMode, location.latitude, location.longitude, isDemoMode])
-
-  // Background refresh on tab focus / visibility change (with 60-second cooldown)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        const elapsed = Date.now() - lastFetchTimestampRef.current
-        if (elapsed > 60000) {
-          loadAlerts(false)
-        }
-      }
-    }
-    const handleWindowFocus = () => {
-      const elapsed = Date.now() - lastFetchTimestampRef.current
-      if (elapsed > 60000) {
-        loadAlerts(false)
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    window.addEventListener('focus', handleWindowFocus)
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      window.removeEventListener('focus', handleWindowFocus)
-    }
-  }, [loadAlerts])
+  }
 
   // Check if any external telemetry sources are degraded
   const degradedSources = sourcesHealth.filter(
@@ -300,64 +93,8 @@ export const CitizenAlerts = () => {
   )
   const hasDegradedSources = degradedSources.length > 0
 
-  // Find legitimate nearest safe refuge if available in real dataset
-  const nearestSafeShelter =
-    recommendedShelters.find((s) => s.is_safe !== false && s.status !== 'CLOSED') ||
-    recommendedShelters[0] ||
-    null
-
-  // Transform normalized backend alert objects into display structures
-  const displayAlerts = liveHazards.map((hz, index) => {
-    const actionItems =
-      Array.isArray(hz.actions) && hz.actions.length > 0
-        ? hz.actions
-        : hz.recommended_action
-          ? [hz.recommended_action]
-          : ['Follow official civil defense directives.']
-
-    return {
-      id: hz.id || hz.hazard_id || `hz-${index}-${hz.source_event_id || 'item'}`,
-      severity: (hz.severity || 'INFO').toUpperCase(),
-      title: hz.title || 'Emergency Advisory',
-      summary: hz.description || 'Monitored hazard advisory active in your sector.',
-      whyItMatters:
-        hz.why_it_matters ||
-        hz.description ||
-        'Direct proximity hazard affecting current sector travel and safety.',
-      recommendedAction:
-        hz.recommended_action || actionItems[0] || 'Follow official civil defense directives.',
-      actions: actionItems,
-      distance:
-        hz.distance_formatted ||
-        (hz.distance_km != null
-          ? `${hz.distance_km.toFixed(1)} km away`
-          : hz.radius_km
-            ? `${hz.radius_km} km radius`
-            : hz.is_within_affected_area
-              ? 'Within affected area'
-              : 'Monitored sector'),
-      isWithinAffectedArea: Boolean(hz.is_within_affected_area),
-      observedTime: formatRelativeFreshness(hz.observed_at || hz.issued_at, 'Observed'),
-      updatedTime: formatRelativeFreshness(
-        hz.fetched_at || hz.issued_at || hz.observed_at,
-        'Updated'
-      ),
-      observedAtIso: hz.observed_at,
-      issuedAtIso: hz.issued_at,
-      expiresAtIso: hz.expires_at,
-      provenance: hz.provenance || hz.data_provenance || 'LIVE',
-      source: hz.source || 'Verified Disaster Feed',
-      sourceType: hz.source_type,
-      sourcesMatched: hz.sources_matched || [hz.source],
-      sourceUrl: hz.source_url || null,
-      affectedArea: hz.affected_area || 'Regional Disaster Corridor',
-      radiusKm: hz.radius_km || hz.affected_radius_km || null,
-      nearestShelter: nearestSafeShelter,
-    }
-  })
-
-  // Filter alerts by tabs
-  const filteredAlerts = displayAlerts.filter((a) => {
+  // Filter alerts by severity tab
+  const filteredAlerts = alerts.filter((a) => {
     if (selectedFilter === 'all') return true
     if (selectedFilter === 'critical') return a.severity === 'CRITICAL'
     if (selectedFilter === 'warning') return a.severity === 'WARNING'
@@ -367,14 +104,8 @@ export const CitizenAlerts = () => {
     return true
   })
 
-  const criticalCount = displayAlerts.filter((a) => a.severity === 'CRITICAL').length
-  const warningCount = displayAlerts.filter((a) => a.severity === 'WARNING').length
-  const watchCount = displayAlerts.filter((a) =>
-    ['WATCH', 'ADVISORY', 'INFO'].includes(a.severity)
-  ).length
-
   const filters = [
-    { id: 'all', label: 'All Events', count: displayAlerts.length },
+    { id: 'all', label: 'All Events', count: alerts.length },
     { id: 'critical', label: 'Critical', count: criticalCount },
     { id: 'warning', label: 'Warnings', count: warningCount },
     { id: 'watch', label: 'Watches & Advisories', count: watchCount },
@@ -417,6 +148,8 @@ export const CitizenAlerts = () => {
       location.permission === 'DENIED' ||
       location.status === 'IDLE')
 
+  const isLoading = status === 'LOADING'
+
   return (
     <div className="max-w-[1440px] w-full mx-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 animate-fadeIn">
       {/* Page Header */}
@@ -434,6 +167,12 @@ export const CitizenAlerts = () => {
                 </span>
               </>
             ) : null}
+            {badgeCount > 0 && (
+              <>
+                <span className="h-1 w-1 rounded-full bg-salvus-border-strong" />
+                <span className="text-xs font-semibold text-salvus-info">{badgeCount} unread</span>
+              </>
+            )}
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary tracking-tight">
@@ -445,7 +184,7 @@ export const CitizenAlerts = () => {
         <div className="flex items-center gap-2.5 flex-wrap">
           <button
             type="button"
-            onClick={() => loadAlerts(true)}
+            onClick={() => refreshAlerts(true)}
             disabled={isLoading}
             className="px-3.5 py-2 rounded-xl bg-salvus-surface border border-salvus-border hover:border-salvus-info text-salvus-text-secondary hover:text-salvus-text-primary text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
             title="Refresh weather and disaster telemetry"
@@ -470,9 +209,15 @@ export const CitizenAlerts = () => {
           </button>
 
           <StatusIndicator
-            status={fetchError ? 'critical' : 'safe'}
+            status={
+              fetchError || status === 'UNAVAILABLE'
+                ? 'critical'
+                : status === 'PARTIAL'
+                  ? 'warning'
+                  : 'safe'
+            }
             label={
-              fetchError
+              fetchError || status === 'UNAVAILABLE'
                 ? 'Feeds Offline'
                 : lastFetchedAt
                   ? `Checked ${formatRelativeFreshness(lastFetchedAt)}`
@@ -504,14 +249,11 @@ export const CitizenAlerts = () => {
           LAYER 2: GROUNDED LOCAL STATUS VERDICT
           ========================================================================= */}
       <LocalStatusBanner
-        hazards={liveHazards}
+        hazards={alerts}
         areaSafety={areaSafety}
         weather={weatherData}
         isLocationOff={isLocationOff}
-        onOpenAlertDetail={(hz) => {
-          const matched = displayAlerts.find((a) => a.id === hz.id) || hz
-          setActiveAlertDetail(matched)
-        }}
+        onOpenAlertDetail={handleOpenAlertDetail}
       />
 
       {/* =========================================================================
@@ -544,16 +286,29 @@ export const CitizenAlerts = () => {
           ========================================================================= */}
       <section aria-label="Actionable Local Hazards and Emergency Alerts">
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg sm:text-xl font-bold text-salvus-text-primary tracking-tight">
-              Local Hazards & Advisories
-            </h2>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-salvus-surface border border-salvus-border text-salvus-text-secondary">
-              {displayAlerts.length} Active
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg sm:text-xl font-bold text-salvus-text-primary tracking-tight">
+                Local Hazards & Advisories
+              </h2>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-salvus-surface border border-salvus-border text-salvus-text-secondary">
+                {alerts.length} Active
+              </span>
+            </div>
+
+            {badgeCount > 0 && (
+              <button
+                type="button"
+                onClick={markAllAsRead}
+                className="text-xs text-salvus-info hover:text-salvus-info-hover font-semibold hover:underline cursor-pointer transition-colors"
+                title="Mark all active alerts as read"
+              >
+                Mark all read
+              </button>
+            )}
           </div>
 
-          {/* Minimal Filter Tabs */}
+          {/* Severity Filter Tabs */}
           <nav
             aria-label="Alert severity filters"
             className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar"
@@ -587,7 +342,7 @@ export const CitizenAlerts = () => {
 
         {/* Alert Cards Feed */}
         <main className="space-y-4" aria-live="polite">
-          {isLoading && liveHazards.length === 0 ? (
+          {isLoading && alerts.length === 0 ? (
             <Card
               padding="lg"
               className="text-center py-16 flex flex-col items-center justify-center"
@@ -603,7 +358,7 @@ export const CitizenAlerts = () => {
                 coordinates.
               </p>
             </Card>
-          ) : fetchError && liveHazards.length === 0 ? (
+          ) : (fetchError || status === 'UNAVAILABLE') && alerts.length === 0 ? (
             <Card
               padding="lg"
               className="text-center py-14 flex flex-col items-center justify-center"
@@ -621,7 +376,7 @@ export const CitizenAlerts = () => {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => loadAlerts(true)}
+                onClick={() => refreshAlerts(true)}
                 className="mt-4"
               >
                 Retry Connection
@@ -671,75 +426,88 @@ export const CitizenAlerts = () => {
             </Card>
           ) : (
             /* Real Actionable Alert Cards: 3-Part Hierarchy */
-            filteredAlerts.map((alert) => (
-              <article key={alert.id}>
-                <Card
-                  variant={getCardVariant(alert.severity)}
-                  padding="md"
-                  onClick={() => setActiveAlertDetail(alert)}
-                  className="cursor-pointer transition-all hover:border-salvus-border-strong focus-within:ring-2 focus-within:ring-salvus-info"
-                >
-                  {/* Header: Severity, Provenance, Distance & Time */}
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant={getBadgeVariant(alert.severity)} dot={true}>
-                        {alert.severity}
-                      </Badge>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold uppercase border ${
-                          alert.provenance === 'LIVE'
-                            ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40'
-                            : alert.provenance === 'SIMULATED'
-                              ? 'bg-amber-950/70 text-amber-300 border-amber-500/40'
-                              : 'bg-slate-900 text-slate-400 border-slate-700'
-                        }`}
-                      >
-                        {alert.provenance}
-                      </span>
-                      <span className="text-xs text-salvus-text-muted">· {alert.observedTime}</span>
+            filteredAlerts.map((alert) => {
+              const isUnseen =
+                !userInteractions[alert.id] ||
+                userInteractions[alert.id]?.status === AlertInteractionStatus.UNSEEN
+
+              return (
+                <article key={alert.id}>
+                  <Card
+                    variant={getCardVariant(alert.severity)}
+                    padding="md"
+                    onClick={() => handleOpenAlertDetail(alert)}
+                    className="cursor-pointer transition-all hover:border-salvus-border-strong focus-within:ring-2 focus-within:ring-salvus-info relative"
+                  >
+                    {/* Header: Severity, Unread Badge, Provenance, Distance & Time */}
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant={getBadgeVariant(alert.severity)} dot={true}>
+                          {alert.severity}
+                        </Badge>
+                        {isUnseen && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold tracking-wide bg-salvus-critical text-white shadow-xs animate-pulse">
+                            NEW
+                          </span>
+                        )}
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold uppercase border ${
+                            alert.provenance === 'LIVE'
+                              ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40'
+                              : alert.provenance === 'SIMULATED'
+                                ? 'bg-amber-950/70 text-amber-300 border-amber-500/40'
+                                : 'bg-slate-900 text-slate-400 border-slate-700'
+                          }`}
+                        >
+                          {alert.provenance}
+                        </span>
+                        <span className="text-xs text-salvus-text-muted">
+                          · {alert.observedTime}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-xs text-salvus-text-muted">
+                        <span>📍</span>
+                        <span>{alert.distance}</span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-xs text-salvus-text-muted">
-                      <span>📍</span>
-                      <span>{alert.distance}</span>
-                    </div>
-                  </div>
+                    {/* 1. WHAT HAPPENED */}
+                    <h3 className="text-base sm:text-lg font-bold text-salvus-text-primary tracking-tight">
+                      {alert.title}
+                    </h3>
 
-                  {/* 1. WHAT HAPPENED */}
-                  <h3 className="text-base sm:text-lg font-bold text-salvus-text-primary tracking-tight">
-                    {alert.title}
-                  </h3>
-
-                  {/* 2. WHY IT MATTERS HERE */}
-                  <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 leading-relaxed">
-                    {alert.whyItMatters}
-                  </p>
-
-                  {/* 3. WHAT TO DO (Direct Action Guidance) */}
-                  <div className="mt-3 bg-salvus-muted/40 border border-salvus-border/80 rounded-xl p-3">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-salvus-text-muted block mb-1">
-                      WHAT TO DO
-                    </span>
-                    <p className="text-xs text-salvus-text-primary font-medium leading-relaxed">
-                      {alert.recommendedAction}
+                    {/* 2. WHY IT MATTERS HERE */}
+                    <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 leading-relaxed">
+                      {alert.whyItMatters}
                     </p>
-                  </div>
 
-                  {/* Secondary Meta: Source & Read More CTA */}
-                  <div className="mt-3 pt-2.5 border-t border-salvus-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-salvus-text-muted">
-                    <div className="flex items-center gap-1.5 truncate">
-                      <span>Source:</span>
-                      <span className="font-semibold text-salvus-text-secondary truncate max-w-[280px] sm:max-w-md">
-                        {alert.source}
+                    {/* 3. WHAT TO DO (Direct Action Guidance) */}
+                    <div className="mt-3 bg-salvus-muted/40 border border-salvus-border/80 rounded-xl p-3">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-salvus-text-muted block mb-1">
+                        WHAT TO DO
+                      </span>
+                      <p className="text-xs text-salvus-text-primary font-medium leading-relaxed">
+                        {alert.recommendedAction}
+                      </p>
+                    </div>
+
+                    {/* Secondary Meta: Source & Read More CTA */}
+                    <div className="mt-3 pt-2.5 border-t border-salvus-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-salvus-text-muted">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span>Source:</span>
+                        <span className="font-semibold text-salvus-text-secondary truncate max-w-[280px] sm:max-w-md">
+                          {alert.source}
+                        </span>
+                      </div>
+                      <span className="text-salvus-info font-semibold flex items-center gap-1 shrink-0">
+                        View alert details & actions →
                       </span>
                     </div>
-                    <span className="text-salvus-info font-semibold flex items-center gap-1 shrink-0">
-                      View alert details & actions →
-                    </span>
-                  </div>
-                </Card>
-              </article>
-            ))
+                  </Card>
+                </article>
+              )
+            })
           )}
         </main>
       </section>
