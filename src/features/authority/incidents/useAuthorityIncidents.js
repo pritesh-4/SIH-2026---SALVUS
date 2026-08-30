@@ -27,6 +27,11 @@ export const normalizeIncident = (inc) => {
   const id = inc.id || `INC-${Math.random().toString(36).substr(2, 6)}`
   const ticket_id = inc.ticket_id || inc.citizenTicket || `SV-${(id || '').slice(-4)}`
 
+  const hasValidLat = typeof inc.latitude === 'number' && !isNaN(inc.latitude)
+  const hasValidLon = typeof inc.longitude === 'number' && !isNaN(inc.longitude)
+  const latitude = hasValidLat ? inc.latitude : null
+  const longitude = hasValidLon ? inc.longitude : null
+
   return {
     id,
     ticket_id,
@@ -42,11 +47,11 @@ export const normalizeIncident = (inc) => {
     location_name:
       inc.location_name ||
       inc.location ||
-      (typeof inc.latitude === 'number' && typeof inc.longitude === 'number'
-        ? `${inc.latitude.toFixed(4)}°N, ${inc.longitude.toFixed(4)}°E`
+      (latitude !== null && longitude !== null
+        ? `${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E`
         : 'Location Not Specified'),
-    latitude: typeof inc.latitude === 'number' ? inc.latitude : null,
-    longitude: typeof inc.longitude === 'number' ? inc.longitude : null,
+    latitude,
+    longitude,
     affected_count: inc.affected_count || inc.affectedCount || 1,
     is_sos: inc.is_sos !== undefined ? Boolean(inc.is_sos) : inc.severity === 'CRITICAL',
     reporter_name: inc.reporter_name || inc.reporter?.name || 'Citizen User',
@@ -68,6 +73,7 @@ export const useAuthorityIncidents = () => {
   const [error, setError] = useState(null)
   const [connectivityStatus, setConnectivityStatus] = useState('CONNECTED')
   const [dataMode, setDataMode] = useState(() => (isDemoModeActive() ? 'SIMULATED' : 'LIVE'))
+  const [lastSynchronizedAt, setLastSynchronizedAt] = useState(null)
   const [newlyArrivedId, setNewlyArrivedId] = useState(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const arrivalTimerRef = useRef(null)
@@ -89,6 +95,7 @@ export const useAuthorityIncidents = () => {
         return normalized[0]?.id || null
       })
       setDataMode(isDemo ? 'SIMULATED' : 'LIVE')
+      setLastSynchronizedAt(new Date().toISOString())
     } else if (isDemo) {
       // Explicit Simulated Demo Scenario Fallback
       const fallback = (authorityData.incidents || []).map(normalizeIncident).filter(Boolean)
@@ -98,11 +105,10 @@ export const useAuthorityIncidents = () => {
         return fallback[0]?.id || null
       })
       setDataMode('SIMULATED')
+      setLastSynchronizedAt(new Date().toISOString())
     } else {
-      // LIVE mode with API failure or network loss: honest operational status (never fake data)
-      setIncidents([])
-      setSelectedIncidentId(null)
-      setDataMode('UNAVAILABLE')
+      // LIVE mode with API failure: retain previously valid data as STALE if available, else UNAVAILABLE
+      setDataMode((prevMode) => (prevMode === 'LIVE' ? 'STALE' : 'UNAVAILABLE'))
       if (!silent) {
         setError(result.error?.message || 'Operational incident feed unavailable.')
       }
@@ -126,6 +132,7 @@ export const useAuthorityIncidents = () => {
           return normalized[0]?.id || null
         })
         setDataMode(isDemo ? 'SIMULATED' : 'LIVE')
+        setLastSynchronizedAt(new Date().toISOString())
       } else if (isDemo) {
         const fallback = (authorityData.incidents || []).map(normalizeIncident).filter(Boolean)
         setIncidents(fallback)
@@ -134,6 +141,7 @@ export const useAuthorityIncidents = () => {
           return fallback[0]?.id || null
         })
         setDataMode('SIMULATED')
+        setLastSynchronizedAt(new Date().toISOString())
       } else {
         setIncidents([])
         setSelectedIncidentId(null)
@@ -427,6 +435,7 @@ export const useAuthorityIncidents = () => {
     error,
     dataMode,
     connectivityStatus,
+    lastSynchronizedAt,
     newlyArrivedId,
     changeStatus,
     isUpdatingStatus,

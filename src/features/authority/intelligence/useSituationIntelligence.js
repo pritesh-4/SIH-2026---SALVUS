@@ -7,6 +7,7 @@ export const useSituationIntelligence = () => {
   const [liveHazards, setLiveHazards] = useState([])
   const [incidentClusters, setIncidentClusters] = useState([])
   const [isRefreshingSituation, setIsRefreshingSituation] = useState(false)
+  const [lastSynchronizedAt, setLastSynchronizedAt] = useState(null)
   const [dataProvenance, setDataProvenance] = useState(() =>
     isDemoModeActive() ? 'SIMULATED' : 'LIVE'
   )
@@ -47,6 +48,8 @@ export const useSituationIntelligence = () => {
         setIncidentClusters([])
       }
 
+      setLastSynchronizedAt(new Date().toISOString())
+
       if (isDemo) {
         setDataProvenance('SIMULATED')
       } else if (allSuccess) {
@@ -81,8 +84,11 @@ export const useSituationIntelligence = () => {
     liveHazards,
     incidentClusters,
     isRefreshingSituation,
+    lastSynchronizedAt,
     dataProvenance,
     setDataProvenance,
     loadSituationIntelligence,
   }
 }
+
+export default useSituationIntelligence

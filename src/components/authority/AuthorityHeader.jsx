@@ -54,6 +54,8 @@ export const AuthorityHeader = ({
         return { variant: 'warning', label: 'SIMULATION MODE' }
       case 'PARTIAL':
         return { variant: 'warning', label: 'PARTIAL FEEDS' }
+      case 'STALE':
+        return { variant: 'warning', label: 'STALE' }
       case 'UNAVAILABLE':
       default:
         return { variant: 'critical', label: 'FEEDS OFFLINE' }

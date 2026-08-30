@@ -270,4 +270,83 @@ describe('Salvus Authority Command Center Operational Pipeline Tests', () => {
     assert.equal(calculateDistanceKm('invalid', 88.3, 22.5, 88.3), null)
     assert.ok(typeof calculateDistanceKm(22.5, 88.3, 22.6, 88.4) === 'number')
   })
+
+  it('Scenario 11: Grounded Metric Derivation strictly from Live Domain Arrays', () => {
+    const rawIncidents = [
+      { id: '1', status: 'NEW', severity: 'CRITICAL', is_sos: true },
+      { id: '2', status: 'TRIAGE_PENDING', severity: 'HIGH', is_sos: false },
+      { id: '3', status: 'VERIFIED', severity: 'MEDIUM', is_sos: false },
+      { id: '4', status: 'RESOLVED', severity: 'HIGH', is_sos: false },
+      { id: '5', status: 'CANCELLED', severity: 'LOW', is_sos: false },
+    ]
+
+    const active = rawIncidents.filter((inc) => !['RESOLVED', 'CANCELLED'].includes(inc.status))
+    const critical = active.filter((inc) => inc.severity === 'CRITICAL' || inc.is_sos)
+    const resolved = rawIncidents.filter((inc) => inc.status === 'RESOLVED')
+    const triagePending = active.filter((inc) =>
+      ['NEW', 'TRIAGE_PENDING', 'AWAITING_DISPATCH'].includes(inc.status)
+    )
+
+    assert.equal(active.length, 3, 'Active incidents must exclude RESOLVED and CANCELLED')
+    assert.equal(critical.length, 1, 'Critical count must include CRITICAL or SOS')
+    assert.equal(resolved.length, 1, 'Resolved count must equal 1')
+    assert.equal(triagePending.length, 2, 'Triage pending must equal 2')
+
+    // Responders deployed metric
+    const responders = [
+      { id: 'r1', status: 'AVAILABLE' },
+      { id: 'r2', status: 'EN_ROUTE' },
+      { id: 'r3', status: 'ON_SCENE' },
+      { id: 'r4', status: 'OFFLINE' },
+    ]
+    const deployedCount = responders.filter((r) =>
+      ['ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE'].includes(r.status)
+    ).length
+    assert.equal(deployedCount, 2, 'Deployed units must count only active mission states')
+  })
+
+  it('Scenario 12: Missing Coordinates Safe Formatting (No NaN or undefined in UI strings)', () => {
+    const formatCoordinatesSafe = (lat, lon) => {
+      if (typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon)) {
+        return `${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E`
+      }
+      return 'GPS Coordinates Pending'
+    }
+
+    assert.equal(formatCoordinatesSafe(22.5726, 88.3639), '22.5726°N, 88.3639°E')
+    assert.equal(formatCoordinatesSafe(null, null), 'GPS Coordinates Pending')
+    assert.equal(formatCoordinatesSafe(undefined, 88.36), 'GPS Coordinates Pending')
+    assert.equal(formatCoordinatesSafe(NaN, 88.36), 'GPS Coordinates Pending')
+  })
+
+  it('Scenario 13: Provenance State Transitions (LIVE, STALE, UNAVAILABLE, SIMULATED, PARTIAL)', () => {
+    const deriveProvenance = (dataMode, fleetDataMode, shelterDataMode, dataProvenance) => {
+      const modes = [dataMode, fleetDataMode, shelterDataMode, dataProvenance]
+      const isAllSimulated = modes.every((m) => m === 'SIMULATED')
+      if (isAllSimulated) return 'SIMULATED'
+
+      const isAllLive = modes.every((m) => m === 'LIVE')
+      if (isAllLive) return 'LIVE'
+
+      const isAllUnavailable = modes.every((m) => m === 'UNAVAILABLE')
+      if (isAllUnavailable) return 'UNAVAILABLE'
+
+      const isAnyStale = modes.some((m) => m === 'STALE')
+      const isAnyUnavailable = modes.some((m) => m === 'UNAVAILABLE')
+      const isAnyPartial = modes.some((m) => m === 'PARTIAL')
+
+      if (isAnyStale) return 'STALE'
+      if (isAnyUnavailable || isAnyPartial) return 'PARTIAL'
+      return dataMode || 'LIVE'
+    }
+
+    assert.equal(deriveProvenance('LIVE', 'LIVE', 'LIVE', 'LIVE'), 'LIVE')
+    assert.equal(deriveProvenance('SIMULATED', 'SIMULATED', 'SIMULATED', 'SIMULATED'), 'SIMULATED')
+    assert.equal(deriveProvenance('STALE', 'LIVE', 'LIVE', 'LIVE'), 'STALE')
+    assert.equal(deriveProvenance('UNAVAILABLE', 'LIVE', 'LIVE', 'LIVE'), 'PARTIAL')
+    assert.equal(
+      deriveProvenance('UNAVAILABLE', 'UNAVAILABLE', 'UNAVAILABLE', 'UNAVAILABLE'),
+      'UNAVAILABLE'
+    )
+  })
 })

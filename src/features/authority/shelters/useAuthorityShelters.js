@@ -11,6 +11,7 @@ export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
   const [shelterDataMode, setShelterDataMode] = useState(() =>
     isDemoModeActive() ? 'SIMULATED' : 'LIVE'
   )
+  const [lastSynchronizedAt, setLastSynchronizedAt] = useState(null)
 
   // ---------------------------------------------------------------------------
   // 1. Initial Load & Refresh (Enforce Server Truth)
@@ -22,12 +23,13 @@ export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
     if (result.success && Array.isArray(result.data)) {
       setLiveShelters(result.data)
       setShelterDataMode(isDemo ? 'SIMULATED' : 'LIVE')
+      setLastSynchronizedAt(new Date().toISOString())
     } else if (isDemo) {
       setLiveShelters(authorityData.shelters || [])
       setShelterDataMode('SIMULATED')
+      setLastSynchronizedAt(new Date().toISOString())
     } else {
-      setLiveShelters([])
-      setShelterDataMode('UNAVAILABLE')
+      setShelterDataMode((prevMode) => (prevMode === 'LIVE' ? 'STALE' : 'UNAVAILABLE'))
     }
     setIsLoadingShelters(false)
   }, [])
@@ -66,7 +68,13 @@ export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
 
   const shelterMapPoints = useMemo(() => {
     return liveShelters
-      .filter((s) => typeof s.latitude === 'number' && typeof s.longitude === 'number')
+      .filter(
+        (s) =>
+          typeof s.latitude === 'number' &&
+          typeof s.longitude === 'number' &&
+          !isNaN(s.latitude) &&
+          !isNaN(s.longitude)
+      )
       .map((s) => ({
         id: s.id,
         name: s.name,
@@ -83,12 +91,17 @@ export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
 
     const incLat = selectedIncident.latitude
     const incLon = selectedIncident.longitude
-    const hasCoords = typeof incLat === 'number' && typeof incLon === 'number'
+    const hasCoords =
+      typeof incLat === 'number' && typeof incLon === 'number' && !isNaN(incLat) && !isNaN(incLon)
 
     return liveShelters
       .filter((s) => s.is_active && s.status !== 'CLOSED')
       .map((s) => {
-        const hasShelterCoords = typeof s.latitude === 'number' && typeof s.longitude === 'number'
+        const hasShelterCoords =
+          typeof s.latitude === 'number' &&
+          typeof s.longitude === 'number' &&
+          !isNaN(s.latitude) &&
+          !isNaN(s.longitude)
         const distKm =
           hasCoords && hasShelterCoords
             ? calculateDistanceKm(incLat, incLon, s.latitude, s.longitude)
@@ -126,6 +139,7 @@ export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
     setLiveShelters,
     isLoadingShelters,
     shelterDataMode,
+    lastSynchronizedAt,
     totalBedsAvailable,
     shelterMapPoints,
     candidateShelters,
@@ -133,3 +147,5 @@ export const useAuthorityShelters = ({ selectedIncident = null } = {}) => {
     loadShelters,
   }
 }
+
+export default useAuthorityShelters

@@ -14,6 +14,7 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
   const [fleetDataMode, setFleetDataMode] = useState(() =>
     isDemoModeActive() ? 'SIMULATED' : 'LIVE'
   )
+  const [lastSynchronizedAt, setLastSynchronizedAt] = useState(null)
   const [fleetCapabilityFilter, setFleetCapabilityFilter] = useState('all')
   const [fleetStatusFilter, setFleetStatusFilter] = useState('all')
   const [selectedResponderDetail, setSelectedResponderDetail] = useState(null)
@@ -28,12 +29,13 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
     if (result.success && Array.isArray(result.data)) {
       setLiveResponders(result.data)
       setFleetDataMode(isDemo ? 'SIMULATED' : 'LIVE')
+      setLastSynchronizedAt(new Date().toISOString())
     } else if (isDemo) {
       setLiveResponders(authorityData.responders || [])
       setFleetDataMode('SIMULATED')
+      setLastSynchronizedAt(new Date().toISOString())
     } else {
-      setLiveResponders([])
-      setFleetDataMode('UNAVAILABLE')
+      setFleetDataMode((prevMode) => (prevMode === 'LIVE' ? 'STALE' : 'UNAVAILABLE'))
     }
     setIsLoadingFleet(false)
   }, [])
@@ -117,7 +119,13 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
 
   const responderMapPoints = useMemo(() => {
     return liveResponders
-      .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number')
+      .filter(
+        (r) =>
+          typeof r.latitude === 'number' &&
+          typeof r.longitude === 'number' &&
+          !isNaN(r.latitude) &&
+          !isNaN(r.longitude)
+      )
       .map((r) => ({
         id: r.id,
         name: `${r.unit_name || r.unitName || 'Unit'} (${r.team_lead || r.lead || 'Team'})`,
@@ -172,6 +180,7 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
     setLiveResponders,
     isLoadingFleet,
     fleetDataMode,
+    lastSynchronizedAt,
     fleetCapabilityFilter,
     setFleetCapabilityFilter,
     fleetStatusFilter,
@@ -187,3 +196,5 @@ export const useAuthorityFleet = ({ selectedIncident = null, onIncidentRefetch =
     loadFleet,
   }
 }
+
+export default useAuthorityFleet

@@ -138,7 +138,17 @@ export const useDispatchRecommendation = ({
         const primaryTarget =
           assigned || candRes.data.find((c) => c.is_recommended) || candRes.data[0]
 
-        if (primaryTarget && primaryTarget.latitude && primaryTarget.longitude) {
+        if (
+          primaryTarget &&
+          typeof primaryTarget.latitude === 'number' &&
+          typeof primaryTarget.longitude === 'number' &&
+          !isNaN(primaryTarget.latitude) &&
+          !isNaN(primaryTarget.longitude) &&
+          typeof selectedIncident.latitude === 'number' &&
+          typeof selectedIncident.longitude === 'number' &&
+          !isNaN(selectedIncident.latitude) &&
+          !isNaN(selectedIncident.longitude)
+        ) {
           const routeKey = `${selectedIncident.id}_${primaryTarget.id}_${primaryTarget.latitude}_${primaryTarget.longitude}_${selectedIncident.latitude}_${selectedIncident.longitude}`
           if (lastRouteKeyRef.current !== routeKey) {
             lastRouteKeyRef.current = routeKey
@@ -228,7 +238,20 @@ export const useDispatchRecommendation = ({
   // ---------------------------------------------------------------------------
   const selectCandidateRoute = useCallback(
     async (candidate) => {
-      if (!selectedIncident || !candidate || !candidate.latitude || !candidate.longitude) return
+      if (
+        !selectedIncident ||
+        !candidate ||
+        typeof candidate.latitude !== 'number' ||
+        typeof candidate.longitude !== 'number' ||
+        isNaN(candidate.latitude) ||
+        isNaN(candidate.longitude) ||
+        typeof selectedIncident.latitude !== 'number' ||
+        typeof selectedIncident.longitude !== 'number' ||
+        isNaN(selectedIncident.latitude) ||
+        isNaN(selectedIncident.longitude)
+      ) {
+        return
+      }
 
       const profile = candidate.capability === 'FLOOD_BOAT' ? 'boat' : 'driving'
       const routeRes = await fetchRoute(

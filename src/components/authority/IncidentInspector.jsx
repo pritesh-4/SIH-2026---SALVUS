@@ -126,7 +126,12 @@ export const IncidentInspector = ({
                   : 'Location Not Specified')}
             </strong>
             <span className="text-salvus-text-muted text-[11px] block mt-0.5 font-mono">
-              {selectedIncident.latitude?.toFixed(4)}°N, {selectedIncident.longitude?.toFixed(4)}°E
+              {typeof selectedIncident.latitude === 'number' &&
+              typeof selectedIncident.longitude === 'number' &&
+              !isNaN(selectedIncident.latitude) &&
+              !isNaN(selectedIncident.longitude)
+                ? `${selectedIncident.latitude.toFixed(4)}°N, ${selectedIncident.longitude.toFixed(4)}°E`
+                : 'GPS Coordinates Pending'}
             </span>
           </div>
 

@@ -283,13 +283,21 @@ export const AuthorityCommandCenter = () => {
   // ---------------------------------------------------------------------------
   const unifiedProvenance = useMemo(() => {
     const modes = [dataMode, fleetDataMode, shelterDataMode, dataProvenance]
-    const isAllLive = modes.every((m) => m === 'LIVE')
     const isAllSimulated = modes.every((m) => m === 'SIMULATED')
-    const isAnyUnavailable = modes.some((m) => m === 'UNAVAILABLE')
-
     if (isAllSimulated) return 'SIMULATED'
+
+    const isAllLive = modes.every((m) => m === 'LIVE')
     if (isAllLive) return 'LIVE'
-    if (isAnyUnavailable) return 'PARTIAL'
+
+    const isAllUnavailable = modes.every((m) => m === 'UNAVAILABLE')
+    if (isAllUnavailable) return 'UNAVAILABLE'
+
+    const isAnyStale = modes.some((m) => m === 'STALE')
+    const isAnyUnavailable = modes.some((m) => m === 'UNAVAILABLE')
+    const isAnyPartial = modes.some((m) => m === 'PARTIAL')
+
+    if (isAnyStale) return 'STALE'
+    if (isAnyUnavailable || isAnyPartial) return 'PARTIAL'
     return dataMode || 'LIVE'
   }, [dataMode, fleetDataMode, shelterDataMode, dataProvenance])
 
