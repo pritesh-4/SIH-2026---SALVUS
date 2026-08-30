@@ -183,7 +183,55 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
     except Exception:
         pass  # Column already exists
 
-    # Indexes for high-performance spatial & status queries
+    # 8. Citizen Profiles Table (Real User Identity Foundation)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS citizen_profiles (
+            id TEXT PRIMARY KEY,
+            emergency_id TEXT UNIQUE NOT NULL,
+            full_name TEXT NOT NULL,
+            phone TEXT,
+            email TEXT,
+            registered_address TEXT,
+            blood_group TEXT NOT NULL DEFAULT 'UNKNOWN',
+            avatar_initials TEXT,
+            avatar_url TEXT,
+            medical_info TEXT,
+            privacy_settings TEXT,
+            medications_note TEXT,
+            is_verified INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
+    try:
+        await db.execute("ALTER TABLE citizen_profiles ADD COLUMN privacy_settings TEXT")
+    except Exception:
+        pass
+
+    try:
+        await db.execute("ALTER TABLE citizen_profiles ADD COLUMN medications_note TEXT")
+    except Exception:
+        pass
+
+    # 9. Emergency Contacts Table (Emergency Readiness Layer)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS emergency_contacts (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            relationship TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 1,
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            notify_on_sos INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES citizen_profiles(id) ON DELETE CASCADE
+        )
+    """)
+
+    # Indexes for high-performance spatial, status & identity queries
     await db.execute("CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)")
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_incidents_coords ON incidents(latitude, longitude)"
@@ -217,6 +265,16 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_incident_attachments_checksum "
         "ON incident_attachments(checksum)"
     )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_citizen_profiles_emergency_id "
+        "ON citizen_profiles(emergency_id)"
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emergency_contacts_user_id ON emergency_contacts(user_id)"
+    )
 
     await db.commit()
-    print("[DB] Migrations complete with triage audit, assignments, and attachment tables.")
+    print(
+        "[DB] Migrations complete with triage audit, assignments, attachments, "
+        "citizen profiles, and emergency contacts."
+    )

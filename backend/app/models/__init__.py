@@ -31,6 +31,18 @@ from app.models.facility import (
 from app.models.facility import (
     SafePlaceTrustLevel as SafePlaceTrustLevel,
 )
+from app.models.profile import (
+    BloodGroup as BloodGroup,
+)
+from app.models.profile import (
+    CitizenProfileResponse as CitizenProfileResponse,
+)
+from app.models.profile import (
+    CitizenProfileUpdate as CitizenProfileUpdate,
+)
+from app.models.profile import (
+    ProfileSingleResponse as ProfileSingleResponse,
+)
 
 # ---------------------------------------------------------------------------
 # Enums

@@ -1,3 +1,11 @@
+/**
+ * Salvus Citizen Profile — Design Fixture & Phase 2/3 Reference Templates
+ *
+ * NOTE: Production citizen identity is authoritatively fetched from the
+ * backend API via `src/services/profileService.js` (GET /api/profile/me).
+ * This mock file is retained for component storyboards, test fixtures,
+ * and upcoming Phase 2 (Emergency Contacts & Preferences) template schemas.
+ */
 export const citizenProfileData = {
   identity: {
     fullName: 'Aditi Mukherjee',

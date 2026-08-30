@@ -342,13 +342,127 @@ async def seed_database(db) -> dict:
         )
         created_shelters.append(shl)
 
+    # 4. Seed Citizen Profiles
+    created_profiles = []
+    SEED_CITIZEN_PROFILES = [
+        {
+            "id": "cit-default",
+            "emergency_id": "SLV-CIT-7829",
+            "full_name": "Aditi Mukherjee",
+            "phone": "+91 98301 23456",
+            "email": "aditi.m@salvus.local",
+            "registered_address": "Flat 4B, Greenwood Apts, Sector 12, Salt Lake, Kolkata",
+            "blood_group": "O+",
+            "avatar_initials": "AM",
+            "avatar_url": None,
+            "medical_info": json.dumps(
+                {
+                    "conditions": ["Mild Asthma (Carries Inhaler)"],
+                    "allergies": ["Penicillin Allergy"],
+                    "mobilityNote": "Fully Mobile / Ambulatory",
+                }
+            ),
+            "is_verified": 1,
+        }
+    ]
+
+    for prof in SEED_CITIZEN_PROFILES:
+        cursor = await db.execute("SELECT id FROM citizen_profiles WHERE id = ?", (prof["id"],))
+        existing = await cursor.fetchone()
+        if existing:
+            continue
+
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO citizen_profiles (
+                id, emergency_id, full_name, phone, email, registered_address,
+                blood_group, avatar_initials, avatar_url, medical_info,
+                is_verified, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                prof["id"],
+                prof["emergency_id"],
+                prof["full_name"],
+                prof["phone"],
+                prof["email"],
+                prof["registered_address"],
+                prof["blood_group"],
+                prof["avatar_initials"],
+                prof["avatar_url"],
+                prof["medical_info"],
+                prof["is_verified"],
+                now,
+                now,
+            ),
+        )
+        created_profiles.append(prof)
+
+    # 5. Seed Emergency Contacts
+    created_contacts = []
+    SEED_EMERGENCY_CONTACTS = [
+        {
+            "id": "ec-101",
+            "user_id": "cit-default",
+            "name": "Dr. Sourav Mukherjee",
+            "relationship": "Father",
+            "phone": "+91 98300 11223",
+            "priority": 1,
+            "is_primary": 1,
+            "notify_on_sos": 1,
+        },
+        {
+            "id": "ec-102",
+            "user_id": "cit-default",
+            "name": "Priya Das",
+            "relationship": "Sister / Neighbor",
+            "phone": "+91 98311 44556",
+            "priority": 2,
+            "is_primary": 0,
+            "notify_on_sos": 1,
+        },
+    ]
+
+    for ec in SEED_EMERGENCY_CONTACTS:
+        cursor = await db.execute("SELECT id FROM emergency_contacts WHERE id = ?", (ec["id"],))
+        existing = await cursor.fetchone()
+        if existing:
+            continue
+
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO emergency_contacts (
+                id, user_id, name, relationship, phone, priority, is_primary, notify_on_sos,
+                created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                ec["id"],
+                ec["user_id"],
+                ec["name"],
+                ec["relationship"],
+                ec["phone"],
+                ec["priority"],
+                ec["is_primary"],
+                ec["notify_on_sos"],
+                now,
+                now,
+            ),
+        )
+        created_contacts.append(ec)
+
     await db.commit()
     print(
         f"[SEED] Seeded {len(created_incidents)} incidents, "
-        f"{len(created_responders)} responders, {len(created_shelters)} shelters."
+        f"{len(created_responders)} responders, {len(created_shelters)} shelters, "
+        f"{len(created_profiles)} citizen profiles, {len(created_contacts)} emergency contacts."
     )
     return {
         "incidents": len(created_incidents),
         "responders": len(created_responders),
         "shelters": len(created_shelters),
+        "citizen_profiles": len(created_profiles),
+        "emergency_contacts": len(created_contacts),
     }

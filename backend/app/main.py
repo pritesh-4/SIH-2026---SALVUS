@@ -33,6 +33,7 @@ from app.routes.hazards import router as hazards_router
 from app.routes.health import router as health_router
 from app.routes.incidents import router as incidents_router
 from app.routes.places import router as places_router
+from app.routes.profile import router as profile_router
 from app.routes.responders import router as responders_router
 from app.routes.routing import router as routing_router
 from app.routes.shelters import router as shelters_router
@@ -127,6 +128,7 @@ app.include_router(hazards_router)
 app.include_router(health_router)
 app.include_router(incidents_router)
 app.include_router(places_router)
+app.include_router(profile_router)
 app.include_router(responders_router)
 app.include_router(routing_router)
 app.include_router(shelters_router)

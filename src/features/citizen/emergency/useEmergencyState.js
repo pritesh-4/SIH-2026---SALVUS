@@ -7,6 +7,7 @@ import {
   fetchIncidentAssignments,
   fetchResponders,
 } from '../../../services/api'
+import { fetchEmergencyContacts } from '../../../services/profileService'
 import {
   joinRoom,
   leaveRoom,
@@ -86,12 +87,25 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
   const [connectivityStatus, setConnectivityStatus] = useState('CONNECTED') // CONNECTED, LIMITED_CONNECTION, OFFLINE, RECONNECTING
   const [userLocation, setUserLocation] = useState(() => INITIAL_LOCATION_STATE)
 
+  const [emergencyContacts, setEmergencyContacts] = useState([])
   const stopLocationWatchRef = useRef(null)
   const assignedResponderRef = useRef(assignedResponder)
 
   useEffect(() => {
     assignedResponderRef.current = assignedResponder
   }, [assignedResponder])
+
+  useEffect(() => {
+    let isMounted = true
+    fetchEmergencyContacts().then((res) => {
+      if (isMounted && res.success && Array.isArray(res.data)) {
+        setEmergencyContacts(res.data)
+      }
+    })
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   // -------------------------------------------------------------------------
   // 1. Initial Load & Realtime Sync for Live Incident
@@ -567,6 +581,7 @@ export const useEmergencyState = (initialState = 'SOS_ACTIVE', activeIncidentId 
     aiTriage: emergencyFlowData.aiTriage,
     responder: dynamicResponder,
     routes: emergencyFlowData.routes,
+    emergencyContacts,
     timelineSteps,
     instructions: currentInstructions,
     setCurrentState: selectState,

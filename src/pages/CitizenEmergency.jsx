@@ -37,6 +37,7 @@ export const CitizenEmergency = () => {
     incident,
     aiTriage,
     responder,
+    emergencyContacts,
     timelineSteps,
     instructions,
     setCurrentState,
@@ -228,6 +229,53 @@ export const CitizenEmergency = () => {
 
               {/* State-Specific Life-Safety Guidance */}
               <EmergencyInstructionCard instructions={instructions} />
+
+              {/* Designated Emergency Contacts SOS Notification Panel */}
+              {emergencyContacts && emergencyContacts.length > 0 && (
+                <div className="bg-salvus-surface border border-salvus-border rounded-2xl p-4 sm:p-5 shadow-xs">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">🔔</span>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-salvus-text-primary">
+                        Designated Emergency Contacts Notified
+                      </h3>
+                    </div>
+                    <span className="text-[10px] text-salvus-safe bg-salvus-safe-bg border border-salvus-safe-border px-2 py-0.5 rounded-full font-bold">
+                      SOS Alert Queued
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {emergencyContacts.map((contact) => (
+                      <div
+                        key={contact.id}
+                        className="bg-salvus-muted/40 border border-salvus-border rounded-xl p-2.5 flex items-center justify-between text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-salvus-text-primary">
+                              {contact.name}
+                            </span>
+                            {contact.is_primary && (
+                              <span className="text-[9px] bg-salvus-info-bg text-salvus-info px-1.5 py-0.5 rounded-md font-bold">
+                                Primary
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-salvus-text-muted">
+                            {contact.relationship}
+                          </span>
+                        </div>
+                        <a
+                          href={`tel:${contact.phone}`}
+                          className="px-2.5 py-1 rounded-lg bg-salvus-surface-elevated hover:bg-salvus-surface-hover border border-salvus-border text-salvus-text-primary text-[11px] font-semibold"
+                        >
+                          📞 Call
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Right Column (5 cols on lg) */}
