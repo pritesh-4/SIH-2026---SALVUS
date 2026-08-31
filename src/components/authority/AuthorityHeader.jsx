@@ -20,9 +20,6 @@ export const AuthorityHeader = ({
   dataProvenance = 'LIVE',
   connectivityStatus = 'CONNECTED',
   domainProvenance = null,
-  computedMetrics = null,
-  totalResponders = 0,
-  totalBeds = 0,
   onToggleDemoMode,
   onResetDemo,
 }) => {
@@ -65,11 +62,6 @@ export const AuthorityHeader = ({
   const prov = getProvenanceBadge()
   const dispatcherName = user?.name || 'Duty Officer'
 
-  // Derive operational summary from real metrics
-  const sosCount = computedMetrics?.sosCount ?? computedMetrics?.activeSos ?? 0
-  const activeCount = computedMetrics?.active ?? 0
-  const criticalCount = computedMetrics?.critical ?? 0
-
   return (
     <>
       {/* Prominent Simulation Banner */}
@@ -109,35 +101,6 @@ export const AuthorityHeader = ({
               {prov.label}
             </Badge>
           </div>
-
-          {/* Compact operational counters from real data */}
-          {computedMetrics && !isReconnecting && (
-            <div className="flex items-center gap-1.5 text-[11px] font-mono">
-              <span className="bg-salvus-muted/40 border border-salvus-border px-1.5 py-0.5 rounded text-salvus-text-primary font-semibold">
-                {activeCount} Active
-              </span>
-              {sosCount > 0 ? (
-                <span className="bg-salvus-critical-bg border border-salvus-critical-border px-1.5 py-0.5 rounded text-salvus-critical font-bold animate-pulse">
-                  {sosCount} SOS
-                </span>
-              ) : (
-                <span className="bg-salvus-muted/40 border border-salvus-border px-1.5 py-0.5 rounded text-salvus-text-muted font-medium">
-                  0 SOS
-                </span>
-              )}
-              {criticalCount > 0 && criticalCount !== sosCount && (
-                <span className="bg-amber-950/40 border border-amber-500/40 px-1.5 py-0.5 rounded text-amber-300 font-bold">
-                  {criticalCount} Critical
-                </span>
-              )}
-              <span className="bg-salvus-muted/40 border border-salvus-border px-1.5 py-0.5 rounded text-salvus-text-secondary">
-                {totalResponders} Units
-              </span>
-              <span className="bg-salvus-muted/40 border border-salvus-border px-1.5 py-0.5 rounded text-salvus-text-secondary">
-                {totalBeds} Beds
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Right: Dispatcher, Domain Status, Time & Demo Controls */}

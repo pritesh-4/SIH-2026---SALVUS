@@ -351,9 +351,6 @@ export const AuthorityCommandCenter = () => {
         dataProvenance={unifiedProvenance}
         connectivityStatus={connectivityStatus}
         domainProvenance={domainProvenance}
-        computedMetrics={computedMetrics}
-        totalResponders={liveResponders.length}
-        totalBeds={totalBedsAvailable}
         onToggleDemoMode={async (enable) => {
           await toggleDemoMode(enable)
           loadFleet()
@@ -361,7 +358,6 @@ export const AuthorityCommandCenter = () => {
           loadSituationIntelligence()
         }}
         onResetDemo={resetDemoState}
-        onSyncAll={handleSyncAll}
       />
 
       {/* Level 1: Priority Alert Strip (Conditional for Critical threats) */}
