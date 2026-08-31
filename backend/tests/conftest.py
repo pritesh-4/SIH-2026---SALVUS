@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 import sys
 
@@ -17,14 +16,6 @@ from app.auth.jwt_handler import UserRole, create_access_token
 from app.db import close_database, init_database
 from app.db.seed import seed_database
 from app.main import app
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create a shared event loop for the entire test session."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -101,7 +92,7 @@ def responder_headers(responder_token):
 
 
 @pytest_asyncio.fixture
-async def client(test_db, authority_headers):
+async def client(test_db, reset_seed_tables, authority_headers):
     """Provide an async HTTP test client against the FastAPI app with default authority auth."""
     transport = ASGITransport(app=app)
     async with AsyncClient(
@@ -111,7 +102,7 @@ async def client(test_db, authority_headers):
 
 
 @pytest_asyncio.fixture
-async def anon_client(test_db):
+async def anon_client(test_db, reset_seed_tables):
     """Provide an unauthenticated async HTTP test client."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

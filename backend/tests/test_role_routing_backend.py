@@ -19,7 +19,7 @@ from app.main import app
 
 
 @pytest_asyncio.fixture
-async def unauth_client(test_db):
+async def unauth_client(test_db, reset_seed_tables):
     """Unauthenticated HTTP client."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -27,7 +27,7 @@ async def unauth_client(test_db):
 
 
 @pytest_asyncio.fixture
-async def citizen_auth_client(test_db):
+async def citizen_auth_client(test_db, reset_seed_tables):
     """Client authenticated with real seeded Citizen demo credentials."""
     token = create_access_token(
         user_id="user-citizen-demo",
@@ -45,7 +45,7 @@ async def citizen_auth_client(test_db):
 
 
 @pytest_asyncio.fixture
-async def authority_auth_client(test_db):
+async def authority_auth_client(test_db, reset_seed_tables):
     """Client authenticated with real seeded Authority demo credentials."""
     token = create_access_token(
         user_id="user-authority-demo",

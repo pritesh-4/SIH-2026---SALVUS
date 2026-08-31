@@ -199,7 +199,7 @@ async def get_or_create_profile(
             emergency_id,
             display_name,
             None,
-            None,
+            getattr(user, "email", None),
             None,
             "UNKNOWN",
             initials,

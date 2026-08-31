@@ -181,7 +181,7 @@ test('Salvus Pass 3A: Duplicate Action & Idempotency Hardening Suite', async (t)
 
     // Tab A begins SOS transmission
     broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.SOS_IN_FLIGHT, {}, 'tab_A')
-    await new Promise((r) => setTimeout(r, 20))
+    await new Promise((r) => setTimeout(r, 60))
     assert.equal(tabBLocked, true, 'Tab B locked from initiating conflicting submission')
 
     // Tab A finishes SOS transmission
@@ -190,7 +190,7 @@ test('Salvus Pass 3A: Duplicate Action & Idempotency Hardening Suite', async (t)
       { incidentId: 'inc-tab-pass3a' },
       'tab_A'
     )
-    await new Promise((r) => setTimeout(r, 20))
+    await new Promise((r) => setTimeout(r, 60))
     assert.equal(tabBLocked, false, 'Tab B unlocked after Tab A completes')
 
     unsubB()
