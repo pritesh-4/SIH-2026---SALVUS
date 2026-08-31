@@ -431,8 +431,9 @@ async def emit_incident_triage_updated(
     ai_state: str = "AVAILABLE",
     ticket_id: str | None = None,
 ) -> None:
-    """Broadcast completed AI decision support triage assessment to authority and citizen rooms."""
-    payload = {
+    """Broadcast completed AI triage assessment to authorities and citizen progress."""
+    # 1. Full unredacted decision support payload for Authority Command Center
+    authority_payload = {
         "incident_id": incident_id,
         "id": incident_id,
         "ticket_id": ticket_id,
@@ -440,15 +441,23 @@ async def emit_incident_triage_updated(
         "assessment": assessment.model_dump(),
         "ai_triage": assessment.model_dump(),
     }
+    await sio.emit("incident.triage_updated", authority_payload, room="authorities")
 
-    # Broadcast to Authority Command Center
-    await sio.emit("incident.triage_updated", payload, room="authorities")
-
-    # Broadcast to Citizen Incident Room
-    incident_room = f"incident:{incident_id}"
-    await sio.emit("incident.triage_updated", payload, room=incident_room)
+    # 2. Operational progress notification for citizen room (ZERO AI reasoning leakage)
+    if incident_id:
+        incident_room = f"incident:{incident_id}"
+        citizen_payload = {
+            "incident_id": incident_id,
+            "id": incident_id,
+            "ticket_id": ticket_id,
+            "ai_state": ai_state,
+            "status_message": (
+                "Your emergency distress details are actively being reviewed by response dispatch."
+            ),
+        }
+        await sio.emit("incident.triage_updated", citizen_payload, room=incident_room)
 
     print(
-        f"[Socket.IO] Emitted incident.triage_updated → authorities + {incident_room} "
-        f"for {ticket_id or incident_id} ({assessment.provider})"
+        f"[Socket.IO] Emitted incident.triage_updated → authorities ({assessment.source_label}) "
+        f"+ progress to incident:{incident_id} for {ticket_id or incident_id}"
     )

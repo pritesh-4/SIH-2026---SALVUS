@@ -74,6 +74,59 @@ apiClient.interceptors.response.use(
   }
 )
 
+/**
+ * Standardize error extraction across all API operations with taxonomy and retryability.
+ */
+export const normalizeApiError = (error, fallbackMessage = 'Operation failed') => {
+  const status = error?.response?.status
+  const backendError = error?.response?.data?.error
+  const backendDetail = error?.response?.data?.detail
+  const requestId =
+    error?.response?.data?.request_id || error?.response?.headers?.['x-request-id'] || null
+
+  let code =
+    backendError?.code ||
+    (status === 404
+      ? 'NOT_FOUND'
+      : status === 401
+        ? 'AUTH_ERROR'
+        : status === 403
+          ? 'FORBIDDEN'
+          : status === 409
+            ? 'CONFLICT'
+            : status === 422
+              ? 'VALIDATION_ERROR'
+              : status === 503
+                ? 'DATABASE_ERROR'
+                : error?.code === 'ECONNABORTED'
+                  ? 'TIMEOUT'
+                  : 'UNKNOWN_ERROR')
+
+  let message =
+    backendError?.message ||
+    (typeof backendDetail === 'string'
+      ? backendDetail
+      : backendDetail?.error?.message ||
+        backendDetail?.message ||
+        error?.message ||
+        fallbackMessage)
+
+  const isNetworkOrTimeout =
+    error?.code === 'ECONNABORTED' ||
+    (typeof error?.message === 'string' && error.message.toLowerCase().includes('network error'))
+
+  const retryable =
+    backendError?.retryable ?? ([408, 429, 502, 503, 504].includes(status) || isNetworkOrTimeout)
+
+  return {
+    code,
+    message,
+    retryable,
+    status,
+    requestId,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Incident API Calls
 // ---------------------------------------------------------------------------
@@ -674,6 +727,29 @@ export const fetchIncidentAssignments = async (incidentId) => {
       count: 0,
     }
   }
+}
+
+/**
+ * Reconcile unknown assignment state after network drop or timeout.
+ * Prevents double-dispatching when an assignment request succeeded on backend but response was lost.
+ */
+export const reconcileAssignmentState = async (incidentId, targetResponderId = null) => {
+  try {
+    const res = await fetchIncidentAssignments(incidentId)
+    if (res.success && Array.isArray(res.data)) {
+      const match = res.data.find(
+        (a) =>
+          (!targetResponderId || a.responder_id === targetResponderId) &&
+          ['ASSIGNED', 'EN_ROUTE', 'NEARBY', 'ON_SCENE', 'RESOLVED'].includes(a.status)
+      )
+      if (match) {
+        return { reconciled: true, assignment: match, data: match }
+      }
+    }
+  } catch (err) {
+    console.warn('[Salvus Resilience] Assignment reconciliation probe failed:', err)
+  }
+  return { reconciled: false, assignment: null, data: null }
 }
 
 /**

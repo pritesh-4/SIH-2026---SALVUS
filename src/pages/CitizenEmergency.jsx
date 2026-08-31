@@ -11,6 +11,8 @@ import { EmergencyInstructionCard } from '../components/citizen/emergency/Emerge
 import { EmergencyDemoControls } from '../components/citizen/emergency/EmergencyDemoControls'
 import { EmergencyCancelModal } from '../components/citizen/emergency/EmergencyCancelModal'
 import { GlobalNotificationBanner } from '../components/common/GlobalNotificationBanner'
+import ErrorBoundary from '../components/common/ErrorBoundary'
+import DevDiagnosticsPanel from '../components/common/DevDiagnosticsPanel'
 
 export const CitizenEmergency = () => {
   const navigate = useNavigate()
@@ -326,17 +328,21 @@ export const CitizenEmergency = () => {
 
               {/* Progressive Centerpiece: Tactical Radar Map for Tracking/Nearby/Scene */}
               {['tracking', 'proximity', 'on_scene'].includes(focalCategory) ? (
-                <RescueRadarMap
-                  currentState={currentState}
-                  responderPos={responderPos}
-                  userLocation={incident.userLocation}
-                  responder={responder}
-                  distanceText={distanceText}
-                  etaMinutes={etaMinutes}
-                />
+                <ErrorBoundary componentName="Rescue Radar Tactical Map" variant="card">
+                  <RescueRadarMap
+                    currentState={currentState}
+                    responderPos={responderPos}
+                    userLocation={incident.userLocation}
+                    responder={responder}
+                    distanceText={distanceText}
+                    etaMinutes={etaMinutes}
+                  />
+                </ErrorBoundary>
               ) : (
                 /* Progressive Centerpiece: Operational AI Intelligence Triage for Triage/Verified */
-                <AiTriageCard currentState={currentState} aiTriage={aiTriage} />
+                <ErrorBoundary componentName="AI Decision Intelligence Assessment" variant="card">
+                  <AiTriageCard currentState={currentState} aiTriage={aiTriage} />
+                </ErrorBoundary>
               )}
 
               {/* State-Specific Life-Safety Guidance */}
@@ -466,6 +472,14 @@ export const CitizenEmergency = () => {
         onConnectivityChange={setConnectivityStatus}
         onTriggerLiveSos={triggerLiveDemoSos}
         incidentTicket={incident.id}
+      />
+
+      {/* Development & Demo Observability Panel */}
+      <DevDiagnosticsPanel
+        incidentId={incident.id}
+        ticketId={incident.ticket_id || incident.id}
+        aiProvenance={aiTriage?.source_label || aiTriage?.confidence_tier}
+        onForceResync={() => rehydrateEmergency(urlIncidentId, true)}
       />
     </div>
   )

@@ -43,6 +43,21 @@ async def analyze_incident_triage(
             },
         )
 
+    if incident.status in ("RESOLVED", "CANCELLED"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "INCIDENT_TERMINAL",
+                    "message": (
+                        f"Cannot analyze triage for terminal incident "
+                        f"#{incident.ticket_id} ({incident.status})."
+                    ),
+                },
+            },
+        )
+
     from app.realtime.socket_manager import emit_incident_triage_updated
     from app.services.ai.service import ai_service
 

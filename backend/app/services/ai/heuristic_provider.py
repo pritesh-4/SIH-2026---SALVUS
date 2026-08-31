@@ -38,15 +38,19 @@ class HeuristicProvider(BaseAIProvider):
 
         if any(
             k in desc
-            for k in ["water", "flood", "submerged", "inundated", "river", "drown", "boat"]
-        ):
-            resolved_type = IncidentType.FLOOD
-            hazard_type = "Flash Flood & Rapid Inundation"
-            capability = ResponderCapability.FLOOD_BOAT
-            signals.append("Flood water inundation reported")
-        elif any(
-            k in desc
-            for k in ["shock", "electric", "power", "line", "wire", "spark", "feeder", "11kv"]
+            for k in [
+                "shock",
+                "electric",
+                "power line",
+                "wire",
+                "spark",
+                "feeder",
+                "11kv",
+                "transformer",
+            ]
+        ) or (
+            initial_type == "power_line"
+            and any(k in desc for k in ["line", "wire", "power", "spark", "11kv"])
         ):
             resolved_type = IncidentType.POWER_LINE
             hazard_type = "Live Electrical / Submerged Grid Threat"
@@ -64,6 +68,10 @@ class HeuristicProvider(BaseAIProvider):
                 "trauma",
                 "patient",
                 "pregnant",
+                "cardiac",
+                "chest pain",
+                "asthma",
+                "breathing",
             ]
         ):
             resolved_type = IncidentType.MEDICAL
@@ -75,7 +83,36 @@ class HeuristicProvider(BaseAIProvider):
             hazard_type = "Active Fire / Thermal Threat"
             capability = ResponderCapability.HAZMAT
             signals.append("Thermal or smoke hazard detected")
-        elif any(k in desc for k in ["collapse", "crack", "debris", "roof", "rubble", "crushed"]):
+        elif any(
+            k in desc
+            for k in [
+                "water",
+                "flood",
+                "submerged",
+                "inundated",
+                "river",
+                "drown",
+                "boat",
+                "waterlogged",
+                "rising water",
+            ]
+        ):
+            resolved_type = IncidentType.FLOOD
+            hazard_type = "Flash Flood & Rapid Inundation"
+            capability = ResponderCapability.FLOOD_BOAT
+            signals.append("Flood water inundation reported")
+        elif any(
+            k in desc
+            for k in [
+                "collapse",
+                "building collapse",
+                "roof collapse",
+                "rubble",
+                "crushed",
+                "wall fracture",
+                "debris trap",
+            ]
+        ):
             resolved_type = IncidentType.STRUCTURAL
             hazard_type = "Structural Collapse / Debris Trap"
             capability = ResponderCapability.DEBRIS_CLEAR
@@ -88,6 +125,10 @@ class HeuristicProvider(BaseAIProvider):
                     capability = ResponderCapability.FLOOD_BOAT
                 elif initial_type == "medical":
                     capability = ResponderCapability.AMBULANCE
+                elif initial_type in ("fire", "hazard", "power_line"):
+                    capability = ResponderCapability.HAZMAT
+                elif initial_type == "structural":
+                    capability = ResponderCapability.DEBRIS_CLEAR
 
         if is_sos:
             signals.append("High-priority SOS beacon triggered")
@@ -96,13 +137,26 @@ class HeuristicProvider(BaseAIProvider):
 
         # 2. Severity and Priority Reasoning
         uncertainty_flags: list[str] = []
-        if len(desc) < 20:
+        if len(desc) < 25:
             uncertainty_flags.append("Limited reporter text detail provided")
+
+        if any(
+            w in desc
+            for w in ["water", "flood", "depth", "meter", "feet", "waist", "chest", "knee"]
+        ):
+            uncertainty_flags.append("Water depth and flood extent are self-reported by caller")
+
+        if affected > 1:
+            uncertainty_flags.append("Reported affected count is unconfirmed by field responders")
+
+        uncertainty_flags.append("Location accuracy is approximate based on mobile GPS estimate")
 
         is_critical_keyword = any(
             k in desc
             for k in [
+                "trap",
                 "trapped",
+                "trapping",
                 "dying",
                 "urgent",
                 "critical",
@@ -114,6 +168,10 @@ class HeuristicProvider(BaseAIProvider):
                 "cardiac",
                 "heart attack",
                 "stroke",
+                "building collapse",
+                "collapse",
+                "fire spreading",
+                "gas leak",
             ]
         )
 
@@ -121,6 +179,7 @@ class HeuristicProvider(BaseAIProvider):
             k in desc
             for k in [
                 "rising",
+                "rising water",
                 "injured",
                 "blocked",
                 "high",
@@ -135,15 +194,59 @@ class HeuristicProvider(BaseAIProvider):
             ]
         )
 
-        if is_sos or (is_critical_keyword and affected >= 3):
+        # Grounded factual extraction (Reported conditions)
+        reported_conditions: list[str] = []
+        if "flood" in desc or "water" in desc or "submerged" in desc:
+            reported_conditions.append("Inundation / rising water reported at scene")
+        if any(w in desc for w in ["trap", "trapped", "trapping"]):
+            reported_conditions.append("Citizens reported trapped / unable to evacuate")
+        if any(
+            k in desc for k in ["elderly", "cannot walk", "disabled", "infant", "child", "patient"]
+        ):
+            reported_conditions.append(
+                "Vulnerable individuals present needing evacuation assistance"
+            )
+        if any(k in desc for k in ["blocked", "exit", "debris", "collapse"]):
+            reported_conditions.append("Exit access or roadway obstructed")
+        if any(k in desc for k in ["fire", "smoke", "flame"]):
+            reported_conditions.append("Active thermal or smoke hazard reported")
+        if any(k in desc for k in ["shock", "electric", "wire", "11kv", "power"]):
+            reported_conditions.append("Live electrical / grid hazard in proximity")
+        if is_sos:
+            reported_conditions.append("Direct emergency SOS beacon active")
+        if not reported_conditions:
+            reported_conditions = signals or ["Initial field distress report received"]
+
+        if is_sos or (
+            is_critical_keyword
+            and (
+                affected >= 3
+                or any(
+                    w in desc
+                    for w in [
+                        "trap",
+                        "trapped",
+                        "trapping",
+                        "rising",
+                        "collapse",
+                        "unconscious",
+                        "cardiac",
+                        "stroke",
+                        "11kv",
+                        "fire spreading",
+                        "gas leak",
+                    ]
+                )
+            )
+        ):
             severity = IncidentSeverity.CRITICAL
             severity_level = 5 if is_sos and is_critical_keyword else 4
             reasoning = (
                 f"Critical priority: Distress reports {affected} person(s) at immediate risk "
-                f"in an escalating {hazard_type.lower()} scenario."
+                f"in an escalating {hazard_type.lower()} scenario. "
+                f"Ground indicators: {', '.join(reported_conditions[:3])}."
             )
-
-            confidence = 0.89 if len(desc) > 30 else 0.78
+            confidence = 0.88 if len(desc) > 30 else 0.76
         elif is_critical_keyword or is_high_keyword or affected >= 5:
             severity = IncidentSeverity.HIGH
             severity_level = 3
@@ -151,7 +254,7 @@ class HeuristicProvider(BaseAIProvider):
                 f"High priority: Significant {hazard_type.lower()} impacting {affected} person(s) "
                 f"requiring prompt intervention."
             )
-            confidence = 0.85
+            confidence = 0.82
         elif any(k in desc for k in ["moderate", "waterlogged", "slow", "assist"]):
             severity = IncidentSeverity.MEDIUM
             severity_level = 2
@@ -159,7 +262,7 @@ class HeuristicProvider(BaseAIProvider):
                 f"Moderate priority: {hazard_type} with contained hazard perimeter affecting "
                 f"{affected} person(s)."
             )
-            confidence = 0.82
+            confidence = 0.80
         else:
             severity = IncidentSeverity.LOW
             severity_level = 1
@@ -204,6 +307,7 @@ class HeuristicProvider(BaseAIProvider):
             hazard_type=hazard_type,
             affected_people=affected,
             key_signals=signals or ["Standard field distress report"],
+            reported_conditions=reported_conditions,
             recommended_capability=capability,
             priority_reasoning=reasoning,
             uncertainty_flags=uncertainty_flags,
@@ -213,6 +317,7 @@ class HeuristicProvider(BaseAIProvider):
             image_assessment_hint=img_hint,
             provider=self.name,
             model=self.model,
+            source_label="RULE-BASED TRIAGE",
             evaluated_at=now_iso,
             ai_state="AVAILABLE",
             needs_review=confidence < 0.75 or len(uncertainty_flags) > 0,

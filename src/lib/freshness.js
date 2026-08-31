@@ -13,7 +13,7 @@ export const formatRelativeFreshness = (timestampOrIso, prefix = 'Updated') => {
 
     const diffSeconds = Math.max(0, Math.floor((Date.now() - timeMs) / 1000))
 
-    if (diffSeconds < 45) return 'Updated just now'
+    if (diffSeconds < 45) return `${prefix} just now`
     const minutes = Math.floor(diffSeconds / 60)
     if (minutes < 60) return `${prefix} ${minutes}m ago`
     const hours = Math.floor(minutes / 60)
@@ -22,6 +22,49 @@ export const formatRelativeFreshness = (timestampOrIso, prefix = 'Updated') => {
     return `${prefix} ${days}d ago`
   } catch {
     return `${prefix} recently`
+  }
+}
+
+/**
+ * Check if a timestamp is older than the given threshold (default: 60s).
+ */
+export const isDataStale = (timestampOrIso, thresholdSeconds = 60) => {
+  if (!timestampOrIso) return true
+
+  try {
+    const timeMs =
+      typeof timestampOrIso === 'number' ? timestampOrIso : new Date(timestampOrIso).getTime()
+
+    if (isNaN(timeMs)) return true
+
+    const diffSeconds = Math.max(0, Math.floor((Date.now() - timeMs) / 1000))
+    return diffSeconds > thresholdSeconds
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Calculate complete freshness status model with UI presentation metadata.
+ */
+export const getFreshnessStatus = (timestampOrIso, thresholdSeconds = 60) => {
+  if (!timestampOrIso) {
+    return {
+      label: 'Sync Pending',
+      relativeText: 'Awaiting sync',
+      isStale: true,
+      variant: 'neutral',
+    }
+  }
+
+  const stale = isDataStale(timestampOrIso, thresholdSeconds)
+  const relativeText = formatRelativeFreshness(timestampOrIso, 'Synced')
+
+  return {
+    label: stale ? 'Stale Data' : 'Live Data',
+    relativeText,
+    isStale: stale,
+    variant: stale ? 'warning' : 'safe',
   }
 }
 

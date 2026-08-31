@@ -11,9 +11,10 @@ from contextlib import asynccontextmanager
 
 import socketio
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.db import close_database, init_database
 from app.db.seed import seed_database
@@ -23,6 +24,7 @@ from app.middleware import (
     RequestLoggingMiddleware,
     SecurityHeadersMiddleware,
     generic_exception_handler,
+    http_exception_handler,
     validation_exception_handler,
 )
 from app.realtime.socket_manager import sio
@@ -118,6 +120,8 @@ app.add_middleware(
 
 # --- Error handlers ---
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
 # --- Routes ---

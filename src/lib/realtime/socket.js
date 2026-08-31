@@ -7,6 +7,7 @@ const SOCKET_URL =
 
 let socketInstance = null
 const connectionListeners = new Set()
+const reconnectListeners = new Set()
 const activeRooms = new Set()
 
 /**
@@ -18,6 +19,19 @@ const notifyStatus = (status) => {
       cb(status)
     } catch (err) {
       console.error('[Socket.IO] Error in connection listener:', err)
+    }
+  })
+}
+
+/**
+ * Notify all registered reconnect handlers to rehydrate state.
+ */
+const notifyReconnect = () => {
+  reconnectListeners.forEach((cb) => {
+    try {
+      cb()
+    } catch (err) {
+      console.error('[Socket.IO] Error in reconnect listener:', err)
     }
   })
 }
@@ -48,6 +62,7 @@ export const getSocket = () => {
         socketInstance.emit('join_room', { room })
       })
       notifyStatus('CONNECTED')
+      notifyReconnect()
     })
 
     socketInstance.on('disconnect', (reason) => {
@@ -67,6 +82,7 @@ export const getSocket = () => {
     socketInstance.on('reconnect', () => {
       console.log('[Socket.IO] Reconnected cleanly')
       notifyStatus('CONNECTED')
+      notifyReconnect()
     })
   }
 
@@ -178,6 +194,31 @@ export const onSocketStatusChange = (callback) => {
   }
   return () => {
     connectionListeners.delete(callback)
+  }
+}
+
+/**
+ * Register a listener to execute state rehydration whenever Socket.IO reconnects.
+ *
+ * @param {Function} callback - () => void
+ * @returns {Function} Unsubscribe cleanup function
+ */
+export const onSocketReconnect = (callback) => {
+  reconnectListeners.add(callback)
+  return () => {
+    reconnectListeners.delete(callback)
+  }
+}
+
+/**
+ * Get active socket telemetry for diagnostic panels.
+ */
+export const getSocketState = () => {
+  return {
+    connected: Boolean(socketInstance?.connected),
+    id: socketInstance?.id || null,
+    activeRooms: Array.from(activeRooms),
+    url: SOCKET_URL,
   }
 }
 

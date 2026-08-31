@@ -71,6 +71,17 @@ class AIService:
                 latency_ms = (time.perf_counter() - start_time) * 1000.0
 
                 if assessment is not None:
+                    # Explicitly stamp accurate provenance
+                    if (
+                        isinstance(provider, HeuristicProvider)
+                        or "heuristic" in provider.name.lower()
+                    ):
+                        assessment.source_label = "RULE-BASED TRIAGE"
+                    elif idx == 0:
+                        assessment.source_label = "AI TRIAGE — PRIMARY"
+                    else:
+                        assessment.source_label = "AI TRIAGE — FALLBACK"
+
                     log_ai_telemetry(
                         incident_id=incident_id,
                         provider=provider.name,
@@ -112,7 +123,8 @@ class AIService:
 
         # Absolute safety net: if all configured providers failed unexpectedly
         heuristic = HeuristicProvider()
-        fallback_assessment = await heuristic.evaluate(sanitized, image_data)
+        fallback_assessment = await heuristic.evaluate(sanitized, effective_img)
+        fallback_assessment.source_label = "RULE-BASED TRIAGE"
         return fallback_assessment, t_hash
 
 

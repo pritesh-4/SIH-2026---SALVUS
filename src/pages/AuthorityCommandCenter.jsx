@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { assignResponder, reassignResponder } from '../services/api'
+import { assignResponder, reassignResponder, reconcileAssignmentState } from '../services/api'
 import {
   useAuthorityIncidents,
   useAuthorityFleet,
@@ -20,6 +20,8 @@ import { IncidentInspector } from '../components/authority/IncidentInspector'
 import { ResponderPanel } from '../components/authority/ResponderPanel'
 import { ShelterPanel } from '../components/authority/ShelterPanel'
 import { AssignmentConfirmModal } from '../components/authority/AssignmentConfirmModal'
+import ErrorBoundary from '../components/common/ErrorBoundary'
+import DevDiagnosticsPanel from '../components/common/DevDiagnosticsPanel'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 
@@ -201,10 +203,25 @@ export const AuthorityCommandCenter = () => {
       )
       refetchIncidents(true)
     } else {
+      // Reconcile ambiguous outcome (e.g. timeout / network drop where backend assignment may have succeeded)
+      if (result.error?.code === 'TIMEOUT' || result.error?.retryable) {
+        const reconciliation = await reconcileAssignmentState(selectedIncident.id, responderId)
+        if (reconciliation.reconciled && reconciliation.assignment) {
+          setAssignConfirmCandidate(null)
+          showStatusMessage(
+            `✓ Dispatched (Reconciled from server) #${selectedIncident.ticket_id}`,
+            3500
+          )
+          refetchIncidents(true)
+          loadFleet()
+          return
+        }
+      }
+
       const unitLabel =
         assignConfirmCandidate?.unit_name || assignConfirmCandidate?.unitName || 'Selected unit'
       showStatusMessage(
-        `⚠️ ${unitLabel} is no longer available. Updated recommendations are ready.`,
+        `⚠️ ${unitLabel} dispatch could not be completed: ${result.error?.message || 'Unit unavailable'}`,
         4500
       )
       refreshCandidates()
@@ -249,6 +266,22 @@ export const AuthorityCommandCenter = () => {
       refetchIncidents(true)
       refreshCandidates()
     } else {
+      // Reconcile ambiguous outcome
+      if (result.error?.code === 'TIMEOUT' || result.error?.retryable) {
+        const reconciliation = await reconcileAssignmentState(selectedIncident.id, responderId)
+        if (reconciliation.reconciled && reconciliation.assignment) {
+          setReassignModalCandidate(null)
+          dismissRecommendationShift?.()
+          showStatusMessage(
+            `✓ Reassigned (Reconciled from server) #${selectedIncident.ticket_id}`,
+            3500
+          )
+          refetchIncidents(true)
+          loadFleet()
+          return
+        }
+      }
+
       showStatusMessage(`❌ ${result.error?.message || 'Reassignment failed'}`, 4500)
       refreshCandidates()
     }
@@ -348,22 +381,26 @@ export const AuthorityCommandCenter = () => {
       )}
 
       {/* 4-KPI Operational Strip */}
-      <OperationalMetrics
-        computedMetrics={computedMetrics}
-        activeRespondersCount={activeRespondersCount}
-        totalRespondersCount={liveResponders.length}
-        totalBedsAvailable={totalBedsAvailable}
-      />
+      <ErrorBoundary componentName="Operational Metrics" variant="card">
+        <OperationalMetrics
+          computedMetrics={computedMetrics}
+          activeRespondersCount={activeRespondersCount}
+          totalRespondersCount={liveResponders.length}
+          totalBedsAvailable={totalBedsAvailable}
+        />
+      </ErrorBoundary>
 
       {/* Concise Situation Intelligence Briefing */}
-      <SituationBriefing
-        situationSummary={situationSummary}
-        liveHazards={liveHazards}
-        incidentClusters={incidentClusters}
-        computedMetrics={computedMetrics}
-        isRefreshingSituation={isRefreshingSituation}
-        onRefreshSituation={loadSituationIntelligence}
-      />
+      <ErrorBoundary componentName="Situation Intelligence Briefing" variant="card">
+        <SituationBriefing
+          situationSummary={situationSummary}
+          liveHazards={liveHazards}
+          incidentClusters={incidentClusters}
+          computedMetrics={computedMetrics}
+          isRefreshingSituation={isRefreshingSituation}
+          onRefreshSituation={loadSituationIntelligence}
+        />
+      </ErrorBoundary>
 
       {/* 3-Column Command Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
@@ -381,20 +418,24 @@ export const AuthorityCommandCenter = () => {
         />
 
         {/* Column 2: Geospatial Tactical Map */}
-        <AuthorityMap
-          incidents={incidents}
-          responderMapPoints={responderMapPoints}
-          shelterMapPoints={shelterMapPoints}
-          liveHazards={liveHazards}
-          incidentClusters={incidentClusters}
-          selectedIncident={selectedIncident}
-          activeRoute={activeRoute}
-          previewRoute={previewRoute}
-          mapLayers={mapLayers}
-          onToggleLayer={handleToggleMapLayer}
-          onSelectIncident={handleSelectIncident}
-          onClearRoute={clearRoute}
-        />
+        <div className="lg:col-span-12 xl:col-span-8 flex flex-col space-y-2">
+          <ErrorBoundary componentName="Tactical Geospatial Map" variant="card">
+            <AuthorityMap
+              incidents={incidents}
+              responderMapPoints={responderMapPoints}
+              shelterMapPoints={shelterMapPoints}
+              liveHazards={liveHazards}
+              incidentClusters={incidentClusters}
+              selectedIncident={selectedIncident}
+              activeRoute={activeRoute}
+              previewRoute={previewRoute}
+              mapLayers={mapLayers}
+              onToggleLayer={handleToggleMapLayer}
+              onSelectIncident={handleSelectIncident}
+              onClearRoute={clearRoute}
+            />
+          </ErrorBoundary>
+        </div>
 
         {/* Column 3: Command Inspector & Resource Hub */}
         <Card
@@ -463,68 +504,74 @@ export const AuthorityCommandCenter = () => {
           {/* TAB 1: Inspector */}
           {rightPanelTab === 'inspector' && (
             <div id="panel-inspector" role="tabpanel" aria-labelledby="tab-inspector">
-              <IncidentInspector
-                selectedIncident={selectedIncident}
-                activeRoute={activeRoute}
-                activeTargetResponder={activeTargetResponder}
-                currentlyAssignedResponder={currentlyAssignedResponder}
-                candidateShelters={candidateShelters}
-                topRecommendedCandidate={topRecommendedCandidate}
-                alternativeCandidates={alternativeCandidates}
-                isLoadingCandidates={isLoadingCandidates}
-                isAssigningUnit={isAssigningUnit}
-                isVerifyingTriage={isVerifyingTriage}
-                isAnalyzingTriage={isAnalyzingTriage}
-                isUpdatingStatus={isUpdatingStatus}
-                isSimulatingMovement={isSimulatingMovement}
-                simulationSpeedMultiplier={simulationSpeedMultiplier}
-                actionSuccessMessage={actionSuccessMessage}
-                recommendationShift={recommendationShift}
-                onDismissRecommendationShift={dismissRecommendationShift}
-                onReviewReassign={(candidate) => setReassignModalCandidate(candidate)}
-                onClearRoute={clearRoute}
-                onSelectCandidateRoute={selectCandidateRoute}
-                onRequestAssign={setAssignConfirmCandidate}
-                onRefreshCandidates={refreshCandidates}
-                onAdvanceLifecycle={handleAdvanceLifecycle}
-                onToggleMovementSimulation={toggleMovementSimulation}
-                onSetSimulationSpeed={setSimulationSpeedMultiplier}
-                onVerifyTriage={(customData) => verifyTriage(selectedIncident, customData)}
-                onAdjustTriage={(adjData) => adjustTriage(selectedIncident, adjData)}
-                onReevaluateTriage={() => reevaluateTriage(selectedIncident)}
-                onTransitionStatus={handleTransitionStatus}
-              />
+              <ErrorBoundary componentName="Incident Inspector" variant="card">
+                <IncidentInspector
+                  selectedIncident={selectedIncident}
+                  activeRoute={activeRoute}
+                  activeTargetResponder={activeTargetResponder}
+                  currentlyAssignedResponder={currentlyAssignedResponder}
+                  candidateShelters={candidateShelters}
+                  topRecommendedCandidate={topRecommendedCandidate}
+                  alternativeCandidates={alternativeCandidates}
+                  isLoadingCandidates={isLoadingCandidates}
+                  isAssigningUnit={isAssigningUnit}
+                  isVerifyingTriage={isVerifyingTriage}
+                  isAnalyzingTriage={isAnalyzingTriage}
+                  isUpdatingStatus={isUpdatingStatus}
+                  isSimulatingMovement={isSimulatingMovement}
+                  simulationSpeedMultiplier={simulationSpeedMultiplier}
+                  actionSuccessMessage={actionSuccessMessage}
+                  recommendationShift={recommendationShift}
+                  onDismissRecommendationShift={dismissRecommendationShift}
+                  onReviewReassign={(candidate) => setReassignModalCandidate(candidate)}
+                  onClearRoute={clearRoute}
+                  onSelectCandidateRoute={selectCandidateRoute}
+                  onRequestAssign={setAssignConfirmCandidate}
+                  onRefreshCandidates={refreshCandidates}
+                  onAdvanceLifecycle={handleAdvanceLifecycle}
+                  onToggleMovementSimulation={toggleMovementSimulation}
+                  onSetSimulationSpeed={setSimulationSpeedMultiplier}
+                  onVerifyTriage={(customData) => verifyTriage(selectedIncident, customData)}
+                  onAdjustTriage={(adjData) => adjustTriage(selectedIncident, adjData)}
+                  onReevaluateTriage={() => reevaluateTriage(selectedIncident)}
+                  onTransitionStatus={handleTransitionStatus}
+                />
+              </ErrorBoundary>
             </div>
           )}
 
           {/* TAB 2: Fleet */}
           {rightPanelTab === 'fleet' && (
             <div id="panel-fleet" role="tabpanel" aria-labelledby="tab-fleet">
-              <ResponderPanel
-                filteredFleet={filteredFleet}
-                isLoadingFleet={isLoadingFleet}
-                fleetCapabilityFilter={fleetCapabilityFilter}
-                fleetStatusFilter={fleetStatusFilter}
-                selectedResponderDetail={selectedResponderDetail}
-                selectedIncident={selectedIncident}
-                onCapabilityFilterChange={setFleetCapabilityFilter}
-                onStatusFilterChange={setFleetStatusFilter}
-                onSelectResponderDetail={setSelectedResponderDetail}
-                onCloseResponderDetail={() => setSelectedResponderDetail(null)}
-                onSelectCandidateRoute={selectCandidateRoute}
-                onUpdateResponderStatus={updateResponderStatus}
-              />
+              <ErrorBoundary componentName="Fleet Resource Panel" variant="card">
+                <ResponderPanel
+                  filteredFleet={filteredFleet}
+                  isLoadingFleet={isLoadingFleet}
+                  fleetCapabilityFilter={fleetCapabilityFilter}
+                  fleetStatusFilter={fleetStatusFilter}
+                  selectedResponderDetail={selectedResponderDetail}
+                  selectedIncident={selectedIncident}
+                  onCapabilityFilterChange={setFleetCapabilityFilter}
+                  onStatusFilterChange={setFleetStatusFilter}
+                  onSelectResponderDetail={setSelectedResponderDetail}
+                  onCloseResponderDetail={() => setSelectedResponderDetail(null)}
+                  onSelectCandidateRoute={selectCandidateRoute}
+                  onUpdateResponderStatus={updateResponderStatus}
+                />
+              </ErrorBoundary>
             </div>
           )}
 
           {/* TAB 3: Shelters */}
           {rightPanelTab === 'shelters' && (
             <div id="panel-shelters" role="tabpanel" aria-labelledby="tab-shelters">
-              <ShelterPanel
-                liveShelters={liveShelters}
-                liveHazards={liveHazards}
-                onAdjustBeds={adjustBeds}
-              />
+              <ErrorBoundary componentName="Shelters & Evacuation Panel" variant="card">
+                <ShelterPanel
+                  liveShelters={liveShelters}
+                  liveHazards={liveHazards}
+                  onAdjustBeds={adjustBeds}
+                />
+              </ErrorBoundary>
             </div>
           )}
         </Card>
@@ -551,6 +598,14 @@ export const AuthorityCommandCenter = () => {
         reassignmentReason={recommendationShift?.reason}
         onClose={() => setReassignModalCandidate(null)}
         onConfirm={handleConfirmReassignment}
+      />
+
+      {/* System Diagnostics & Observability Drawer */}
+      <DevDiagnosticsPanel
+        incidentId={selectedIncident?.id}
+        ticketId={selectedIncident?.ticket_id}
+        aiProvenance={selectedIncident?.ai_triage?.source_label || domainProvenance?.ai_triage}
+        onForceResync={handleSyncAll}
       />
     </div>
   )

@@ -94,6 +94,118 @@ def log_ai_telemetry(
     logger.log(level, f"AI_TELEMETRY: {json.dumps(entry)}")
 
 
+def sanitize_telemetry_dict(data: dict[str, Any] | None) -> dict[str, Any]:
+    """Sanitize dictionary to prevent secret, token, password, or PII leakage in structured logs."""
+    if not data:
+        return {}
+    sensitive_keys = {
+        "key",
+        "secret",
+        "auth",
+        "token",
+        "password",
+        "phone",
+        "email",
+        "ssn",
+        "aadhaar",
+    }
+    safe = {}
+    for k, v in data.items():
+        if any(secret in str(k).lower() for secret in sensitive_keys):
+            safe[k] = "[REDACTED]"
+        elif isinstance(v, dict):
+            safe[k] = sanitize_telemetry_dict(v)
+        else:
+            safe[k] = v
+    return safe
+
+
+def log_incident_event(
+    incident_id: str,
+    action: str,
+    actor: str | None = None,
+    details: dict[str, Any] | None = None,
+    request_id: str | None = None,
+    status: str | None = None,
+) -> None:
+    """Emit structured audit log for incident lifecycle state transitions."""
+    entry: dict[str, Any] = {
+        "type": "incident_lifecycle",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "incident_id": incident_id,
+        "action": action,
+    }
+    if actor:
+        entry["actor"] = actor
+    if status:
+        entry["status"] = status
+    if request_id:
+        entry["request_id"] = request_id
+    if details:
+        entry["details"] = sanitize_telemetry_dict(details)
+
+    logger.info(f"INCIDENT_LIFECYCLE: {json.dumps(entry)}")
+
+
+def log_assignment_event(
+    assignment_id: str | None,
+    incident_id: str,
+    responder_id: str,
+    action: str,
+    actor: str | None = None,
+    success: bool = True,
+    error_type: str | None = None,
+    request_id: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    """Emit structured audit log for responder dispatch and reassignment events."""
+    entry: dict[str, Any] = {
+        "type": "assignment_event",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "incident_id": incident_id,
+        "responder_id": responder_id,
+        "action": action,
+        "success": success,
+    }
+    if assignment_id:
+        entry["assignment_id"] = assignment_id
+    if actor:
+        entry["actor"] = actor
+    if error_type:
+        entry["error_type"] = error_type
+    if request_id:
+        entry["request_id"] = request_id
+    if details:
+        entry["details"] = sanitize_telemetry_dict(details)
+
+    level = logging.INFO if success else logging.WARNING
+    logger.log(level, f"ASSIGNMENT_EVENT: {json.dumps(entry)}")
+
+
+def log_resilience_event(
+    component: str,
+    event_type: str,
+    status: str,
+    details: dict[str, Any] | None = None,
+    request_id: str | None = None,
+) -> None:
+    """Emit structured resilience/failover event for system observability."""
+    entry: dict[str, Any] = {
+        "type": "resilience_event",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "component": component,
+        "event_type": event_type,
+        "status": status,
+    }
+    if request_id:
+        entry["request_id"] = request_id
+    if details:
+        entry["details"] = sanitize_telemetry_dict(details)
+
+    level = logging.INFO if status in ("HEALTHY", "RECOVERED") else logging.WARNING
+    logger.log(level, f"RESILIENCE_EVENT: {json.dumps(entry)}")
+
+
 def log_attachment_telemetry(
     incident_id: str,
     action: str,

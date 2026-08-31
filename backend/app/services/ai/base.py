@@ -55,6 +55,9 @@ class LLMTriageOutputSchema(BaseModel):
     key_signals: list[str] = Field(
         default_factory=list, description="Concrete grounded signals extracted from report"
     )
+    reported_conditions: list[str] = Field(
+        default_factory=list, description="Factual citizen-reported conditions"
+    )
     affected_people: int | None = Field(
         default=None, ge=1, le=100000, description="Estimated affected persons count"
     )
@@ -201,6 +204,7 @@ def parse_and_validate_assessment(
     sanitized: dict,
     provider_name: str,
     model_name: str,
+    source_label: str | None = None,
 ) -> AITriageAssessment | None:
     """Parse raw JSON response from model and validate strictly against Pydantic schema.
 
@@ -208,6 +212,7 @@ def parse_and_validate_assessment(
     - Malformed JSON -> REJECT (return None)
     - Unvalidated enum or invalid severity level -> REJECT (return None)
     - Missing required fields -> REJECT (return None)
+    - Coordinates are immutable to AI triage (never generated or altered).
     """
     try:
         # Strip markdown code blocks if the model wrapped the JSON
@@ -239,11 +244,28 @@ def parse_and_validate_assessment(
         )
         affected = (
             validated.affected_people
-            if validated.affected_people is not None
+            if validated.affected_people is not None and validated.affected_people >= 1
             else sanitized.get("affected_count", 1)
         )
         now_iso = datetime.now(UTC).isoformat()
         conf = round(max(0.0, min(1.0, validated.confidence)), 2)
+
+        # Derive provenance label
+        if source_label:
+            effective_source = source_label
+        elif "gemini" in provider_name.lower():
+            effective_source = "AI TRIAGE — PRIMARY"
+        elif "groq" in provider_name.lower():
+            effective_source = "AI TRIAGE — FALLBACK"
+        else:
+            effective_source = "RULE-BASED TRIAGE"
+
+        # Separate reported facts / conditions from inference
+        reported_conds = (
+            validated.reported_conditions
+            or validated.key_signals
+            or [f"Initial report submitted for {hazard.lower()}"]
+        )
 
         # Enforce AI ESTIMATE — UNVERIFIED on visual hints
         img_hint = validated.image_assessment_hint
@@ -273,7 +295,8 @@ def parse_and_validate_assessment(
             confidence=conf,
             hazard_type=hazard,
             affected_people=affected,
-            key_signals=validated.key_signals or ["Field report submitted"],
+            key_signals=validated.key_signals or reported_conds,
+            reported_conditions=reported_conds,
             recommended_capability=validated.recommended_capability,
             priority_reasoning=validated.priority_reasoning,
             uncertainty_flags=validated.uncertainty_flags,
@@ -283,6 +306,7 @@ def parse_and_validate_assessment(
             image_assessment_hint=img_hint,
             provider=provider_name,
             model=model_name,
+            source_label=effective_source,
             evaluated_at=now_iso,
             ai_state="AVAILABLE",
             needs_review=conf < 0.75 or len(validated.uncertainty_flags) > 0,

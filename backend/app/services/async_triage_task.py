@@ -98,6 +98,43 @@ async def run_async_ai_triage(
                 task_id=active_task_id,
             )
 
+            # Re-check incident state in DB to protect against race conditions:
+            # 1. Incident was resolved or cancelled while AI was calculating -> Discard
+            # 2. Incident content changed (version change / newer triage began) -> Discard
+            fresh_incident = await get_incident_by_id(db, incident_id)
+            if not fresh_incident:
+                logger.info(
+                    f"[Async Triage] Discarding assessment: Incident {incident_id} not found."
+                )
+                return None
+
+            if fresh_incident.status in ("RESOLVED", "CANCELLED"):
+                logger.info(
+                    f"[Async Triage] Discarding assessment: Incident #{fresh_incident.ticket_id} "
+                    f"is in terminal state '{fresh_incident.status}'. AI result discarded."
+                )
+                return None
+
+            # Check if incident description / content was updated during AI evaluation
+            fresh_sanitized = sanitize_incident_for_ai(
+                {
+                    "type": fresh_incident.type,
+                    "severity": fresh_incident.severity,
+                    "description": fresh_incident.description,
+                    "affected_count": fresh_incident.affected_count,
+                    "is_sos": fresh_incident.is_sos,
+                    "latitude": fresh_incident.latitude,
+                    "longitude": fresh_incident.longitude,
+                }
+            )
+            fresh_hash = compute_triage_hash(fresh_sanitized)
+            if fresh_hash != current_hash and not force_reevaluate:
+                logger.info(
+                    f"[Async Triage] Discarding stale assessment for #{fresh_incident.ticket_id}: "
+                    f"incident content changed during evaluation."
+                )
+                return None
+
             # Persist assessment in audit table
             await save_ai_triage_assessment(db, incident_id, assessment)
 
@@ -109,17 +146,18 @@ async def run_async_ai_triage(
             )
             await db.commit()
 
-            # Broadcast real-time triage update event
+            # Broadcast real-time triage update event (authorities: full, citizens: progress)
             await emit_incident_triage_updated(
                 incident_id=incident_id,
                 assessment=assessment,
                 ai_state=AIState.AVAILABLE.value,
-                ticket_id=incident.ticket_id,
+                ticket_id=fresh_incident.ticket_id,
             )
 
             logger.info(
-                f"[Async Triage] Triage completed successfully for #{incident.ticket_id} "
-                f"via {assessment.provider} ({assessment.confidence:.2f} confidence)"
+                f"[Async Triage] Triage completed successfully for #{fresh_incident.ticket_id} "
+                f"via {assessment.provider} ({assessment.confidence:.2f} conf, "
+                f"{assessment.source_label})"
             )
             return assessment
 
@@ -128,14 +166,16 @@ async def run_async_ai_triage(
                 f"[Async Triage Failure] Triage task failed for incident {incident_id}: {exc}",
                 exc_info=True,
             )
-            # Mark incident as FAILED but NEVER delete or invalidate the emergency incident
+            # Mark incident as FAILED only if not terminal; NEVER delete the emergency incident
             fail_now = datetime.now(UTC).isoformat()
             try:
-                await db.execute(
-                    "UPDATE incidents SET ai_state = ?, updated_at = ? WHERE id = ?",
-                    (AIState.FAILED.value, fail_now, incident_id),
-                )
-                await db.commit()
+                curr = await get_incident_by_id(db, incident_id)
+                if curr and curr.status not in ("RESOLVED", "CANCELLED"):
+                    await db.execute(
+                        "UPDATE incidents SET ai_state = ?, updated_at = ? WHERE id = ?",
+                        (AIState.FAILED.value, fail_now, incident_id),
+                    )
+                    await db.commit()
             except Exception:
                 pass
             return None

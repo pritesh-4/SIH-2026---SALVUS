@@ -269,6 +269,10 @@ class AITriageAssessment(BaseModel):
     key_signals: list[str] = Field(
         default_factory=list, description="Concrete grounded signals extracted from report"
     )
+    reported_conditions: list[str] = Field(
+        default_factory=list,
+        description="Factual citizen-reported conditions extracted from report",
+    )
     recommended_capability: ResponderCapability = Field(
         description="Matched responder equipment requirement"
     )
@@ -294,6 +298,10 @@ class AITriageAssessment(BaseModel):
         default="gemini-2.0-flash", description="AI Provider or fallback identifier"
     )
     model: str = Field(default="gemini-2.0-flash", description="Underlying model name")
+    source_label: str = Field(
+        default="RULE-BASED TRIAGE",
+        description="AI TRIAGE — PRIMARY | AI TRIAGE — FALLBACK | RULE-BASED TRIAGE",
+    )
     evaluated_at: str
     ai_state: str = Field(default="AVAILABLE", description="AVAILABLE | FAILED | STALE")
     needs_review: bool = Field(
