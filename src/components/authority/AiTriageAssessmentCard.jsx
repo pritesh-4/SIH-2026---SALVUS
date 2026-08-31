@@ -133,19 +133,19 @@ export const AiTriageAssessmentCard = ({
 
   const hazardLabel = triage?.hazard_type || triage?.hazardType || incident.type || 'Incident'
   const severityFit =
-    triage?.severity || triage?.recommended_severity || incident.severity || 'MEDIUM'
+    triage?.severity || triage?.recommended_severity || incident.severity || 'Urgency unlisted'
   const requiredUnit = (
     triage?.recommended_capability ||
     triage?.recommendedUnit ||
     triage?.recommendedCapability ||
-    'Rescue Unit'
+    'Capability unassigned'
   ).replace('_', ' ')
   const reasoningText =
     triage?.priority_reasoning || triage?.priorityReasoning || triage?.summary || null
 
   const reportedConditions = triage?.reported_conditions ||
     triage?.key_signals || [
-      incident.description ? 'Distress call submitted' : 'Standard field report',
+      incident.description ? incident.description : 'Distress call filed (no details provided)',
     ]
 
   const uncertaintyFlags = triage?.uncertainty_flags || []

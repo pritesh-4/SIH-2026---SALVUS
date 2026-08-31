@@ -645,8 +645,8 @@ export const SalvusLeafletMap = ({
           <div class="font-semibold text-slate-100 text-xs mb-1 capitalize">${inc.type?.replace('_', ' ') || 'Emergency Incident'}</div>
           <p class="text-slate-400 text-[11px] line-clamp-2 mb-2">${inc.description || 'Hazard report filed.'}</p>
           <div class="text-[10px] text-slate-400 font-mono flex items-center justify-between border-t border-slate-800/80 pt-1.5">
-            <span>👤 ${inc.reporter_name || 'Citizen'}</span>
-            <span class="font-semibold text-slate-300">${inc.affected_count || 1} Affected</span>
+            <span>👤 ${inc.reporter_name || 'Anonymous'}</span>
+            <span class="font-semibold text-slate-300">${inc.affected_count != null ? `${inc.affected_count} Affected` : 'Affected: Unlisted'}</span>
           </div>
         `
 

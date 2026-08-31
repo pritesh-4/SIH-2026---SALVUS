@@ -32,6 +32,13 @@ export const normalizeIncident = (inc) => {
   const latitude = hasValidLat ? inc.latitude : null
   const longitude = hasValidLon ? inc.longitude : null
 
+  const affected_count =
+    typeof inc.affected_count === 'number'
+      ? inc.affected_count
+      : typeof inc.affectedCount === 'number'
+        ? inc.affectedCount
+        : null
+
   return {
     id,
     ticket_id,
@@ -40,6 +47,7 @@ export const normalizeIncident = (inc) => {
     status: inc.status === 'AWAITING_DISPATCH' ? 'NEW' : inc.status || 'NEW',
     description:
       inc.description ||
+      inc.ai_triage?.priority_reasoning ||
       inc.ai_triage?.priorityReasoning ||
       inc.aiTriage?.priorityReasoning ||
       inc.category ||
@@ -49,12 +57,12 @@ export const normalizeIncident = (inc) => {
       inc.location ||
       (latitude !== null && longitude !== null
         ? `${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E`
-        : 'Location Not Specified'),
+        : null),
     latitude,
     longitude,
-    affected_count: inc.affected_count || inc.affectedCount || 1,
+    affected_count,
     is_sos: inc.is_sos !== undefined ? Boolean(inc.is_sos) : inc.severity === 'CRITICAL',
-    reporter_name: inc.reporter_name || inc.reporter?.name || 'Citizen User',
+    reporter_name: inc.reporter_name || inc.reporter?.name || null,
     reporter_phone: inc.reporter_phone || inc.reporter?.phone || null,
     ai_triage: inc.ai_triage || inc.aiTriage || null,
     ai_state: inc.ai_state || (inc.ai_triage ? 'AVAILABLE' : 'WAITING'),

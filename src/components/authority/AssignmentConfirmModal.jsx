@@ -66,7 +66,7 @@ export const AssignmentConfirmModal = ({
   const capability = candidate.capability?.replace('_', ' ') || 'General Rescue'
   const distanceKm = candidate.distance_km ?? candidate.distanceKm ?? null
   const etaFormatted = candidate.eta_formatted || candidate.etaFormatted || 'ETA unavailable'
-  const status = candidate.status || 'AVAILABLE'
+  const status = candidate.status || 'Status unlisted'
 
   return (
     <div
@@ -171,7 +171,9 @@ export const AssignmentConfirmModal = ({
                 <MapPin className="h-3 w-3 text-salvus-info" />
                 <span>Distance:</span>
               </span>
-              <strong className="text-salvus-text-primary font-mono">{distanceKm} km</strong>
+              <strong className="text-salvus-text-primary font-mono">
+                {distanceKm !== null ? `${distanceKm} km` : 'Distance unavailable'}
+              </strong>
             </div>
 
             <div className="flex items-center justify-between border-b border-salvus-border pb-1.5">
@@ -198,7 +200,11 @@ export const AssignmentConfirmModal = ({
                 <span>Crew Load:</span>
               </span>
               <span className="font-mono text-salvus-text-primary">
-                {candidate.current_load ?? 0} / {candidate.max_capacity ?? 8} in use
+                {candidate.current_load != null && candidate.max_capacity != null
+                  ? `${candidate.current_load} / ${candidate.max_capacity} in use`
+                  : candidate.max_capacity != null
+                    ? `Capacity: ${candidate.max_capacity} Pax`
+                    : 'Crew load unlisted'}
               </span>
             </div>
           </div>

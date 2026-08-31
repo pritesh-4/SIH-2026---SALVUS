@@ -149,12 +149,13 @@ export const DispatchRecommendationPanel = ({
 
   // Format workload label
   const getWorkloadLabel = (load, maxCap) => {
-    const cap = maxCap || 8
-    const l = load || 0
-    const ratio = l / cap
-    if (ratio === 0) return { text: 'Low (0 load)', variant: 'safe' }
-    if (ratio <= 0.5) return { text: `Moderate (${l}/${cap})`, variant: 'info' }
-    return { text: `High (${l}/${cap})`, variant: 'warning' }
+    if (load == null && maxCap == null) return { text: 'Workload unavailable', variant: 'neutral' }
+    if (maxCap == null) return { text: `Load: ${load ?? 0}`, variant: 'neutral' }
+    const l = load ?? 0
+    const ratio = l / maxCap
+    if (ratio === 0) return { text: `Low (0/${maxCap} in use)`, variant: 'safe' }
+    if (ratio <= 0.5) return { text: `Moderate (${l}/${maxCap} in use)`, variant: 'info' }
+    return { text: `High (${l}/${maxCap} in use)`, variant: 'warning' }
   }
 
   const workloadInfo = getWorkloadLabel(topCandidate.current_load, topCandidate.max_capacity)
@@ -178,7 +179,11 @@ export const DispatchRecommendationPanel = ({
           <span className="text-xs text-salvus-text-muted">
             Score:{' '}
             <strong className="text-salvus-safe font-mono text-sm">
-              {topCandidate.match_score ?? topCandidate.matchScore}/100
+              {topCandidate.match_score != null
+                ? `${topCandidate.match_score}/100`
+                : topCandidate.matchScore != null
+                  ? `${topCandidate.matchScore}/100`
+                  : 'Score unlisted'}
             </strong>
           </span>
 
@@ -300,12 +305,12 @@ export const DispatchRecommendationPanel = ({
             </h4>
             <p className="text-xs text-salvus-text-secondary mt-0.5 font-medium">
               {topCandidate.team_lead && `Lead: ${topCandidate.team_lead} · `}
-              {topCandidate.vehicle_type || 'Rescue Craft'}
+              {topCandidate.vehicle_type || 'Vehicle unlisted'}
             </p>
           </div>
 
-          <Badge variant="safe" size="sm">
-            {topCandidate.status || 'AVAILABLE'}
+          <Badge variant={topCandidate.status === 'AVAILABLE' ? 'safe' : 'info'} size="sm">
+            {topCandidate.status || 'Status unlisted'}
           </Badge>
         </div>
 
@@ -318,7 +323,7 @@ export const DispatchRecommendationPanel = ({
             <div className="flex items-center gap-1 font-bold text-salvus-info font-mono mt-0.5">
               <Clock className="h-3 w-3 text-salvus-info shrink-0" />
               <span>
-                {topCandidate.eta_formatted || topCandidate.etaFormatted || 'Calculating…'}
+                {topCandidate.eta_formatted || topCandidate.etaFormatted || 'ETA unavailable'}
               </span>
             </div>
           </div>
@@ -329,7 +334,13 @@ export const DispatchRecommendationPanel = ({
             </span>
             <div className="flex items-center gap-1 font-bold text-salvus-text-primary font-mono mt-0.5">
               <MapPin className="h-3 w-3 text-salvus-info shrink-0" />
-              <span>{topCandidate.distance_km ?? topCandidate.distanceKm ?? 1.2} km</span>
+              <span>
+                {topCandidate.distance_km != null
+                  ? `${topCandidate.distance_km} km`
+                  : topCandidate.distanceKm != null
+                    ? `${topCandidate.distanceKm} km`
+                    : 'Distance unavailable'}
+              </span>
             </div>
           </div>
 
@@ -340,7 +351,9 @@ export const DispatchRecommendationPanel = ({
             <div className="flex items-center gap-1 font-semibold text-salvus-safe truncate mt-0.5">
               <Shield className="h-3 w-3 shrink-0" />
               <span className="truncate">
-                {topCandidate.capability?.replace('_', ' ') || 'Rescue'} ✓
+                {topCandidate.capability
+                  ? `${topCandidate.capability.replace('_', ' ')} ✓`
+                  : 'Capability unlisted'}
               </span>
             </div>
           </div>
@@ -362,7 +375,9 @@ export const DispatchRecommendationPanel = ({
             <div className="flex items-center gap-1 text-salvus-safe font-semibold mt-0.5">
               <Activity className="h-3 w-3 shrink-0" />
               <span className="truncate">
-                {topCandidate.status === 'AVAILABLE' ? 'Available' : topCandidate.status}
+                {topCandidate.status === 'AVAILABLE'
+                  ? 'Available'
+                  : topCandidate.status || 'Unlisted'}
               </span>
             </div>
           </div>
@@ -372,7 +387,9 @@ export const DispatchRecommendationPanel = ({
               Capacity
             </span>
             <span className="font-semibold text-salvus-text-primary font-mono block mt-0.5">
-              {topCandidate.max_capacity ?? 8} Pax
+              {topCandidate.max_capacity != null
+                ? `${topCandidate.max_capacity} Pax`
+                : 'Capacity unlisted'}
             </span>
           </div>
         </div>
@@ -385,10 +402,10 @@ export const DispatchRecommendationPanel = ({
           </span>
 
           <p className="text-salvus-text-primary leading-relaxed text-xs font-medium">
-            {topCandidate.match_reason &&
-            topCandidate.match_reason.startsWith('Recommended because')
-              ? topCandidate.match_reason
-              : `Recommended because ${topCandidate.unit_name || 'this unit'} is available immediately, has specialized ${topCandidate.capability?.replace('_', ' ')} capability, and provides the fastest estimated ETA.`}
+            {topCandidate.match_reason ||
+              (topCandidate.explanation?.headline
+                ? topCandidate.explanation.headline
+                : `Recommended response unit for incident #${incident.ticket_id || incident.id}.`)}
           </p>
 
           {topCandidate.explanation?.positive_factors &&
@@ -425,7 +442,11 @@ export const DispatchRecommendationPanel = ({
               </span>
             </span>
             <span className="font-mono text-[11px] text-salvus-text-muted">
-              {topCandidate.match_score ?? 87} / 100
+              {topCandidate.match_score != null
+                ? `${topCandidate.match_score} / 100`
+                : topCandidate.matchScore != null
+                  ? `${topCandidate.matchScore} / 100`
+                  : 'Score unlisted'}
             </span>
           </button>
 
@@ -436,13 +457,17 @@ export const DispatchRecommendationPanel = ({
                 <div className="flex justify-between text-[11px] font-medium">
                   <span>Specialized Capability Match</span>
                   <span className="font-bold text-salvus-text-primary font-mono">
-                    {breakdown.capability_score ?? 30} / 30 pts
+                    {breakdown.capability_score != null
+                      ? `${breakdown.capability_score} / 30 pts`
+                      : '—'}
                   </span>
                 </div>
                 <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
                   <div
                     className="bg-salvus-safe h-1.5 rounded-full"
-                    style={{ width: `${((breakdown.capability_score ?? 30) / 30) * 100}%` }}
+                    style={{
+                      width: `${breakdown.capability_score != null ? (breakdown.capability_score / 30) * 100 : 0}%`,
+                    }}
                   />
                 </div>
               </div>
@@ -452,13 +477,17 @@ export const DispatchRecommendationPanel = ({
                 <div className="flex justify-between text-[11px] font-medium">
                   <span>Operational Readiness</span>
                   <span className="font-bold text-salvus-text-primary font-mono">
-                    {breakdown.availability_score ?? 20} / 20 pts
+                    {breakdown.availability_score != null
+                      ? `${breakdown.availability_score} / 20 pts`
+                      : '—'}
                   </span>
                 </div>
                 <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
                   <div
                     className="bg-salvus-info h-1.5 rounded-full"
-                    style={{ width: `${((breakdown.availability_score ?? 20) / 20) * 100}%` }}
+                    style={{
+                      width: `${breakdown.availability_score != null ? (breakdown.availability_score / 20) * 100 : 0}%`,
+                    }}
                   />
                 </div>
               </div>
@@ -468,13 +497,17 @@ export const DispatchRecommendationPanel = ({
                 <div className="flex justify-between text-[11px] font-medium">
                   <span>Spatial Proximity (&lt;25 km)</span>
                   <span className="font-bold text-salvus-text-primary font-mono">
-                    {breakdown.distance_score ?? 15} / 15 pts
+                    {breakdown.distance_score != null
+                      ? `${breakdown.distance_score} / 15 pts`
+                      : '—'}
                   </span>
                 </div>
                 <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
                   <div
                     className="bg-salvus-info h-1.5 rounded-full"
-                    style={{ width: `${((breakdown.distance_score ?? 15) / 15) * 100}%` }}
+                    style={{
+                      width: `${breakdown.distance_score != null ? (breakdown.distance_score / 15) * 100 : 0}%`,
+                    }}
                   />
                 </div>
               </div>
@@ -484,13 +517,15 @@ export const DispatchRecommendationPanel = ({
                 <div className="flex justify-between text-[11px] font-medium">
                   <span>Transit ETA (&lt;35 min)</span>
                   <span className="font-bold text-salvus-text-primary font-mono">
-                    {breakdown.eta_score ?? 15} / 15 pts
+                    {breakdown.eta_score != null ? `${breakdown.eta_score} / 15 pts` : '—'}
                   </span>
                 </div>
                 <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
                   <div
                     className="bg-salvus-info h-1.5 rounded-full"
-                    style={{ width: `${((breakdown.eta_score ?? 15) / 15) * 100}%` }}
+                    style={{
+                      width: `${breakdown.eta_score != null ? (breakdown.eta_score / 15) * 100 : 0}%`,
+                    }}
                   />
                 </div>
               </div>
@@ -500,13 +535,17 @@ export const DispatchRecommendationPanel = ({
                 <div className="flex justify-between text-[11px] font-medium">
                   <span>Workload Capacity Available</span>
                   <span className="font-bold text-salvus-text-primary font-mono">
-                    {breakdown.workload_score ?? 10} / 10 pts
+                    {breakdown.workload_score != null
+                      ? `${breakdown.workload_score} / 10 pts`
+                      : '—'}
                   </span>
                 </div>
                 <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
                   <div
                     className="bg-salvus-safe h-1.5 rounded-full"
-                    style={{ width: `${((breakdown.workload_score ?? 10) / 10) * 100}%` }}
+                    style={{
+                      width: `${breakdown.workload_score != null ? (breakdown.workload_score / 10) * 100 : 0}%`,
+                    }}
                   />
                 </div>
               </div>
@@ -516,20 +555,30 @@ export const DispatchRecommendationPanel = ({
                 <div className="flex justify-between text-[11px] font-medium">
                   <span>Urgency & Crew Capacity Fit</span>
                   <span className="font-bold text-salvus-text-primary font-mono">
-                    {breakdown.severity_fit_score ?? 8} / 10 pts
+                    {breakdown.severity_fit_score != null
+                      ? `${breakdown.severity_fit_score} / 10 pts`
+                      : '—'}
                   </span>
                 </div>
                 <div className="w-full bg-salvus-muted rounded-full h-1.5 overflow-hidden">
                   <div
                     className="bg-salvus-safe h-1.5 rounded-full"
-                    style={{ width: `${((breakdown.severity_fit_score ?? 8) / 10) * 100}%` }}
+                    style={{
+                      width: `${breakdown.severity_fit_score != null ? (breakdown.severity_fit_score / 10) * 100 : 0}%`,
+                    }}
                   />
                 </div>
               </div>
 
               <div className="flex justify-between border-t border-salvus-border pt-1.5 font-bold text-salvus-text-primary font-mono text-xs">
                 <span>Total Normalized Score:</span>
-                <span className="text-salvus-safe">{topCandidate.match_score ?? 87} / 100</span>
+                <span className="text-salvus-safe">
+                  {topCandidate.match_score != null
+                    ? `${topCandidate.match_score} / 100`
+                    : topCandidate.matchScore != null
+                      ? `${topCandidate.matchScore} / 100`
+                      : 'Score unlisted'}
+                </span>
               </div>
             </div>
           )}
@@ -591,19 +640,29 @@ export const DispatchRecommendationPanel = ({
                           {alt.unit_name || alt.unitName}
                         </strong>
                         <span className="text-[10px] font-mono text-salvus-text-muted">
-                          ({alt.match_score ?? 70}/100)
+                          {alt.match_score != null
+                            ? `(${alt.match_score}/100)`
+                            : alt.matchScore != null
+                              ? `(${alt.matchScore}/100)`
+                              : ''}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-2 text-[11px] text-salvus-text-secondary mt-0.5">
-                        <span>{alt.vehicle_type || 'Craft'}</span>
+                        <span>{alt.vehicle_type || 'Vehicle unlisted'}</span>
                         <span>·</span>
                         <span className="font-mono">
-                          {alt.distance_km ?? alt.distanceKm ?? 2.1} km
+                          {alt.distance_km != null
+                            ? `${alt.distance_km} km`
+                            : alt.distanceKm != null
+                              ? `${alt.distanceKm} km`
+                              : 'Distance unavailable'}
                         </span>
                         <span>·</span>
                         <span className="font-mono text-salvus-info font-semibold">
-                          ETA ~{alt.eta_formatted || alt.etaFormatted || '8 min'}
+                          {alt.eta_formatted || alt.etaFormatted
+                            ? `ETA ~${alt.eta_formatted || alt.etaFormatted}`
+                            : 'ETA unavailable'}
                         </span>
                       </div>
                     </div>

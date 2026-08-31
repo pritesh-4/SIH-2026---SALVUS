@@ -24,11 +24,11 @@ export const ShelterPanel = ({ liveShelters = [], liveHazards = [], onAdjustBeds
         </div>
       ) : (
         liveShelters.map((shl) => {
-          const avail = shl.available_beds ?? 0
-          const total = shl.total_beds || 1
-          const occPct = Math.round(((total - avail) / total) * 100)
-          const occ = shl.occupancy_rate || `${occPct}%`
-          const supplies = shl.supplies_status || 'Adequate'
+          const avail = shl.available_beds != null ? shl.available_beds : null
+          const total = shl.total_beds != null ? shl.total_beds : null
+          const occPct = total && avail != null ? Math.round(((total - avail) / total) * 100) : null
+          const occ = shl.occupancy_rate || (occPct !== null ? `${occPct}%` : '—')
+          const supplies = shl.supplies_status || 'Status unlisted'
 
           const isNearHazard = liveHazards.some((hz) => {
             if (hz.severity !== 'CRITICAL' && hz.severity !== 'WARNING') return false
@@ -65,20 +65,24 @@ export const ShelterPanel = ({ liveShelters = [], liveHazards = [], onAdjustBeds
                     }
                     size="sm"
                   >
-                    {shl.status}
+                    {shl.status || 'Status unlisted'}
                   </Badge>
                 </div>
               </div>
 
               <div className="flex items-center justify-between text-xs">
-                <span className="text-salvus-safe font-bold font-mono">{avail} beds free</span>
-                <span className="text-salvus-text-muted font-mono text-[11px]">Total: {total}</span>
+                <span className="text-salvus-safe font-bold font-mono">
+                  {avail != null ? `${avail} beds free` : 'Capacity unavailable'}
+                </span>
+                <span className="text-salvus-text-muted font-mono text-[11px]">
+                  {total != null ? `Total: ${total}` : 'Total unlisted'}
+                </span>
               </div>
 
               <div className="w-full bg-salvus-muted h-2 rounded-full overflow-hidden border border-salvus-border">
                 <div
                   className={`h-full transition-all duration-300 ${shl.status === 'NEAR_CAPACITY' ? 'bg-salvus-warning' : 'bg-salvus-safe'}`}
-                  style={{ width: occ }}
+                  style={{ width: occPct !== null ? `${occPct}%` : '0%' }}
                 />
               </div>
 

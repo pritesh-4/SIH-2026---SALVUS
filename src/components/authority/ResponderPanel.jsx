@@ -104,13 +104,15 @@ export const ResponderPanel = ({
                 </div>
 
                 <p className="text-xs text-salvus-text-secondary font-medium">
-                  {resp.team_lead} · {resp.vehicle_type}
+                  {resp.team_lead ? `${resp.team_lead} · ` : ''}
+                  {resp.vehicle_type || 'Vehicle unassigned'}
                 </p>
 
                 <div className="flex items-center justify-between text-xs text-salvus-text-muted pt-1 border-t border-salvus-border font-mono">
-                  <span>VHF: {resp.radio_channel}</span>
+                  <span>VHF: {resp.radio_channel || 'Unassigned'}</span>
                   <span>
-                    Load: {resp.current_load} / {resp.max_capacity}
+                    Load: {resp.current_load != null ? resp.current_load : '—'} /{' '}
+                    {resp.max_capacity != null ? resp.max_capacity : '—'}
                   </span>
                 </div>
               </div>
@@ -141,7 +143,9 @@ export const ResponderPanel = ({
                 Capability
               </span>
               <span className="text-salvus-text-primary font-medium">
-                {selectedResponderDetail.capability}
+                {selectedResponderDetail.capability
+                  ? selectedResponderDetail.capability.replace('_', ' ')
+                  : 'Capability unassigned'}
               </span>
             </div>
             <div>
@@ -149,7 +153,7 @@ export const ResponderPanel = ({
                 Radio Channel
               </span>
               <span className="text-salvus-text-primary font-medium font-mono">
-                {selectedResponderDetail.radio_channel}
+                {selectedResponderDetail.radio_channel || 'Unassigned'}
               </span>
             </div>
             <div>
@@ -158,7 +162,9 @@ export const ResponderPanel = ({
               </span>
               <span className="font-mono text-salvus-text-primary text-[11px]">
                 {typeof selectedResponderDetail.latitude === 'number' &&
-                typeof selectedResponderDetail.longitude === 'number'
+                typeof selectedResponderDetail.longitude === 'number' &&
+                !isNaN(selectedResponderDetail.latitude) &&
+                !isNaN(selectedResponderDetail.longitude)
                   ? `${selectedResponderDetail.latitude.toFixed(4)}°N, ${selectedResponderDetail.longitude.toFixed(4)}°E`
                   : 'Location unavailable'}
               </span>
@@ -168,7 +174,13 @@ export const ResponderPanel = ({
                 Crew Load
               </span>
               <span className="text-salvus-text-primary font-medium font-mono">
-                {selectedResponderDetail.current_load} / {selectedResponderDetail.max_capacity}
+                {selectedResponderDetail.current_load != null
+                  ? selectedResponderDetail.current_load
+                  : '—'}{' '}
+                /{' '}
+                {selectedResponderDetail.max_capacity != null
+                  ? selectedResponderDetail.max_capacity
+                  : '—'}
               </span>
             </div>
           </div>

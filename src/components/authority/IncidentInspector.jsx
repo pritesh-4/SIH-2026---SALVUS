@@ -121,9 +121,11 @@ export const IncidentInspector = ({
             <strong className="text-salvus-text-primary truncate block mt-0.5 font-semibold">
               {selectedIncident.location_name ||
                 (typeof selectedIncident.latitude === 'number' &&
-                typeof selectedIncident.longitude === 'number'
+                typeof selectedIncident.longitude === 'number' &&
+                !isNaN(selectedIncident.latitude) &&
+                !isNaN(selectedIncident.longitude)
                   ? `${selectedIncident.latitude.toFixed(4)}°N, ${selectedIncident.longitude.toFixed(4)}°E`
-                  : 'Location Not Specified')}
+                  : 'Location not specified')}
             </strong>
             <span className="text-salvus-text-muted text-[11px] block mt-0.5 font-mono">
               {typeof selectedIncident.latitude === 'number' &&
@@ -131,7 +133,7 @@ export const IncidentInspector = ({
               !isNaN(selectedIncident.latitude) &&
               !isNaN(selectedIncident.longitude)
                 ? `${selectedIncident.latitude.toFixed(4)}°N, ${selectedIncident.longitude.toFixed(4)}°E`
-                : 'GPS Coordinates Pending'}
+                : 'GPS coordinates pending'}
             </span>
           </div>
 
@@ -140,10 +142,12 @@ export const IncidentInspector = ({
               People Affected
             </span>
             <strong className="text-salvus-text-primary text-sm block mt-0.5 font-mono font-bold">
-              {selectedIncident.affected_count || 1} Persons
+              {selectedIncident.affected_count != null
+                ? `${selectedIncident.affected_count} Person${selectedIncident.affected_count === 1 ? '' : 's'}`
+                : 'Not provided'}
             </strong>
             <span className="text-salvus-text-muted text-[11px] block mt-0.5 truncate">
-              Reporter: {selectedIncident.reporter_name || 'Citizen'}
+              Reporter: {selectedIncident.reporter_name || 'Anonymous'}
             </span>
           </div>
         </div>
@@ -278,9 +282,12 @@ export const IncidentInspector = ({
               </p>
               <div className="flex items-center justify-between text-xs text-salvus-info pt-1 border-t border-salvus-border font-semibold font-mono">
                 <span>
-                  Distance: {activeRoute?.distanceKm ?? '—'} {activeRoute?.distanceKm ? 'km' : ''}
+                  Distance:{' '}
+                  {activeRoute?.distanceKm != null
+                    ? `${activeRoute.distanceKm} km`
+                    : 'Distance unavailable'}
                 </span>
-                <span>ETA: {activeRoute?.etaFormatted || 'Calculating…'}</span>
+                <span>ETA: {activeRoute?.etaFormatted || 'ETA unavailable'}</span>
               </div>
             </div>
 
@@ -388,28 +395,39 @@ export const IncidentInspector = ({
           <span className="text-[11px] font-bold text-salvus-text-primary uppercase tracking-wider block">
             Nearby Evacuation Shelters
           </span>
-          <div className="space-y-1.5">
-            {candidateShelters.slice(0, 2).map((shl) => (
-              <div
-                key={shl.id}
-                className="bg-salvus-surface border border-salvus-border p-2 rounded-lg flex items-center justify-between text-xs"
-              >
-                <div>
-                  <strong className="text-salvus-text-primary block truncate max-w-[180px] font-medium">
-                    {shl.name}
-                  </strong>
-                  <span className="text-[11px] text-salvus-text-muted block">
-                    {shl.distanceKm} km · ~{shl.walkMin} min walk
-                  </span>
+          {candidateShelters.length === 0 ? (
+            <div className="py-3 text-center text-xs text-salvus-text-muted">
+              No evacuation shelters available within operational radius.
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {candidateShelters.slice(0, 2).map((shl) => (
+                <div
+                  key={shl.id}
+                  className="bg-salvus-surface border border-salvus-border p-2 rounded-lg flex items-center justify-between text-xs"
+                >
+                  <div>
+                    <strong className="text-salvus-text-primary block truncate max-w-[180px] font-medium">
+                      {shl.name}
+                    </strong>
+                    <span className="text-[11px] text-salvus-text-muted block">
+                      {shl.distanceKm !== null
+                        ? `${shl.distanceKm} km direct`
+                        : 'Distance unavailable'}
+                      {shl.walkMin !== null ? ` · ~${shl.walkMin} min direct walk` : ''}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-bold text-salvus-safe block font-mono">
+                      {shl.available_beds != null
+                        ? `${shl.available_beds} beds free`
+                        : 'Capacity unavailable'}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="font-bold text-salvus-safe block font-mono">
-                    {shl.available_beds ?? 0} beds free
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {actionSuccessMessage && (

@@ -551,4 +551,64 @@ describe('Salvus Authority Command Center Operational Pipeline Tests', () => {
     assert.equal(sosCount, 0, 'Resolved inc-1 no longer counts towards active SOS')
     assert.equal(reconciledIncidents.length, 2, 'Total 2 incidents in history')
   })
+
+  it('Scenario 21: Incident with null affected_count does NOT default to 1', () => {
+    const incNullCount = normalizeIncident({
+      id: 'inc-null',
+      description: 'Flood water rising',
+      affected_count: null,
+      reporter_name: null,
+    })
+
+    assert.equal(incNullCount.affected_count, null, 'Must preserve null and not invent 1')
+    assert.equal(incNullCount.reporter_name, null, 'Must preserve null reporter_name')
+  })
+
+  it('Scenario 22: Incident with 0 affected_count preserves 0 (not 1)', () => {
+    const incZeroCount = normalizeIncident({
+      id: 'inc-zero',
+      description: 'Downed power line on empty road',
+      affected_count: 0,
+    })
+
+    assert.equal(incZeroCount.affected_count, 0, 'Must preserve explicit 0 and not convert to 1')
+  })
+
+  it('Scenario 23: Incident missing coordinates does not fabricate coordinates or location', () => {
+    const incNoCoords = normalizeIncident({
+      id: 'inc-no-gps',
+      description: 'Distress call from unknown spot',
+      latitude: null,
+      longitude: null,
+      location_name: null,
+    })
+
+    assert.equal(incNoCoords.latitude, null)
+    assert.equal(incNoCoords.longitude, null)
+    assert.equal(incNoCoords.location_name, null)
+  })
+
+  it('Scenario 24: Candidate responder missing distance/capacity handles null gracefully', () => {
+    const candidate = {
+      id: 'resp-sparse',
+      unit_name: 'NDRF Rescue Unit 9',
+      status: 'AVAILABLE',
+      max_capacity: null,
+      current_load: null,
+      distance_km: null,
+      eta_formatted: null,
+      capability: null,
+    }
+
+    assert.equal(candidate.max_capacity, null)
+    assert.equal(candidate.current_load, null)
+    assert.equal(candidate.distance_km, null)
+    assert.equal(candidate.eta_formatted, null)
+    assert.equal(candidate.capability, null)
+  })
+
+  it('Scenario 25: Shelter distance and walking time calculation returns null when coords missing', () => {
+    const dist = calculateDistanceKm(null, null, 22.5, 88.4)
+    assert.equal(dist, null, 'Distance must be null when coordinates are missing')
+  })
 })

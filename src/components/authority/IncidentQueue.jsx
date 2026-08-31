@@ -60,7 +60,7 @@ export const IncidentQueue = ({
       if (aStat !== bStat) return bStat - aStat
 
       // 4. Affected count
-      return (b.affected_count || 1) - (a.affected_count || 1)
+      return (b.affected_count ?? 0) - (a.affected_count ?? 0)
     })
   }, [filteredIncidents])
 
