@@ -6,7 +6,7 @@ import { Button } from '../../ui/Button'
  * Reassuring, Focused Emergency Header
  */
 export const EmergencyHeader = ({
-  incidentId = 'SV-2048',
+  incidentId = null,
   phaseLabel = 'Help Request Active',
   badgeColor = 'rose',
   onCancelClick,
@@ -36,9 +36,11 @@ export const EmergencyHeader = ({
 
         {/* Incident ID & Direct Call Action */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <Badge variant="neutral" isMono={true} className="hidden sm:inline-flex">
-            INCIDENT #{incidentId}
-          </Badge>
+          {incidentId && (
+            <Badge variant="neutral" isMono={true} className="hidden sm:inline-flex">
+              INCIDENT #{incidentId}
+            </Badge>
+          )}
 
           <a
             href="tel:112"

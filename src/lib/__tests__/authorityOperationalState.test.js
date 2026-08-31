@@ -349,4 +349,206 @@ describe('Salvus Authority Command Center Operational Pipeline Tests', () => {
       'UNAVAILABLE'
     )
   })
+
+  it('Scenario 14: Honest Empty Live Authority State (0 Incidents, 0 Responders, 0 Shelters)', () => {
+    const emptyIncidents = []
+    const emptyResponders = []
+    const emptyShelters = []
+
+    const normalizedIncidents = emptyIncidents.map(normalizeIncident).filter(Boolean)
+    const active = normalizedIncidents.filter(
+      (inc) => !['RESOLVED', 'CANCELLED'].includes(inc.status)
+    )
+    const sosCount = active.filter((inc) => Boolean(inc.is_sos)).length
+    const critical = active.filter((inc) => inc.severity === 'CRITICAL' || inc.is_sos).length
+    const resolved = normalizedIncidents.filter((inc) => inc.status === 'RESOLVED').length
+    const totalBeds = emptyShelters.reduce((acc, s) => acc + (s.available_beds ?? 0), 0)
+
+    const responderMapPoints = emptyResponders
+      .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number')
+      .map((r) => ({ id: r.id, lat: r.latitude, lng: r.longitude }))
+
+    const shelterMapPoints = emptyShelters
+      .filter((s) => typeof s.latitude === 'number' && typeof s.longitude === 'number')
+      .map((s) => ({ id: s.id, lat: s.latitude, lng: s.longitude }))
+
+    assert.equal(normalizedIncidents.length, 0, 'No fake incidents present')
+    assert.equal(active.length, 0, 'Active count is 0')
+    assert.equal(sosCount, 0, 'SOS count is 0')
+    assert.equal(critical, 0, 'Critical count is 0')
+    assert.equal(resolved, 0, 'Resolved count is 0')
+    assert.equal(totalBeds, 0, 'Total available beds is 0')
+    assert.equal(responderMapPoints.length, 0, 'No fake responder map markers')
+    assert.equal(shelterMapPoints.length, 0, 'No fake shelter map markers')
+  })
+
+  it('Scenario 15: Clean Live Database Test — Single Real Citizen SOS Flow', () => {
+    const rawCitizenSos = {
+      id: 'inc-live-sos-001',
+      ticket_id: 'SV-7711',
+      type: 'flood',
+      severity: 'CRITICAL',
+      status: 'NEW',
+      description: 'Flood water breaching boundary wall. Need boat evacuation.',
+      latitude: 19.076,
+      longitude: 72.8777,
+      affected_count: 2,
+      is_sos: true,
+      reporter_name: 'Pooja Sharma',
+      created_at: new Date().toISOString(),
+    }
+
+    const liveIncidents = [normalizeIncident(rawCitizenSos)]
+    const active = liveIncidents.filter((inc) => !['RESOLVED', 'CANCELLED'].includes(inc.status))
+    const sosCount = active.filter((inc) => Boolean(inc.is_sos)).length
+
+    assert.equal(active.length, 1, 'Exactly 1 active incident')
+    assert.equal(sosCount, 1, 'Exactly 1 active SOS')
+    assert.equal(liveIncidents[0].ticket_id, 'SV-7711')
+    assert.equal(liveIncidents[0].latitude, 19.076)
+    assert.equal(liveIncidents[0].longitude, 72.8777)
+    assert.equal(
+      liveIncidents[0].description,
+      'Flood water breaching boundary wall. Need boat evacuation.'
+    )
+  })
+
+  it('Scenario 16: Clean Live Database Test — Real Citizen Hazard Report', () => {
+    const rawHazardReport = {
+      id: 'inc-live-hz-002',
+      ticket_id: 'SV-7712',
+      type: 'power_line',
+      severity: 'HIGH',
+      status: 'TRIAGE_PENDING',
+      description: 'Sparks from transformer near primary school.',
+      latitude: 19.08,
+      longitude: 72.885,
+      affected_count: 0,
+      is_sos: false,
+      reporter_name: 'Citizen Anil',
+      created_at: new Date().toISOString(),
+    }
+
+    const liveIncidents = [normalizeIncident(rawHazardReport)]
+    const active = liveIncidents.filter((inc) => !['RESOLVED', 'CANCELLED'].includes(inc.status))
+    const sosCount = active.filter((inc) => Boolean(inc.is_sos)).length
+
+    assert.equal(active.length, 1, '1 active incident')
+    assert.equal(sosCount, 0, 'Hazard report is not an SOS')
+    assert.equal(liveIncidents[0].ticket_id, 'SV-7712')
+    assert.equal(liveIncidents[0].type, 'power_line')
+    assert.equal(liveIncidents[0].severity, 'HIGH')
+  })
+
+  it('Scenario 17: Cancellation Flow Updates Canonical State & Active SOS Count Decreases', () => {
+    const initialSos = normalizeIncident({
+      id: 'inc-sos-101',
+      ticket_id: 'SV-101',
+      type: 'flood',
+      severity: 'CRITICAL',
+      status: 'NEW',
+      is_sos: true,
+    })
+
+    let incidents = [initialSos]
+    let active = incidents.filter((inc) => !['RESOLVED', 'CANCELLED'].includes(inc.status))
+    assert.equal(active.length, 1)
+    assert.equal(active.filter((i) => i.is_sos).length, 1)
+
+    // Citizen cancels emergency
+    const cancelledPayload = { id: 'inc-sos-101', status: 'CANCELLED' }
+    incidents = incidents.map((inc) =>
+      inc.id === cancelledPayload.id ? { ...inc, status: cancelledPayload.status } : inc
+    )
+
+    active = incidents.filter((inc) => !['RESOLVED', 'CANCELLED'].includes(inc.status))
+    const activeSos = active.filter((i) => i.is_sos).length
+
+    assert.equal(active.length, 0, 'Active incidents must drop to 0 after cancellation')
+    assert.equal(activeSos, 0, 'Active SOS count must drop to 0')
+    assert.equal(incidents.length, 1, 'Incident remains in history for auditing')
+  })
+
+  it('Scenario 18: Resolution Flow Updates Canonical State', () => {
+    const verifiedInc = normalizeIncident({
+      id: 'inc-med-102',
+      ticket_id: 'SV-102',
+      type: 'medical',
+      severity: 'HIGH',
+      status: 'ASSIGNED',
+      is_sos: false,
+    })
+
+    let incidents = [verifiedInc]
+    let active = incidents.filter((inc) => !['RESOLVED', 'CANCELLED'].includes(inc.status))
+    assert.equal(active.length, 1)
+
+    // Authority resolves incident
+    const resolvedPayload = { id: 'inc-med-102', status: 'RESOLVED' }
+    incidents = incidents.map((inc) =>
+      inc.id === resolvedPayload.id ? { ...inc, status: resolvedPayload.status } : inc
+    )
+
+    active = incidents.filter((inc) => !['RESOLVED', 'CANCELLED'].includes(inc.status))
+    const resolved = incidents.filter((inc) => inc.status === 'RESOLVED')
+
+    assert.equal(active.length, 0, 'Active count is 0')
+    assert.equal(resolved.length, 1, 'Resolved count is 1')
+  })
+
+  it('Scenario 19: AI Triage Binding to Exact Incident Identity (No Cross-Incident Leakage)', () => {
+    const incA = normalizeIncident({
+      id: 'inc-A',
+      ticket_id: 'SV-1001',
+      description: 'Flood in basement',
+      ai_triage: {
+        hazard_type: 'Flash Flood',
+        confidence: 0.95,
+        recommended_capability: 'FLOOD_BOAT',
+      },
+    })
+
+    const incB = normalizeIncident({
+      id: 'inc-B',
+      ticket_id: 'SV-1002',
+      description: 'Fire in electrical room',
+      ai_triage: {
+        hazard_type: 'Electrical Fire',
+        confidence: 0.91,
+        recommended_capability: 'HAZMAT',
+      },
+    })
+
+    const incidents = [incA, incB]
+
+    const selectedA = incidents.find((i) => i.id === 'inc-A')
+    const selectedB = incidents.find((i) => i.id === 'inc-B')
+
+    assert.equal(selectedA.ticket_id, 'SV-1001')
+    assert.equal(selectedA.ai_triage.hazard_type, 'Flash Flood')
+    assert.equal(selectedA.ai_triage.recommended_capability, 'FLOOD_BOAT')
+
+    assert.equal(selectedB.ticket_id, 'SV-1002')
+    assert.equal(selectedB.ai_triage.hazard_type, 'Electrical Fire')
+    assert.equal(selectedB.ai_triage.recommended_capability, 'HAZMAT')
+  })
+
+  it('Scenario 20: Reconnection Re-syncs State from Authoritative Backend Truth', () => {
+    // Server truth after reconnection
+    const serverIncidents = [
+      normalizeIncident({ id: 'inc-1', ticket_id: 'SV-1', status: 'RESOLVED', is_sos: true }),
+      normalizeIncident({ id: 'inc-2', ticket_id: 'SV-2', status: 'NEW', is_sos: false }),
+    ]
+
+    // On reconnect silent refetch: server truth replaces stale local state
+    const reconciledIncidents = serverIncidents.map(normalizeIncident).filter(Boolean)
+    const active = reconciledIncidents.filter(
+      (inc) => !['RESOLVED', 'CANCELLED'].includes(inc.status)
+    )
+    const sosCount = active.filter((inc) => Boolean(inc.is_sos)).length
+
+    assert.equal(active.length, 1, 'Only inc-2 is active')
+    assert.equal(sosCount, 0, 'Resolved inc-1 no longer counts towards active SOS')
+    assert.equal(reconciledIncidents.length, 2, 'Total 2 incidents in history')
+  })
 })

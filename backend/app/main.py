@@ -17,7 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.db import close_database, init_database
-from app.db.seed import seed_database
 from app.middleware import (
     CorrelationIdMiddleware,
     PayloadLimitMiddleware,
@@ -97,20 +96,28 @@ async def lifespan(app: FastAPI):
     print("[SALVUS] Starting up...")
     db = await init_database()
 
-    # Seed demo data in development mode, if AUTO_SEED=true, or if database is empty
-    env = os.getenv("ENVIRONMENT", "development").lower()
+    # Always ensure authentication foundation exists for registered / demo accounts
+    from app.db.seed import seed_auth_users, seed_operational_dataset
+
+    auth_counts = await seed_auth_users(db)
+
+    # Seed operational data only if AUTO_SEED is true
     auto_seed = os.getenv("AUTO_SEED", "false").lower() in ("true", "1", "yes")
-
-    cursor = await db.execute("SELECT COUNT(*) FROM responders")
-    row = await cursor.fetchone()
-    responder_count = row[0] if row else 0
-
-    if env == "development" or auto_seed or responder_count == 0:
+    if auto_seed:
+        print("[SALVUS] AUTO_SEED=true: Seeding operational demo scenario into database...")
+        operational_counts = await seed_operational_dataset(db)
         print(
-            f"[SALVUS] Seeding emergency coordination dataset "
-            f"(env={env}, auto_seed={auto_seed}, initial_responders={responder_count})..."
+            f"[SEED] Seeded {operational_counts['incidents']} incidents, "
+            f"{operational_counts['responders']} responders, "
+            f"{operational_counts['shelters']} shelters, "
+            f"{auth_counts['citizen_profiles']} citizen profiles, "
+            f"{operational_counts['emergency_contacts']} emergency contacts, "
+            f"{auth_counts['users']} demo users."
         )
-        await seed_database(db)
+    else:
+        print(
+            "[SALVUS] Live Mode active (AUTO_SEED=false): Operational database initialized clean."
+        )
 
     print("[SALVUS] Backend ready for production traffic.")
     yield

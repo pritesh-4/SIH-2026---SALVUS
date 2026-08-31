@@ -723,7 +723,7 @@ export const useEmergencyState = (
       const incLon = typeof liveIncident.longitude === 'number' ? liveIncident.longitude : null
 
       return {
-        id: liveIncident.ticket_id || liveIncident.id || 'SV-2048',
+        id: liveIncident.ticket_id || liveIncident.id || 'INC-ACTIVE',
         rawId: liveIncident.id,
         category:
           liveIncident.type === 'flood'

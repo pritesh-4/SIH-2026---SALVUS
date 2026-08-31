@@ -218,15 +218,173 @@ SEED_DEMO_USERS = [
     },
 ]
 
+SEED_CITIZEN_PROFILES = [
+    {
+        "id": "cit-default",
+        "emergency_id": "SLV-CIT-7829",
+        "full_name": "Aditi Mukherjee",
+        "phone": "+91 98301 23456",
+        "email": "aditi.m@salvus.local",
+        "registered_address": "Flat 4B, Greenwood Apts, Sector 12, Salt Lake, Kolkata",
+        "blood_group": "O+",
+        "avatar_initials": "AM",
+        "avatar_url": None,
+        "medical_info": json.dumps(
+            {
+                "conditions": ["Mild Asthma (Carries Inhaler)"],
+                "allergies": ["Penicillin Allergy"],
+                "mobilityNote": "Fully Mobile / Ambulatory",
+            }
+        ),
+        "is_verified": 1,
+    },
+    {
+        "id": "user-citizen-demo",
+        "emergency_id": "SLV-CIT-DEMO",
+        "full_name": "Aditi Mukherjee",
+        "phone": "+91 98301 23456",
+        "email": "citizen@salvus.demo",
+        "registered_address": "Flat 4B, Greenwood Apts, Sector 12, Salt Lake, Kolkata",
+        "blood_group": "O+",
+        "avatar_initials": "AM",
+        "avatar_url": None,
+        "medical_info": json.dumps(
+            {
+                "conditions": ["Mild Asthma (Carries Inhaler)"],
+                "allergies": ["Penicillin Allergy"],
+                "mobilityNote": "Fully Mobile / Ambulatory",
+            }
+        ),
+        "is_verified": 1,
+    },
+]
 
-async def seed_database(db) -> dict:
-    """Insert seed incidents, responders, shelters, and demo users.
-    Returns dict of created counts.
-    """
+SEED_EMERGENCY_CONTACTS = [
+    {
+        "id": "ec-101",
+        "user_id": "cit-default",
+        "name": "Dr. Sourav Mukherjee",
+        "relationship": "Father",
+        "phone": "+91 98300 11223",
+        "priority": 1,
+        "is_primary": 1,
+        "notify_on_sos": 1,
+    },
+    {
+        "id": "ec-102",
+        "user_id": "cit-default",
+        "name": "Priya Das",
+        "relationship": "Sister / Neighbor",
+        "phone": "+91 98311 44556",
+        "priority": 2,
+        "is_primary": 0,
+        "notify_on_sos": 1,
+    },
+    {
+        "id": "ec-demo-101",
+        "user_id": "user-citizen-demo",
+        "name": "Dr. Sourav Mukherjee",
+        "relationship": "Father",
+        "phone": "+91 98300 11223",
+        "priority": 1,
+        "is_primary": 1,
+        "notify_on_sos": 1,
+    },
+    {
+        "id": "ec-demo-102",
+        "user_id": "user-citizen-demo",
+        "name": "Priya Das",
+        "relationship": "Sister / Neighbor",
+        "phone": "+91 98311 44556",
+        "priority": 2,
+        "is_primary": 0,
+        "notify_on_sos": 1,
+    },
+]
+
+
+async def seed_auth_users(db) -> dict:
+    """Insert seed demo users and citizen profiles idempotently for authentication."""
+    now = datetime.now(UTC).isoformat()
+    created_users = []
+    created_profiles = []
+
+    # 1. Seed Citizen Profiles
+    for prof in SEED_CITIZEN_PROFILES:
+        cursor = await db.execute("SELECT id FROM citizen_profiles WHERE id = ?", (prof["id"],))
+        existing = await cursor.fetchone()
+        if existing:
+            continue
+
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO citizen_profiles (
+                id, emergency_id, full_name, phone, email, registered_address,
+                blood_group, avatar_initials, avatar_url, medical_info,
+                is_verified, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                prof["id"],
+                prof["emergency_id"],
+                prof["full_name"],
+                prof["phone"],
+                prof["email"],
+                prof["registered_address"],
+                prof["blood_group"],
+                prof["avatar_initials"],
+                prof["avatar_url"],
+                prof["medical_info"],
+                prof["is_verified"],
+                now,
+                now,
+            ),
+        )
+        created_profiles.append(prof)
+
+    # 2. Seed Demo Users (Authentication Foundation)
+    for usr in SEED_DEMO_USERS:
+        cursor = await db.execute("SELECT id FROM users WHERE email = ?", (usr["email"],))
+        existing = await cursor.fetchone()
+        if existing:
+            continue
+
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO users (
+                id, email, password_hash, full_name, role, is_active,
+                created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                usr["id"],
+                usr["email"],
+                usr["password_hash"],
+                usr["full_name"],
+                usr["role"],
+                usr["is_active"],
+                now,
+                now,
+            ),
+        )
+        created_users.append(usr)
+
+    await db.commit()
+    return {
+        "citizen_profiles": len(created_profiles),
+        "users": len(created_users),
+    }
+
+
+async def seed_operational_dataset(db) -> dict:
+    """Insert seed incidents, responders, shelters, and emergency contacts for demo scenarios."""
     now = datetime.now(UTC).isoformat()
     created_incidents = []
     created_responders = []
     created_shelters = []
+    created_contacts = []
 
     # 1. Seed Incidents
     for inc in SEED_INCIDENTS:
@@ -368,127 +526,7 @@ async def seed_database(db) -> dict:
         )
         created_shelters.append(shl)
 
-    # 4. Seed Citizen Profiles
-    created_profiles = []
-    SEED_CITIZEN_PROFILES = [
-        {
-            "id": "cit-default",
-            "emergency_id": "SLV-CIT-7829",
-            "full_name": "Aditi Mukherjee",
-            "phone": "+91 98301 23456",
-            "email": "aditi.m@salvus.local",
-            "registered_address": "Flat 4B, Greenwood Apts, Sector 12, Salt Lake, Kolkata",
-            "blood_group": "O+",
-            "avatar_initials": "AM",
-            "avatar_url": None,
-            "medical_info": json.dumps(
-                {
-                    "conditions": ["Mild Asthma (Carries Inhaler)"],
-                    "allergies": ["Penicillin Allergy"],
-                    "mobilityNote": "Fully Mobile / Ambulatory",
-                }
-            ),
-            "is_verified": 1,
-        },
-        {
-            "id": "user-citizen-demo",
-            "emergency_id": "SLV-CIT-DEMO",
-            "full_name": "Aditi Mukherjee",
-            "phone": "+91 98301 23456",
-            "email": "citizen@salvus.demo",
-            "registered_address": "Flat 4B, Greenwood Apts, Sector 12, Salt Lake, Kolkata",
-            "blood_group": "O+",
-            "avatar_initials": "AM",
-            "avatar_url": None,
-            "medical_info": json.dumps(
-                {
-                    "conditions": ["Mild Asthma (Carries Inhaler)"],
-                    "allergies": ["Penicillin Allergy"],
-                    "mobilityNote": "Fully Mobile / Ambulatory",
-                }
-            ),
-            "is_verified": 1,
-        },
-    ]
-
-    for prof in SEED_CITIZEN_PROFILES:
-        cursor = await db.execute("SELECT id FROM citizen_profiles WHERE id = ?", (prof["id"],))
-        existing = await cursor.fetchone()
-        if existing:
-            continue
-
-        await db.execute(
-            """
-            INSERT OR IGNORE INTO citizen_profiles (
-                id, emergency_id, full_name, phone, email, registered_address,
-                blood_group, avatar_initials, avatar_url, medical_info,
-                is_verified, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                prof["id"],
-                prof["emergency_id"],
-                prof["full_name"],
-                prof["phone"],
-                prof["email"],
-                prof["registered_address"],
-                prof["blood_group"],
-                prof["avatar_initials"],
-                prof["avatar_url"],
-                prof["medical_info"],
-                prof["is_verified"],
-                now,
-                now,
-            ),
-        )
-        created_profiles.append(prof)
-
-    # 5. Seed Emergency Contacts
-    created_contacts = []
-    SEED_EMERGENCY_CONTACTS = [
-        {
-            "id": "ec-101",
-            "user_id": "cit-default",
-            "name": "Dr. Sourav Mukherjee",
-            "relationship": "Father",
-            "phone": "+91 98300 11223",
-            "priority": 1,
-            "is_primary": 1,
-            "notify_on_sos": 1,
-        },
-        {
-            "id": "ec-102",
-            "user_id": "cit-default",
-            "name": "Priya Das",
-            "relationship": "Sister / Neighbor",
-            "phone": "+91 98311 44556",
-            "priority": 2,
-            "is_primary": 0,
-            "notify_on_sos": 1,
-        },
-        {
-            "id": "ec-demo-101",
-            "user_id": "user-citizen-demo",
-            "name": "Dr. Sourav Mukherjee",
-            "relationship": "Father",
-            "phone": "+91 98300 11223",
-            "priority": 1,
-            "is_primary": 1,
-            "notify_on_sos": 1,
-        },
-        {
-            "id": "ec-demo-102",
-            "user_id": "user-citizen-demo",
-            "name": "Priya Das",
-            "relationship": "Sister / Neighbor",
-            "phone": "+91 98311 44556",
-            "priority": 2,
-            "is_primary": 0,
-            "notify_on_sos": 1,
-        },
-    ]
-
+    # 4. Seed Emergency Contacts
     for ec in SEED_EMERGENCY_CONTACTS:
         cursor = await db.execute("SELECT id FROM emergency_contacts WHERE id = ?", (ec["id"],))
         existing = await cursor.fetchone()
@@ -518,47 +556,28 @@ async def seed_database(db) -> dict:
         )
         created_contacts.append(ec)
 
-    # 6. Seed Demo Users (Authentication Foundation)
-    created_users = []
-    for usr in SEED_DEMO_USERS:
-        cursor = await db.execute("SELECT id FROM users WHERE email = ?", (usr["email"],))
-        existing = await cursor.fetchone()
-        if existing:
-            continue
-
-        await db.execute(
-            """
-            INSERT OR IGNORE INTO users (
-                id, email, password_hash, full_name, role, is_active,
-                created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                usr["id"],
-                usr["email"],
-                usr["password_hash"],
-                usr["full_name"],
-                usr["role"],
-                usr["is_active"],
-                now,
-                now,
-            ),
-        )
-        created_users.append(usr)
-
     await db.commit()
-    print(
-        f"[SEED] Seeded {len(created_incidents)} incidents, "
-        f"{len(created_responders)} responders, {len(created_shelters)} shelters, "
-        f"{len(created_profiles)} citizen profiles, {len(created_contacts)} emergency contacts, "
-        f"{len(created_users)} demo users."
-    )
     return {
         "incidents": len(created_incidents),
         "responders": len(created_responders),
         "shelters": len(created_shelters),
-        "citizen_profiles": len(created_profiles),
         "emergency_contacts": len(created_contacts),
-        "users": len(created_users),
     }
+
+
+async def seed_database(db) -> dict:
+    """Insert seed incidents, responders, shelters, and demo users.
+    Returns dict of created counts.
+    """
+    auth_counts = await seed_auth_users(db)
+    operational_counts = await seed_operational_dataset(db)
+
+    print(
+        f"[SEED] Seeded {operational_counts['incidents']} incidents, "
+        f"{operational_counts['responders']} responders, "
+        f"{operational_counts['shelters']} shelters, "
+        f"{auth_counts['citizen_profiles']} citizen profiles, "
+        f"{operational_counts['emergency_contacts']} emergency contacts, "
+        f"{auth_counts['users']} demo users."
+    )
+    return {**auth_counts, **operational_counts}
