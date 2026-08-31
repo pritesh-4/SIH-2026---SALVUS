@@ -24,8 +24,11 @@ export const isDemoModeActive = () => {
 
 export const normalizeIncident = (inc) => {
   if (!inc) return null
-  const id = inc.id || `INC-${Math.random().toString(36).substr(2, 6)}`
-  const ticket_id = inc.ticket_id || inc.citizenTicket || `SV-${(id || '').slice(-4)}`
+  const id = inc.id || inc.ticket_id || 'INC-PENDING'
+  const ticket_id =
+    inc.ticket_id ||
+    inc.citizenTicket ||
+    (id && id !== 'INC-PENDING' ? (id.startsWith('SV-') ? id : `SV-${id.slice(-4)}`) : 'SV-PENDING')
 
   const hasValidLat = typeof inc.latitude === 'number' && !isNaN(inc.latitude)
   const hasValidLon = typeof inc.longitude === 'number' && !isNaN(inc.longitude)
@@ -61,15 +64,15 @@ export const normalizeIncident = (inc) => {
     latitude,
     longitude,
     affected_count,
-    is_sos: inc.is_sos !== undefined ? Boolean(inc.is_sos) : inc.severity === 'CRITICAL',
+    is_sos: inc.is_sos != null ? Boolean(inc.is_sos) : false,
     reporter_name: inc.reporter_name || inc.reporter?.name || null,
     reporter_phone: inc.reporter_phone || inc.reporter?.phone || null,
     ai_triage: inc.ai_triage || inc.aiTriage || null,
     ai_state: inc.ai_state || (inc.ai_triage ? 'AVAILABLE' : 'WAITING'),
     assignment: inc.assignment || null,
     attachments: Array.isArray(inc.attachments) ? inc.attachments : [],
-    created_at: inc.created_at || new Date().toISOString(),
-    updated_at: inc.updated_at || new Date().toISOString(),
+    created_at: inc.created_at || null,
+    updated_at: inc.updated_at || inc.created_at || null,
     events: Array.isArray(inc.events) ? inc.events : [],
   }
 }
@@ -417,7 +420,7 @@ export const useAuthorityIncidents = () => {
   const computedMetrics = useMemo(() => {
     const active = incidents.filter((inc) => !['RESOLVED', 'CANCELLED'].includes(inc.status))
     const activeSos = active.filter((inc) => Boolean(inc.is_sos))
-    const critical = active.filter((inc) => inc.severity === 'CRITICAL' || inc.is_sos)
+    const critical = active.filter((inc) => inc.severity === 'CRITICAL')
     const resolved = incidents.filter((inc) => inc.status === 'RESOLVED')
     const triagePending = active.filter((inc) =>
       ['NEW', 'TRIAGE_PENDING', 'AWAITING_DISPATCH'].includes(inc.status)

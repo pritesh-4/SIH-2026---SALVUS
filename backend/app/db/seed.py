@@ -565,6 +565,75 @@ async def seed_operational_dataset(db) -> dict:
     }
 
 
+DEMO_INCIDENT_IDS = ("inc-2048", "inc-1982", "inc-1910", "inc-1844")
+DEMO_TICKET_IDS = ("SV-2048", "SV-1982", "SV-1910", "SV-1844")
+DEMO_RESPONDER_IDS = ("resp-101", "resp-102", "resp-103", "resp-104")
+DEMO_SHELTER_IDS = ("shl-01", "shl-02", "shl-03")
+
+
+async def cleanup_legacy_demo_records(db) -> dict:
+    """Safely prune known seeded demo operational records from previous AUTO_SEED runs.
+
+    Preserves authentication foundation, real citizen-created incidents,
+    real response units, and active operational shelter registrations.
+    """
+    placeholders_inc = ",".join("?" for _ in DEMO_INCIDENT_IDS)
+    placeholders_tkt = ",".join("?" for _ in DEMO_TICKET_IDS)
+    placeholders_resp = ",".join("?" for _ in DEMO_RESPONDER_IDS)
+    placeholders_shl = ",".join("?" for _ in DEMO_SHELTER_IDS)
+
+    # 1. Prune cascade dependencies for demo incidents
+    await db.execute(
+        f"DELETE FROM ai_triage_assessments WHERE incident_id IN ({placeholders_inc})",
+        DEMO_INCIDENT_IDS,
+    )
+    await db.execute(
+        f"DELETE FROM incident_events WHERE incident_id IN ({placeholders_inc})",
+        DEMO_INCIDENT_IDS,
+    )
+    await db.execute(
+        f"DELETE FROM assignments WHERE incident_id IN ({placeholders_inc})",
+        DEMO_INCIDENT_IDS,
+    )
+    await db.execute(
+        f"DELETE FROM incident_attachments WHERE incident_id IN ({placeholders_inc})",
+        DEMO_INCIDENT_IDS,
+    )
+
+    # 2. Prune demo incidents
+    query_del_inc = (
+        f"DELETE FROM incidents "
+        f"WHERE id IN ({placeholders_inc}) OR ticket_id IN ({placeholders_tkt})"
+    )
+    cursor = await db.execute(query_del_inc, DEMO_INCIDENT_IDS + DEMO_TICKET_IDS)
+    deleted_incidents = cursor.rowcount
+
+    # 3. Prune demo responders and their assignments
+    await db.execute(
+        f"DELETE FROM assignments WHERE responder_id IN ({placeholders_resp})",
+        DEMO_RESPONDER_IDS,
+    )
+    cursor = await db.execute(
+        f"DELETE FROM responders WHERE id IN ({placeholders_resp})",
+        DEMO_RESPONDER_IDS,
+    )
+    deleted_responders = cursor.rowcount
+
+    # 4. Prune demo shelters
+    cursor = await db.execute(
+        f"DELETE FROM shelters WHERE id IN ({placeholders_shl})",
+        DEMO_SHELTER_IDS,
+    )
+    deleted_shelters = cursor.rowcount
+
+    await db.commit()
+    return {
+        "deleted_incidents": deleted_incidents,
+        "deleted_responders": deleted_responders,
+        "deleted_shelters": deleted_shelters,
+    }
+
+
 async def seed_database(db) -> dict:
     """Insert seed incidents, responders, shelters, and demo users.
     Returns dict of created counts.

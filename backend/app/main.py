@@ -97,7 +97,11 @@ async def lifespan(app: FastAPI):
     db = await init_database()
 
     # Always ensure authentication foundation exists for registered / demo accounts
-    from app.db.seed import seed_auth_users, seed_operational_dataset
+    from app.db.seed import (
+        cleanup_legacy_demo_records,
+        seed_auth_users,
+        seed_operational_dataset,
+    )
 
     auth_counts = await seed_auth_users(db)
 
@@ -115,9 +119,18 @@ async def lifespan(app: FastAPI):
             f"{auth_counts['users']} demo users."
         )
     else:
-        print(
-            "[SALVUS] Live Mode active (AUTO_SEED=false): Operational database initialized clean."
-        )
+        # In Live Mode (AUTO_SEED=false): Prune any leftover demo records from previous runs
+        cleaned = await cleanup_legacy_demo_records(db)
+        if (
+            cleaned["deleted_incidents"] > 0
+            or cleaned["deleted_responders"] > 0
+            or cleaned["deleted_shelters"] > 0
+        ):
+            print(
+                f"[SALVUS] Live Cleanup: Pruned {cleaned['deleted_incidents']} demo incidents, "
+                f"{cleaned['deleted_responders']} units, {cleaned['deleted_shelters']} shelters."
+            )
+        print("[SALVUS] Live Mode active (AUTO_SEED=false): Operational database clean.")
 
     print("[SALVUS] Backend ready for production traffic.")
     yield

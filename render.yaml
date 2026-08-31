@@ -28,7 +28,7 @@ services:
       - key: DATABASE_PATH
         value: data/salvus.db
       - key: AUTO_SEED
-        value: 'true'
+        value: 'false'
       - key: OSRM_BASE_URL
         value: https://router.project-osrm.org
       # Optional AI / LLM API Keys for AI Triage Service

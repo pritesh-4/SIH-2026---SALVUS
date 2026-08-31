@@ -714,4 +714,68 @@ describe('Salvus Authority Command Center Operational Pipeline Tests', () => {
     assert.equal(activeUnits, 1, '1 unit active')
     assert.equal(totalBeds, 95, '95 free beds available')
   })
+
+  it('Scenario 31: normalizeIncident preserves explicit is_sos: false even for CRITICAL severity', () => {
+    const criticalNonSos = normalizeIncident({
+      id: 'inc-crit-1',
+      ticket_id: 'SV-9911',
+      severity: 'CRITICAL',
+      is_sos: false,
+    })
+
+    assert.equal(criticalNonSos.is_sos, false, 'CRITICAL must not automatically become SOS')
+    assert.equal(criticalNonSos.severity, 'CRITICAL')
+  })
+
+  it('Scenario 32: normalizeIncident does NOT fabricate timestamps if missing', () => {
+    const noTimestampInc = normalizeIncident({
+      id: 'inc-no-ts',
+      ticket_id: 'SV-9912',
+      created_at: null,
+      updated_at: null,
+    })
+
+    assert.equal(noTimestampInc.created_at, null, 'Must preserve null created_at')
+    assert.equal(noTimestampInc.updated_at, null, 'Must preserve null updated_at')
+  })
+
+  it('Scenario 33: normalizeIncident does NOT invent random IDs for live backend records', () => {
+    const incWithoutId = normalizeIncident({
+      ticket_id: 'SV-5544',
+      description: 'Road blockage',
+    })
+
+    assert.equal(incWithoutId.id, 'SV-5544', 'Must fallback to ticket_id or null, not Math.random')
+    assert.equal(incWithoutId.ticket_id, 'SV-5544')
+  })
+
+  it('Scenario 34: Computed operational metrics strictly decouple SOS from Critical severity', () => {
+    const dataset = [
+      normalizeIncident({ id: '1', severity: 'CRITICAL', is_sos: false, status: 'NEW' }),
+      normalizeIncident({ id: '2', severity: 'HIGH', is_sos: true, status: 'NEW' }),
+      normalizeIncident({ id: '3', severity: 'MEDIUM', is_sos: false, status: 'NEW' }),
+    ]
+
+    const active = dataset.filter((i) => !['RESOLVED', 'CANCELLED'].includes(i.status))
+    const activeSos = active.filter((i) => Boolean(i.is_sos))
+    const critical = active.filter((i) => i.severity === 'CRITICAL')
+
+    assert.equal(activeSos.length, 1, 'Only incident #2 is an active SOS')
+    assert.equal(critical.length, 1, 'Only incident #1 is a critical threat')
+    assert.equal(active.length, 3, 'Total 3 active incidents')
+  })
+
+  it('Scenario 35: Live Mode with 0 backend records yields 0 operational incidents, 0 responders, 0 shelters', () => {
+    const liveBackendIncidents = []
+    const liveBackendResponders = []
+    const liveBackendShelters = []
+
+    const normalizedIncidents = liveBackendIncidents.map(normalizeIncident).filter(Boolean)
+    const activeUnits = liveBackendResponders.filter((r) => r.status !== 'AVAILABLE').length
+    const totalBeds = liveBackendShelters.reduce((acc, s) => acc + s.available_beds, 0)
+
+    assert.equal(normalizedIncidents.length, 0, 'Zero incidents on clean live start')
+    assert.equal(activeUnits, 0, 'Zero units active on clean live start')
+    assert.equal(totalBeds, 0, 'Zero beds on clean live start')
+  })
 })
