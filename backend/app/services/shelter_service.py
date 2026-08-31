@@ -175,7 +175,7 @@ async def get_recommended_shelters(
             # Capacity score: higher available beds gives higher confidence
             capacity_score = (
                 min(40, int((shl.available_beds / max(1, shl.total_beds)) * 40))
-                if shl.total_beds > 0
+                if (shl.total_beds and shl.available_beds is not None)
                 else 0
             )
 
@@ -239,9 +239,11 @@ async def get_recommended_shelters(
             reason_parts = []
             if not is_safe:
                 reason_parts.append("⚠️ Proximity to Hazard Zone")
-            elif shl.status == "OPEN" and shl.available_beds > 50:
+            elif (
+                shl.status == "OPEN" and shl.available_beds is not None and shl.available_beds > 50
+            ):
                 reason_parts.append(f"High Bed Capacity ({shl.available_beds} free)")
-            elif shl.available_beds > 0:
+            elif shl.available_beds is not None and shl.available_beds > 0:
                 reason_parts.append(f"{shl.available_beds} beds available")
 
             if dist_km <= 1.5:

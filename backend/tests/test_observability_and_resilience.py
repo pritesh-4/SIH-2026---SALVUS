@@ -7,7 +7,6 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.db import init_database
 from app.logging.structured_logger import (
     log_assignment_event,
     log_incident_event,
@@ -15,11 +14,6 @@ from app.logging.structured_logger import (
     sanitize_telemetry_dict,
 )
 from app.main import app
-
-
-@pytest.fixture(autouse=True)
-async def setup_db():
-    await init_database()
 
 
 @pytest.mark.asyncio

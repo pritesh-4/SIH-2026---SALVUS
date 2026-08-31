@@ -1,7 +1,7 @@
 """Tests for Salvus Photo Attachment Evidence domain (Phase 1 & Phase 2)."""
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -716,22 +716,32 @@ class TestCompensatingCleanup:
         )
         await db.commit()
 
-        # Mock storage provider
-        mock_provider = AsyncMock()
-        mock_provider.__class__.__name__ = "MockStorageProvider"
+        # Mock storage provider with proper sync/async separation
         from app.storage.base import StorageUploadResult
 
-        mock_provider.upload.return_value = StorageUploadResult(
-            storage_key="test_folder/orphan_key.jpg",
-            secure_url="https://cdn.example.com/orphan_key.jpg",
-            size_bytes=len(MINIMAL_JPEG),
-            mime_type="image/jpeg",
-            checksum="fakechecksum123",
-            width=1,
-            height=1,
-        )
-        mock_provider.get_transformed_url.return_value = "https://cdn.example.com/thumb.jpg"
-        mock_provider.delete = AsyncMock(return_value=True)
+        class MockStorageProvider:
+            def __init__(self):
+                self.deleted_keys = []
+
+            async def upload(self, *args, **kwargs):
+                return StorageUploadResult(
+                    storage_key="test_folder/orphan_key.jpg",
+                    secure_url="https://cdn.example.com/orphan_key.jpg",
+                    size_bytes=len(MINIMAL_JPEG),
+                    mime_type="image/jpeg",
+                    checksum="fakechecksum123",
+                    width=1,
+                    height=1,
+                )
+
+            def get_transformed_url(self, *args, **kwargs):
+                return "https://cdn.example.com/thumb.jpg"
+
+            async def delete(self, storage_key: str):
+                self.deleted_keys.append(storage_key)
+                return True
+
+        mock_provider = MockStorageProvider()
 
         # Patch db.execute to fail during INSERT INTO incident_attachments
         original_execute = db.execute
@@ -753,7 +763,7 @@ class TestCompensatingCleanup:
             assert "Simulated SQLite Disk Failure" in str(exc_info.value)
 
         # Verify compensating delete was called
-        mock_provider.delete.assert_awaited_once_with("test_folder/orphan_key.jpg")
+        assert mock_provider.deleted_keys == ["test_folder/orphan_key.jpg"]
 
 
 # ---------------------------------------------------------------------------
@@ -784,7 +794,10 @@ class TestCloudinaryProvider:
             "height": 600,
         }
 
-        with patch("httpx.AsyncClient.post", return_value=mock_response):
+        async def mock_post_ok(*args, **kwargs):
+            return mock_response
+
+        with patch("httpx.AsyncClient.post", new=mock_post_ok):
             result = await provider.upload(
                 file_bytes=MINIMAL_JPEG,
                 filename="photo.jpg",
@@ -805,7 +818,10 @@ class TestCloudinaryProvider:
             api_secret="secret789",
         )
 
-        with patch("httpx.AsyncClient.post", side_effect=httpx.TimeoutException("Timed out")):
+        async def mock_post_timeout(*args, **kwargs):
+            raise httpx.TimeoutException("Timed out")
+
+        with patch("httpx.AsyncClient.post", new=mock_post_timeout):
             with pytest.raises(RuntimeError) as exc:
                 await provider.upload(
                     file_bytes=MINIMAL_JPEG,
@@ -826,7 +842,10 @@ class TestCloudinaryProvider:
         mock_response.status_code = 401
         mock_response.text = "Invalid Signature"
 
-        with patch("httpx.AsyncClient.post", return_value=mock_response):
+        async def mock_post_error(*args, **kwargs):
+            return mock_response
+
+        with patch("httpx.AsyncClient.post", new=mock_post_error):
             with pytest.raises(RuntimeError) as exc:
                 await provider.upload(
                     file_bytes=MINIMAL_JPEG,

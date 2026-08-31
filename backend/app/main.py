@@ -45,13 +45,44 @@ from app.routes.triage import router as triage_router
 load_dotenv()
 
 
-def get_cors_origins() -> list[str]:
-    """Parse comma-separated CORS origins from environment."""
-    raw = os.getenv("CORS_ORIGIN", "*").strip()
-    if not raw or raw == "*":
-        return ["*"]
+def get_cors_config() -> dict:
+    """Parse CORS configuration from environment with spec-compliant credentials handling."""
+    raw = os.getenv("CORS_ORIGIN", "").strip()
+    if not raw:
+        # Safe default when unset: local dev origins + regex for Vercel and Render deployments
+        origins = [
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://localhost:4173",
+            "http://localhost:8000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:4173",
+            "http://127.0.0.1:8000",
+        ]
+        return {
+            "allow_origins": origins,
+            "allow_origin_regex": r"https://.*(\.vercel\.app|\.onrender\.com)",
+            "allow_credentials": True,
+        }
+
     origins = [item.strip() for item in raw.split(",") if item.strip()]
-    return origins if origins else ["*"]
+    if "*" in origins or raw == "*":
+        return {
+            "allow_origins": ["*"],
+            "allow_origin_regex": None,
+            "allow_credentials": False,
+        }
+    return {
+        "allow_origins": origins,
+        "allow_origin_regex": None,
+        "allow_credentials": True,
+    }
+
+
+def get_cors_origins() -> list[str]:
+    """Parse comma-separated CORS origins from environment (backwards-compatibility helper)."""
+    return get_cors_config()["allow_origins"]
 
 
 # ---------------------------------------------------------------------------
@@ -107,11 +138,12 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
 
 # --- CORS ---
-allowed_origins = get_cors_origins()
+cors_cfg = get_cors_config()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_origins=cors_cfg["allow_origins"],
+    allow_origin_regex=cors_cfg["allow_origin_regex"],
+    allow_credentials=cors_cfg["allow_credentials"],
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],
