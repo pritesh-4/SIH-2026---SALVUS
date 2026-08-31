@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { Outlet, Link } from 'react-router-dom'
 import { DevDemoControls } from '../components/common/DevDemoControls'
 import { GlobalNotificationBanner } from '../components/common/GlobalNotificationBanner'
@@ -6,6 +7,16 @@ import { useAuth } from '../hooks/useAuth'
 
 export const AuthorityLayout = () => {
   const { user, logout } = useAuth()
+  const [currentTime, setCurrentTime] = useState(() =>
+    new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  )
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   return (
     <div className="min-h-screen bg-salvus-bg text-salvus-text-primary flex flex-col selection:bg-salvus-info selection:text-white transition-colors duration-200">
@@ -34,24 +45,18 @@ export const AuthorityLayout = () => {
               <span className="text-salvus-text-primary font-medium">Grid Online</span>
               <span className="text-salvus-text-muted">·</span>
               <span className="text-salvus-text-secondary text-[11px]">
-                Central Operations Command Grid
+                Active Telemetry Stream
               </span>
             </div>
-          </div>
-
-          {/* Center Situation Status Banner */}
-          <div className="hidden md:flex items-center gap-2 bg-salvus-warning-bg border border-salvus-warning-border px-3 py-1 rounded-md text-xs text-salvus-warning-text">
-            <span className="h-2 w-2 rounded-full bg-salvus-warning"></span>
-            <span className="font-bold font-mono">LEVEL 3</span>
-            <span className="opacity-50">·</span>
-            <span className="font-medium">Flash Flood Surge in Progress</span>
           </div>
 
           {/* Right Action: Clock, Theme Switcher & Operator Profile / Sign Out */}
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-1.5 text-xs text-salvus-text-secondary bg-salvus-surface-elevated border border-salvus-border px-2.5 py-1 rounded">
               <span className="text-salvus-text-muted">Sys:</span>
-              <span className="text-salvus-text-primary font-medium font-mono">23:45 IST</span>
+              <span className="text-salvus-text-primary font-medium font-mono">
+                {currentTime} IST
+              </span>
             </div>
 
             {/* Quiet Theme Toggle */}

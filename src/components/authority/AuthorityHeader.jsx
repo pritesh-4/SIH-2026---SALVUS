@@ -66,6 +66,7 @@ export const AuthorityHeader = ({
   const dispatcherName = user?.name || 'Duty Officer'
 
   // Derive operational summary from real metrics
+  const sosCount = computedMetrics?.sosCount ?? computedMetrics?.activeSos ?? 0
   const activeCount = computedMetrics?.active ?? 0
   const criticalCount = computedMetrics?.critical ?? 0
 
@@ -115,8 +116,17 @@ export const AuthorityHeader = ({
               <span className="bg-salvus-muted/40 border border-salvus-border px-1.5 py-0.5 rounded text-salvus-text-primary font-semibold">
                 {activeCount} Active
               </span>
-              {criticalCount > 0 && (
-                <span className="bg-salvus-critical-bg border border-salvus-critical-border px-1.5 py-0.5 rounded text-salvus-critical font-bold">
+              {sosCount > 0 ? (
+                <span className="bg-salvus-critical-bg border border-salvus-critical-border px-1.5 py-0.5 rounded text-salvus-critical font-bold animate-pulse">
+                  {sosCount} SOS
+                </span>
+              ) : (
+                <span className="bg-salvus-muted/40 border border-salvus-border px-1.5 py-0.5 rounded text-salvus-text-muted font-medium">
+                  0 SOS
+                </span>
+              )}
+              {criticalCount > 0 && criticalCount !== sosCount && (
+                <span className="bg-amber-950/40 border border-amber-500/40 px-1.5 py-0.5 rounded text-amber-300 font-bold">
                   {criticalCount} Critical
                 </span>
               )}

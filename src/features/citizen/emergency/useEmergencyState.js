@@ -18,8 +18,10 @@ import {
   watchEmergencyLocation,
   getCurrentLocation,
   createLocationModel,
+  createLandmarkLocation,
   formatCoordinates,
   INITIAL_LOCATION_STATE,
+  LANDMARKS,
 } from '../../../lib/location'
 import { haversineDistanceKm, RouteManager } from '../../../services/routingService'
 import {
@@ -149,6 +151,23 @@ export const useEmergencyState = (
       isMounted = false
     }
   }, [])
+
+  // Auto-acquire real device GPS on initial mount if not already populated
+  useEffect(() => {
+    let isMounted = true
+    if (!cachedRecoveryHint?.cachedUserLocation?.latitude) {
+      getCurrentLocation({ timeout: 6000 }).then((locResult) => {
+        if (!isMounted) return
+        if (locResult.success && locResult.model) {
+          setUserLocation(locResult.model)
+          setLocationStatus('ACTIVE')
+        }
+      })
+    }
+    return () => {
+      isMounted = false
+    }
+  }, [cachedRecoveryHint])
 
   // -------------------------------------------------------------------------
   // 2. Unified Authoritative Rehydration Engine: rehydrateEmergency(incidentId)
@@ -700,6 +719,9 @@ export const useEmergencyState = (
 
   const dynamicIncident = useMemo(() => {
     if (liveIncident) {
+      const incLat = typeof liveIncident.latitude === 'number' ? liveIncident.latitude : null
+      const incLon = typeof liveIncident.longitude === 'number' ? liveIncident.longitude : null
+
       return {
         id: liveIncident.ticket_id || liveIncident.id || 'SV-2048',
         rawId: liveIncident.id,
@@ -718,11 +740,18 @@ export const useEmergencyState = (
         affectedEstimate: `${liveIncident.affected_count || 1} People at Risk`,
         description: liveIncident.description,
         userLocation: {
-          ...emergencyFlowData.incident.userLocation,
+          address: liveIncident.location_name || userLocation.address || 'Detected Location',
           coordinates:
-            liveIncident.latitude && liveIncident.longitude
-              ? `${liveIncident.latitude.toFixed(4)}° N, ${liveIncident.longitude.toFixed(4)}° E`
-              : emergencyFlowData.incident.userLocation.coordinates,
+            incLat !== null && incLon !== null
+              ? formatCoordinates(incLat, incLon)
+              : userLocation.coordinates || 'Coordinates unavailable',
+          accuracy:
+            userLocation.accuracyLabel ||
+            (userLocation.isFallback ? 'Approximate (Landmark)' : 'GPS Verified'),
+          accuracyLabel: userLocation.accuracyLabel,
+          status: userLocation.status || 'ACTIVE',
+          source: userLocation.source,
+          isFallback: userLocation.isFallback,
         },
       }
     }
@@ -821,26 +850,30 @@ export const useEmergencyState = (
       return
     }
 
-    if (incidentId) {
+    const targetId = incidentId || effectiveIncidentId || liveIncident?.id
+
+    if (targetId) {
       try {
-        const res = await updateIncidentStatus(incidentId, 'CANCELLED', 'citizen')
+        const res = await updateIncidentStatus(targetId, 'CANCELLED', 'citizen')
         if (!res.success) {
           // If backend rejected because state is already resolved/terminal
           console.warn('[Citizen State Machine] Cancellation rejected by server:', res.error)
-          await rehydrateEmergency(incidentId, true)
+          await rehydrateEmergency(targetId, true)
           return
         }
       } catch (err) {
         console.error('Failed to cancel incident on backend:', err)
+        await rehydrateEmergency(targetId, true)
+        return
       }
     }
 
     setCurrentState(EMERGENCY_STATE.CANCELLED)
     clearEmergencyCache()
     broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.EMERGENCY_CANCELLED, {
-      incidentId: incidentId || effectiveIncidentId,
+      incidentId: targetId,
     })
-  }, [currentState, effectiveIncidentId, incidentId, rehydrateEmergency])
+  }, [currentState, effectiveIncidentId, incidentId, liveIncident?.id, rehydrateEmergency])
 
   const resetEmergency = useCallback(() => {
     setIsAutoPlaying(false)
@@ -877,12 +910,43 @@ export const useEmergencyState = (
     const idempotencyKey = pendingSosIdempotencyKeyRef.current
 
     try {
-      const loc = await getCurrentLocation()
-      const lat = loc.latitude || loc.model?.latitude || 22.5726
-      const lng = loc.longitude || loc.model?.longitude || 88.3639
+      // 1. Acquire real GPS coordinates (or fallback to user-selected location)
+      const loc = await getCurrentLocation({ timeout: 6000, force: true })
+      let lat = null
+      let lng = null
+      let locModel = null
+
+      if (loc.success && typeof loc.latitude === 'number' && typeof loc.longitude === 'number') {
+        lat = loc.latitude
+        lng = loc.longitude
+        locModel =
+          loc.model ||
+          createLocationModel({
+            latitude: lat,
+            longitude: lng,
+            accuracy: loc.accuracyM,
+            source: 'BROWSER',
+            permission: 'GRANTED',
+            status: 'ACTIVE',
+          })
+      } else if (userLocation?.latitude != null && userLocation?.longitude != null) {
+        lat = userLocation.latitude
+        lng = userLocation.longitude
+        locModel = userLocation
+      } else {
+        const fallbackLandmark = LANDMARKS[0]
+        lat = fallbackLandmark.latitude
+        lng = fallbackLandmark.longitude
+        locModel = createLandmarkLocation(fallbackLandmark, loc.model?.permission || 'DENIED')
+      }
+
+      if (locModel) {
+        setUserLocation(locModel)
+        setLocationStatus('ACTIVE')
+      }
 
       const reporterName = citizenProfile?.full_name || 'Citizen User'
-      const reporterPhone = citizenProfile?.phone || '+91 98301 23456'
+      const reporterPhone = citizenProfile?.phone || null
       const emergencyId = citizenProfile?.emergency_id || 'SLV-CIT-7829'
 
       const result = await createIncident({
@@ -926,7 +990,7 @@ export const useEmergencyState = (
       setSubmittingState('failure')
       broadcastEmergencyEvent(EMERGENCY_BROADCAST_EVENTS.SOS_COMPLETED, { incidentId: null })
     }
-  }, [citizenProfile, isPeerSubmittingSos, rehydrateEmergency, submittingState])
+  }, [citizenProfile, isPeerSubmittingSos, rehydrateEmergency, submittingState, userLocation])
 
   // Trigger real live demo incident (alias for triggerSos)
   const triggerLiveDemoSos = useCallback(async () => {

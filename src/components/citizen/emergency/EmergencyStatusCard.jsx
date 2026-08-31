@@ -16,6 +16,7 @@ export const EmergencyStatusCard = ({
   statusInfo = {},
   severity = 'CRITICAL',
   category = 'Flash Flood Emergency',
+  onCancelClick = null,
 }) => {
   const currentStep = statusInfo.progressStep || 1
   const totalSteps = 8
@@ -41,7 +42,18 @@ export const EmergencyStatusCard = ({
           <Badge variant="critical">{severity}</Badge>
         </div>
 
-        <span className="text-xs font-semibold text-salvus-text-secondary">{category}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-salvus-text-secondary">{category}</span>
+          {onCancelClick && (
+            <button
+              type="button"
+              onClick={onCancelClick}
+              className="text-[11px] text-salvus-text-muted hover:text-salvus-critical font-medium px-2 py-1 rounded hover:bg-salvus-muted/40 transition-colors cursor-pointer"
+            >
+              Cancel Request
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Hero Title & Reassuring Headline */}

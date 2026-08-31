@@ -9,6 +9,7 @@ import {
 } from '../../lib/location'
 import { loadNearbyLandmarks } from '../../services/placesService'
 import { validateAttachmentFile, formatFileSize, revokePreviewUrl } from '../../lib/attachmentUtils'
+import { generateIdempotencyKey } from '../../lib/emergencyCache'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Input, Textarea, FormField } from '../ui/Input'
@@ -359,6 +360,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
     let incident = createdIncident
     if (!incident) {
       setSubmissionPhase('CREATING_REPORT')
+      const idempotencyKey = generateIdempotencyKey('haz_rep')
       const result = await createIncident({
         type: incidentType,
         severity: severity.toUpperCase(),
@@ -369,6 +371,7 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
         longitude: locationData.longitude,
         affected_count: Math.max(1, Number(affectedCount) || 1),
         is_sos: false,
+        idempotency_key: idempotencyKey,
       })
 
       if (!result.success || !result.data) {
@@ -638,7 +641,6 @@ export const IncidentReportModal = ({ isOpen, onClose }) => {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="E.g., Rising floodwater on main road. Power lines down near tree."
                 rows={3}
-                required
               />
             </FormField>
 

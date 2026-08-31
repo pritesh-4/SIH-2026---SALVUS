@@ -487,20 +487,6 @@ export const CitizenHome = () => {
           </div>
         </div>
       </div>
-
-      {/* Emergency Confirmation Safeguard Modal */}
-      <EmergencyConfirmationModal
-        isOpen={isConfirmingSos}
-        onConfirm={handleConfirmSos}
-        onCancel={handleCancelSos}
-        isLoading={isSubmittingSos}
-      />
-
-      {/* Community Incident Report Modal */}
-      <IncidentReportModal
-        isOpen={isReportingIncident}
-        onClose={() => setIsReportingIncident(false)}
-      />
     </div>
   )
 }

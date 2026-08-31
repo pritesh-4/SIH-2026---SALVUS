@@ -408,6 +408,7 @@ export const useAuthorityIncidents = () => {
   // Computed live metrics from real incidents
   const computedMetrics = useMemo(() => {
     const active = incidents.filter((inc) => !['RESOLVED', 'CANCELLED'].includes(inc.status))
+    const activeSos = active.filter((inc) => Boolean(inc.is_sos))
     const critical = active.filter((inc) => inc.severity === 'CRITICAL' || inc.is_sos)
     const resolved = incidents.filter((inc) => inc.status === 'RESOLVED')
     const triagePending = active.filter((inc) =>
@@ -416,6 +417,8 @@ export const useAuthorityIncidents = () => {
 
     return {
       active: active.length,
+      sosCount: activeSos.length,
+      activeSos: activeSos.length,
       critical: critical.length,
       resolved: resolved.length,
       triagePending: triagePending.length,

@@ -259,10 +259,12 @@ export const CitizenAlerts = () => {
       {/* =========================================================================
           LAYER 3: NEAR-TERM ENVIRONMENTAL FORECAST (Next Few Hours)
           ========================================================================= */}
-      {weatherData?.hourly && weatherData.hourly.length > 0 && (
+      {weatherData && (weatherData.hourly?.length > 0 || isWeatherLoading) && (
         <ShortTermForecast
-          hourly={weatherData.hourly}
+          hourly={weatherData.hourly || []}
           current={weatherData.current}
+          observedAt={weatherData.observedAt}
+          status={weatherData.status}
           isLoading={isWeatherLoading}
         />
       )}

@@ -17,26 +17,35 @@ export const OperationalMetrics = ({
   totalBedsAvailable = 0,
 }) => {
   const critical = computedMetrics.critical ?? computedMetrics.criticalThreats ?? 0
+  const sosCount = computedMetrics.sosCount ?? computedMetrics.activeSos ?? 0
   const active = computedMetrics.active ?? computedMetrics.activeIncidents ?? 0
   const resolved = computedMetrics.resolved ?? computedMetrics.resolvedCount ?? 0
   const pendingTriage = computedMetrics.triagePending ?? 0
 
   return (
     <section aria-label="Operational Metrics" className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-      {/* 1. Critical Threats */}
+      {/* 1. Critical Threats & Active SOS */}
       <Card
-        variant={critical > 0 ? 'critical' : 'neutral'}
+        variant={sosCount > 0 ? 'critical' : critical > 0 ? 'warning' : 'neutral'}
         padding="sm"
         className={`flex flex-col justify-between shadow-xs transition-colors ${
-          critical > 0 ? 'bg-salvus-critical-bg/25 border-salvus-critical-border' : ''
+          sosCount > 0
+            ? 'bg-salvus-critical-bg/30 border-salvus-critical-border'
+            : critical > 0
+              ? 'bg-amber-950/20 border-amber-500/30'
+              : ''
         }`}
       >
         <div className="flex items-center justify-between gap-1 mb-0.5">
           <span className="text-[11px] font-bold text-salvus-critical uppercase tracking-wider">
-            Critical Threats
+            {sosCount > 0 ? 'Active SOS & Critical' : 'Critical Threats'}
           </span>
-          <Badge variant={critical > 0 ? 'critical' : 'neutral'} size="sm" dot={critical > 0}>
-            {critical > 0 ? 'Priority' : 'Nominal'}
+          <Badge
+            variant={sosCount > 0 ? 'critical' : critical > 0 ? 'warning' : 'neutral'}
+            size="sm"
+            dot={sosCount > 0 || critical > 0}
+          >
+            {sosCount > 0 ? `${sosCount} SOS Active` : critical > 0 ? 'Priority' : 'Nominal'}
           </Badge>
         </div>
         <div className="flex items-baseline justify-between mt-1">
@@ -44,7 +53,11 @@ export const OperationalMetrics = ({
             {critical}
           </span>
           <span className="text-[11px] text-salvus-text-muted">
-            {pendingTriage > 0 ? `${pendingTriage} awaiting triage` : 'Triage up to date'}
+            {sosCount > 0
+              ? `${sosCount} SOS · ${pendingTriage} in triage`
+              : pendingTriage > 0
+                ? `${pendingTriage} awaiting triage`
+                : 'Triage up to date'}
           </span>
         </div>
       </Card>

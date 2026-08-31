@@ -324,6 +324,7 @@ export const CitizenEmergency = () => {
                 statusInfo={currentInfo}
                 severity={incident.severity}
                 category={incident.category}
+                onCancelClick={isResolved ? null : openCancelModal}
               />
 
               {/* Progressive Centerpiece: Tactical Radar Map for Tracking/Nearby/Scene */}
