@@ -10,7 +10,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --test src/lib/__tests__/*.test.js",
+    "test": "node --test src/lib/__tests__/*.test.js src/lib/*.test.js src/services/*.test.js",
     "preview": "vite preview",
     "prepare": "husky"
   },
@@ -29,7 +29,6 @@
     "lucide-react": "^1.33.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.2",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.6.0"
