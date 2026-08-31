@@ -79,8 +79,8 @@ export const IncidentInspector = ({
   }
 
   return (
-    <div className="space-y-3 flex-1 flex flex-col justify-between">
-      <div className="space-y-3 text-xs">
+    <div className="space-y-3 flex-1 flex flex-col justify-between overflow-hidden">
+      <div className="flex-1 overflow-y-auto pr-1.5 space-y-3 text-xs">
         {/* Header */}
         <div className="flex items-center justify-between pb-2 border-b border-salvus-border">
           <div>
@@ -438,7 +438,7 @@ export const IncidentInspector = ({
       </div>
 
       {/* Action Decision Toolbar */}
-      <div className="pt-2 border-t border-salvus-border space-y-1.5">
+      <div className="shrink-0 pt-2 border-t border-salvus-border space-y-1.5 bg-salvus-surface">
         {selectedIncident.status === 'NEW' && (
           <Button
             variant="warning"

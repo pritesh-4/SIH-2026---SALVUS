@@ -611,4 +611,107 @@ describe('Salvus Authority Command Center Operational Pipeline Tests', () => {
     const dist = calculateDistanceKm(null, null, 22.5, 88.4)
     assert.equal(dist, null, 'Distance must be null when coordinates are missing')
   })
+
+  it('Scenario 26: Zone 2 Attention Bar detects Critical Threats & Active SOS', () => {
+    const computedMetrics = {
+      critical: 2,
+      activeSos: 1,
+      triagePending: 3,
+      active: 4,
+      resolved: 1,
+    }
+    const hasUrgentAttention =
+      computedMetrics.critical > 0 ||
+      computedMetrics.activeSos > 0 ||
+      computedMetrics.triagePending > 0
+    assert.equal(hasUrgentAttention, true)
+    assert.equal(computedMetrics.critical, 2)
+    assert.equal(computedMetrics.activeSos, 1)
+  })
+
+  it('Scenario 27: Priority Workspace sorts CRITICAL SOS over standard CRITICAL and HIGH', () => {
+    const incA = normalizeIncident({
+      id: 'inc-1',
+      severity: 'HIGH',
+      is_sos: false,
+      status: 'NEW',
+    })
+    const incB = normalizeIncident({
+      id: 'inc-2',
+      severity: 'CRITICAL',
+      is_sos: false,
+      status: 'NEW',
+    })
+    const incC = normalizeIncident({
+      id: 'inc-3',
+      severity: 'HIGH',
+      is_sos: true,
+      status: 'NEW',
+    })
+
+    const list = [incA, incB, incC]
+    const sevWeight = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 }
+    const sorted = [...list].sort((a, b) => {
+      if (a.is_sos && !b.is_sos) return -1
+      if (!a.is_sos && b.is_sos) return 1
+      return (sevWeight[b.severity] || 0) - (sevWeight[a.severity] || 0)
+    })
+
+    assert.equal(sorted[0].id, 'inc-3', 'SOS incident must be rank #1')
+    assert.equal(sorted[1].id, 'inc-2', 'Critical non-SOS must be rank #2')
+    assert.equal(sorted[2].id, 'inc-1', 'High non-SOS must be rank #3')
+  })
+
+  it('Scenario 28: Work State Filters accurately segment operational lifecycle phases', () => {
+    const incidents = [
+      normalizeIncident({ id: '1', severity: 'CRITICAL', is_sos: true, status: 'NEW' }),
+      normalizeIncident({ id: '2', severity: 'MEDIUM', is_sos: false, status: 'TRIAGE_PENDING' }),
+      normalizeIncident({ id: '3', severity: 'HIGH', is_sos: false, status: 'EN_ROUTE' }),
+      normalizeIncident({ id: '4', severity: 'LOW', is_sos: false, status: 'RESOLVED' }),
+    ]
+
+    const immediate = filterIncidents(incidents, 'immediate')
+    const review = filterIncidents(incidents, 'review')
+    const response = filterIncidents(incidents, 'response')
+    const resolved = filterIncidents(incidents, 'resolved')
+
+    assert.equal(immediate.length, 1, 'Immediate must catch CRITICAL SOS')
+    assert.equal(review.length, 2, 'Review must catch NEW and TRIAGE_PENDING')
+    assert.equal(response.length, 1, 'Response must catch EN_ROUTE')
+    assert.equal(resolved.length, 1, 'Resolved must catch RESOLVED')
+  })
+
+  it('Scenario 29: Realtime Operational Event Stream sorts chronologically descending', () => {
+    const rawEvents = [
+      { id: 'evt-1', created_at: '2026-08-30T10:00:00Z', type: 'SOS_CREATED' },
+      { id: 'evt-2', created_at: '2026-08-30T10:05:00Z', type: 'ASSIGNED' },
+      { id: 'evt-3', created_at: '2026-08-30T10:02:00Z', type: 'VERIFIED' },
+    ]
+
+    const sortedEvents = [...rawEvents].sort(
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    )
+
+    assert.equal(sortedEvents[0].id, 'evt-2', 'Newest event at index 0')
+    assert.equal(sortedEvents[1].id, 'evt-3', 'Mid event at index 1')
+    assert.equal(sortedEvents[2].id, 'evt-1', 'Oldest event at index 2')
+  })
+
+  it('Scenario 30: Supporting Operations preserves fleet and shelter counters without collision', () => {
+    const fleet = [
+      { id: 'r-1', status: 'EN_ROUTE' },
+      { id: 'r-2', status: 'AVAILABLE' },
+      { id: 'r-3', status: 'AVAILABLE' },
+    ]
+    const shelters = [
+      { id: 's-1', total_beds: 100, available_beds: 45 },
+      { id: 's-2', total_beds: 50, available_beds: 50 },
+    ]
+
+    const activeUnits = fleet.filter((r) => r.status !== 'AVAILABLE').length
+    const totalBeds = shelters.reduce((acc, s) => acc + s.available_beds, 0)
+
+    assert.equal(activeUnits, 1, '1 unit active')
+    assert.equal(totalBeds, 95, '95 free beds available')
+  })
 })

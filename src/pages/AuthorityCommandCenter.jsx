@@ -12,18 +12,17 @@ import {
 } from '../features/authority'
 
 import { AuthorityHeader } from '../components/authority/AuthorityHeader'
-import { OperationalMetrics } from '../components/authority/OperationalMetrics'
-import { SituationBriefing } from '../components/authority/SituationBriefing'
+import { AttentionBar } from '../components/authority/AttentionBar'
+import { SituationalSnapshot } from '../components/authority/SituationalSnapshot'
 import { IncidentQueue } from '../components/authority/IncidentQueue'
 import { AuthorityMap } from '../components/authority/AuthorityMap'
 import { IncidentInspector } from '../components/authority/IncidentInspector'
-import { ResponderPanel } from '../components/authority/ResponderPanel'
-import { ShelterPanel } from '../components/authority/ShelterPanel'
+import { SupportingOperations } from '../components/authority/SupportingOperations'
+import { ActivityFeed } from '../components/authority/ActivityFeed'
 import { AssignmentConfirmModal } from '../components/authority/AssignmentConfirmModal'
 import ErrorBoundary from '../components/common/ErrorBoundary'
 import DevDiagnosticsPanel from '../components/common/DevDiagnosticsPanel'
 import { Card } from '../components/ui/Card'
-import { Button } from '../components/ui/Button'
 
 export const AuthorityCommandCenter = () => {
   const {
@@ -108,7 +107,6 @@ export const AuthorityCommandCenter = () => {
   // 2. Local UI State
   // ---------------------------------------------------------------------------
   const [activeIncidentFilter, setActiveIncidentFilter] = useState('all')
-  const [rightPanelTab, setRightPanelTab] = useState('inspector')
   const [mapLayers, setMapLayers] = useState({
     incidents: true,
     responders: true,
@@ -168,7 +166,6 @@ export const AuthorityCommandCenter = () => {
   // ---------------------------------------------------------------------------
   const handleSelectIncident = (inc) => {
     setSelectedIncident(inc)
-    setRightPanelTab('inspector')
     clearRoute()
     setCandidateList([])
     stopMovementSimulation()
@@ -344,9 +341,40 @@ export const AuthorityCommandCenter = () => {
     [dataMode, fleetDataMode, shelterDataMode, dataProvenance]
   )
 
+  // ---------------------------------------------------------------------------
+  // 7. Grounded Realtime Activity Log Stream
+  // ---------------------------------------------------------------------------
+  const recentEvents = useMemo(() => {
+    const allEvents = []
+    incidents.forEach((inc) => {
+      if (Array.isArray(inc.events) && inc.events.length > 0) {
+        inc.events.forEach((evt) => {
+          allEvents.push({
+            ...evt,
+            ticket_id: inc.ticket_id || (inc.id ? `SV-${inc.id.slice(-4)}` : 'INC'),
+            timestamp: evt.created_at || evt.timestamp || inc.created_at,
+          })
+        })
+      } else {
+        allEvents.push({
+          id: `evt-${inc.id}-created`,
+          type: inc.is_sos ? 'SOS_CREATED' : 'NEW',
+          ticket_id: inc.ticket_id || (inc.id ? `SV-${inc.id.slice(-4)}` : 'INC'),
+          message:
+            inc.description ||
+            (inc.is_sos ? 'Emergency SOS Beacon active on grid' : 'Distress report filed'),
+          timestamp: inc.created_at,
+        })
+      }
+    })
+    return allEvents
+      .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+      .slice(0, 15)
+  }, [incidents])
+
   return (
-    <div className="space-y-3 pb-8 animate-fadeIn">
-      {/* Top Operational Command Header */}
+    <div className="space-y-3 pb-8 animate-fadeIn max-w-[1720px] mx-auto">
+      {/* ZONE 1 — COMMAND HEADER */}
       <AuthorityHeader
         dataProvenance={unifiedProvenance}
         connectivityStatus={connectivityStatus}
@@ -360,61 +388,46 @@ export const AuthorityCommandCenter = () => {
         onResetDemo={resetDemoState}
       />
 
-      {/* Level 1: Priority Alert Strip (Conditional for Critical threats) */}
-      {computedMetrics.critical > 0 && (
-        <div className="bg-salvus-critical-bg/50 border border-salvus-critical-border px-3.5 py-1.5 rounded-xl flex items-center justify-between gap-2 text-xs text-salvus-critical animate-pulse shadow-xs">
-          <div className="flex items-center gap-2 font-bold">
-            <span aria-hidden="true">🚨</span>
-            <span>
-              IMMEDIATE ATTENTION: {computedMetrics.critical} Critical Threat
-              {computedMetrics.critical > 1 ? 's' : ''} Active on Grid
-            </span>
-          </div>
-          <span className="text-[11px] font-medium hidden sm:inline text-salvus-critical/90">
-            Triage & Rapid Deployment Urged
-          </span>
+      {/* ZONE 2 — ATTENTION BAR */}
+      <AttentionBar
+        criticalCount={computedMetrics.critical}
+        sosCount={computedMetrics.activeSos}
+        triagePendingCount={computedMetrics.triagePending}
+        activeFilter={activeIncidentFilter}
+        onFilterChange={setActiveIncidentFilter}
+      />
+
+      {/* ZONE 3 — SITUATIONAL SNAPSHOT */}
+      <SituationalSnapshot
+        computedMetrics={computedMetrics}
+        activeRespondersCount={activeRespondersCount}
+        totalRespondersCount={liveResponders.length}
+        totalBedsAvailable={totalBedsAvailable}
+        liveHazardsCount={liveHazards.length}
+        incidentClustersCount={incidentClusters.length}
+        isRefreshing={isRefreshingSituation}
+        onRefresh={loadSituationIntelligence}
+      />
+
+      {/* ZONE 4 — PRIMARY COMMAND WORKSPACE (3-COLUMN TRIAD) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+        {/* Column 1: Action-Oriented Incidents Prioritization Queue */}
+        <div className="lg:col-span-4 xl:col-span-3">
+          <IncidentQueue
+            incidents={incidents}
+            filteredIncidents={filteredIncidents}
+            selectedIncident={selectedIncident}
+            activeIncidentFilter={activeIncidentFilter}
+            onFilterChange={setActiveIncidentFilter}
+            onSelectIncident={handleSelectIncident}
+            isLoading={isLoadingIncidents}
+            error={incidentError}
+            newlyArrivedId={newlyArrivedId}
+          />
         </div>
-      )}
 
-      {/* 4-KPI Operational Strip */}
-      <ErrorBoundary componentName="Operational Metrics" variant="card">
-        <OperationalMetrics
-          computedMetrics={computedMetrics}
-          activeRespondersCount={activeRespondersCount}
-          totalRespondersCount={liveResponders.length}
-          totalBedsAvailable={totalBedsAvailable}
-        />
-      </ErrorBoundary>
-
-      {/* Concise Situation Intelligence Briefing */}
-      <ErrorBoundary componentName="Situation Intelligence Briefing" variant="card">
-        <SituationBriefing
-          situationSummary={situationSummary}
-          liveHazards={liveHazards}
-          incidentClusters={incidentClusters}
-          computedMetrics={computedMetrics}
-          isRefreshingSituation={isRefreshingSituation}
-          onRefreshSituation={loadSituationIntelligence}
-        />
-      </ErrorBoundary>
-
-      {/* 3-Column Command Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
-        {/* Column 1: Action-Oriented Incidents Queue */}
-        <IncidentQueue
-          incidents={incidents}
-          filteredIncidents={filteredIncidents}
-          selectedIncident={selectedIncident}
-          activeIncidentFilter={activeIncidentFilter}
-          onFilterChange={setActiveIncidentFilter}
-          onSelectIncident={handleSelectIncident}
-          isLoading={isLoadingIncidents}
-          error={incidentError}
-          newlyArrivedId={newlyArrivedId}
-        />
-
-        {/* Column 2: Geospatial Tactical Map */}
-        <div className="lg:col-span-12 xl:col-span-8 flex flex-col space-y-2">
+        {/* Column 2: Geospatial Tactical Operating Surface */}
+        <div className="lg:col-span-8 xl:col-span-5 flex flex-col space-y-2">
           <ErrorBoundary componentName="Tactical Geospatial Map" variant="card">
             <AuthorityMap
               incidents={incidents}
@@ -433,145 +446,76 @@ export const AuthorityCommandCenter = () => {
           </ErrorBoundary>
         </div>
 
-        {/* Column 3: Command Inspector & Resource Hub */}
+        {/* Column 3: Incident Decision & Action Inspector */}
         <Card
-          aria-label="Command Inspector and Resource Hub"
+          aria-label="Command Decision Inspector"
           padding="sm"
-          className="lg:col-span-12 xl:col-span-4 flex flex-col space-y-3 min-h-[580px]"
+          className="lg:col-span-12 xl:col-span-4 flex flex-col h-[580px] sm:h-[620px] shadow-xs"
         >
-          {/* Tab Header */}
-          <div className="flex items-center justify-between border-b border-salvus-border pb-2">
-            <div role="tablist" aria-label="Command panel tabs" className="flex items-center gap-1">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={rightPanelTab === 'inspector'}
-                aria-controls="panel-inspector"
-                onClick={() => setRightPanelTab('inspector')}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  rightPanelTab === 'inspector'
-                    ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
-                    : 'text-salvus-text-secondary hover:text-salvus-text-primary'
-                }`}
-              >
-                Inspector
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={rightPanelTab === 'fleet'}
-                aria-controls="panel-fleet"
-                onClick={() => setRightPanelTab('fleet')}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  rightPanelTab === 'fleet'
-                    ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
-                    : 'text-salvus-text-secondary hover:text-salvus-text-primary'
-                }`}
-              >
-                Fleet ({liveResponders.length})
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={rightPanelTab === 'shelters'}
-                aria-controls="panel-shelters"
-                onClick={() => setRightPanelTab('shelters')}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  rightPanelTab === 'shelters'
-                    ? 'bg-salvus-text-primary text-salvus-bg shadow-xs'
-                    : 'text-salvus-text-secondary hover:text-salvus-text-primary'
-                }`}
-              >
-                Shelters ({liveShelters.length})
-              </button>
-            </div>
-
-            <Button
-              variant="quiet"
-              size="sm"
-              onClick={handleSyncAll}
-              className="text-xs"
-              title="Refresh all operational feeds"
-            >
-              ↻ Sync
-            </Button>
-          </div>
-
-          {/* TAB 1: Inspector */}
-          {rightPanelTab === 'inspector' && (
-            <div id="panel-inspector" role="tabpanel" aria-labelledby="tab-inspector">
-              <ErrorBoundary componentName="Incident Inspector" variant="card">
-                <IncidentInspector
-                  selectedIncident={selectedIncident}
-                  activeRoute={activeRoute}
-                  activeTargetResponder={activeTargetResponder}
-                  currentlyAssignedResponder={currentlyAssignedResponder}
-                  candidateShelters={candidateShelters}
-                  topRecommendedCandidate={topRecommendedCandidate}
-                  alternativeCandidates={alternativeCandidates}
-                  isLoadingCandidates={isLoadingCandidates}
-                  isAssigningUnit={isAssigningUnit}
-                  isVerifyingTriage={isVerifyingTriage}
-                  isAnalyzingTriage={isAnalyzingTriage}
-                  isUpdatingStatus={isUpdatingStatus}
-                  isSimulatingMovement={isSimulatingMovement}
-                  simulationSpeedMultiplier={simulationSpeedMultiplier}
-                  actionSuccessMessage={actionSuccessMessage}
-                  recommendationShift={recommendationShift}
-                  onDismissRecommendationShift={dismissRecommendationShift}
-                  onReviewReassign={(candidate) => setReassignModalCandidate(candidate)}
-                  onClearRoute={clearRoute}
-                  onSelectCandidateRoute={selectCandidateRoute}
-                  onRequestAssign={setAssignConfirmCandidate}
-                  onRefreshCandidates={refreshCandidates}
-                  onAdvanceLifecycle={handleAdvanceLifecycle}
-                  onToggleMovementSimulation={toggleMovementSimulation}
-                  onSetSimulationSpeed={setSimulationSpeedMultiplier}
-                  onVerifyTriage={(customData) => verifyTriage(selectedIncident, customData)}
-                  onAdjustTriage={(adjData) => adjustTriage(selectedIncident, adjData)}
-                  onReevaluateTriage={() => reevaluateTriage(selectedIncident)}
-                  onTransitionStatus={handleTransitionStatus}
-                />
-              </ErrorBoundary>
-            </div>
-          )}
-
-          {/* TAB 2: Fleet */}
-          {rightPanelTab === 'fleet' && (
-            <div id="panel-fleet" role="tabpanel" aria-labelledby="tab-fleet">
-              <ErrorBoundary componentName="Fleet Resource Panel" variant="card">
-                <ResponderPanel
-                  filteredFleet={filteredFleet}
-                  isLoadingFleet={isLoadingFleet}
-                  fleetCapabilityFilter={fleetCapabilityFilter}
-                  fleetStatusFilter={fleetStatusFilter}
-                  selectedResponderDetail={selectedResponderDetail}
-                  selectedIncident={selectedIncident}
-                  onCapabilityFilterChange={setFleetCapabilityFilter}
-                  onStatusFilterChange={setFleetStatusFilter}
-                  onSelectResponderDetail={setSelectedResponderDetail}
-                  onCloseResponderDetail={() => setSelectedResponderDetail(null)}
-                  onSelectCandidateRoute={selectCandidateRoute}
-                  onUpdateResponderStatus={updateResponderStatus}
-                />
-              </ErrorBoundary>
-            </div>
-          )}
-
-          {/* TAB 3: Shelters */}
-          {rightPanelTab === 'shelters' && (
-            <div id="panel-shelters" role="tabpanel" aria-labelledby="tab-shelters">
-              <ErrorBoundary componentName="Shelters & Evacuation Panel" variant="card">
-                <ShelterPanel
-                  liveShelters={liveShelters}
-                  liveHazards={liveHazards}
-                  onAdjustBeds={adjustBeds}
-                />
-              </ErrorBoundary>
-            </div>
-          )}
+          <ErrorBoundary componentName="Incident Inspector" variant="card">
+            <IncidentInspector
+              selectedIncident={selectedIncident}
+              activeRoute={activeRoute}
+              activeTargetResponder={activeTargetResponder}
+              currentlyAssignedResponder={currentlyAssignedResponder}
+              candidateShelters={candidateShelters}
+              topRecommendedCandidate={topRecommendedCandidate}
+              alternativeCandidates={alternativeCandidates}
+              isLoadingCandidates={isLoadingCandidates}
+              isAssigningUnit={isAssigningUnit}
+              isVerifyingTriage={isVerifyingTriage}
+              isAnalyzingTriage={isAnalyzingTriage}
+              isUpdatingStatus={isUpdatingStatus}
+              isSimulatingMovement={isSimulatingMovement}
+              simulationSpeedMultiplier={simulationSpeedMultiplier}
+              actionSuccessMessage={actionSuccessMessage}
+              recommendationShift={recommendationShift}
+              onDismissRecommendationShift={dismissRecommendationShift}
+              onReviewReassign={(candidate) => setReassignModalCandidate(candidate)}
+              onClearRoute={clearRoute}
+              onSelectCandidateRoute={selectCandidateRoute}
+              onRequestAssign={setAssignConfirmCandidate}
+              onRefreshCandidates={refreshCandidates}
+              onAdvanceLifecycle={handleAdvanceLifecycle}
+              onToggleMovementSimulation={toggleMovementSimulation}
+              onSetSimulationSpeed={setSimulationSpeedMultiplier}
+              onVerifyTriage={(customData) => verifyTriage(selectedIncident, customData)}
+              onAdjustTriage={(adjData) => adjustTriage(selectedIncident, adjData)}
+              onReevaluateTriage={() => reevaluateTriage(selectedIncident)}
+              onTransitionStatus={handleTransitionStatus}
+            />
+          </ErrorBoundary>
         </Card>
       </div>
+
+      {/* ZONE 5 — SUPPORTING OPERATIONS (FLEET, SHELTERS, HAZARDS, BRIEFING) */}
+      <SupportingOperations
+        filteredFleet={filteredFleet}
+        liveResponders={liveResponders}
+        isLoadingFleet={isLoadingFleet}
+        fleetCapabilityFilter={fleetCapabilityFilter}
+        fleetStatusFilter={fleetStatusFilter}
+        selectedResponderDetail={selectedResponderDetail}
+        selectedIncident={selectedIncident}
+        onCapabilityFilterChange={setFleetCapabilityFilter}
+        onStatusFilterChange={setFleetStatusFilter}
+        onSelectResponderDetail={setSelectedResponderDetail}
+        onCloseResponderDetail={() => setSelectedResponderDetail(null)}
+        onSelectCandidateRoute={selectCandidateRoute}
+        onUpdateResponderStatus={updateResponderStatus}
+        liveShelters={liveShelters}
+        liveHazards={liveHazards}
+        incidentClusters={incidentClusters}
+        onAdjustBeds={adjustBeds}
+        situationSummary={situationSummary}
+        computedMetrics={computedMetrics}
+        isRefreshingSituation={isRefreshingSituation}
+        onRefreshSituation={loadSituationIntelligence}
+        onSyncAll={handleSyncAll}
+      />
+
+      {/* ZONE 6 — LIVE OPERATIONAL EVENT ACTIVITY STREAM */}
+      <ActivityFeed events={recentEvents} />
 
       {/* Assignment Confirmation Safeguard Modal */}
       <AssignmentConfirmModal
@@ -583,7 +527,7 @@ export const AuthorityCommandCenter = () => {
         onConfirm={handleConfirmAssignment}
       />
 
-      {/* Dynamic Reassignment Safeguard Modal (Pass 4C) */}
+      {/* Dynamic Reassignment Safeguard Modal */}
       <AssignmentConfirmModal
         isOpen={Boolean(reassignModalCandidate)}
         candidate={reassignModalCandidate}
