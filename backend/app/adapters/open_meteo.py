@@ -7,6 +7,7 @@ Enforces strict, non-alarmist thresholds for hazard alerts.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import UTC, datetime, timedelta
@@ -24,6 +25,7 @@ from app.models import (
     NormalizedAlert,
     SourceStatus,
     SourceType,
+    ThunderstormRisk,
     WeatherCondition,
     WeatherIntelligenceResponse,
 )
@@ -97,6 +99,38 @@ def generate_weather_summary(
     return "Conditions look calm and normal around you."
 
 
+def evaluate_thunderstorm_risk(
+    code: int,
+    cape: float | None = None,
+    precip_prob: int = 0,
+    wind_gusts: float = 0.0,
+) -> tuple[ThunderstormRisk, bool]:
+    """Derive defensible thunderstorm risk classification from WMO code and convective metrics.
+
+    Returns:
+        (ThunderstormRisk, is_derived)
+    """
+    # 1. Observed / Active thunderstorm in progress (WMO 96, 99)
+    if code in (96, 99):
+        return ThunderstormRisk.ACTIVE, True
+
+    # 2. Thunderstorm observed or highly likely (WMO 95)
+    if code == 95:
+        return ThunderstormRisk.LIKELY, True
+
+    # 3. High convective energy (CAPE > 1500 J/kg) with strong precipitation probability
+    if cape is not None and cape >= 1500.0 and precip_prob >= 50:
+        return ThunderstormRisk.LIKELY, True
+
+    # 4. Moderate convective energy or high gusts with elevated rain probability
+    if (cape is not None and cape >= 800.0 and precip_prob >= 40) or (
+        wind_gusts >= 60.0 and precip_prob >= 70
+    ):
+        return ThunderstormRisk.POSSIBLE, True
+
+    return ThunderstormRisk.NONE, True
+
+
 class OpenMeteoAdapter(BaseAlertAdapter):
     """Adapter for Open-Meteo weather and environmental context telemetry."""
 
@@ -106,6 +140,12 @@ class OpenMeteoAdapter(BaseAlertAdapter):
             source_name="Open-Meteo Weather Service",
             source_type=SourceType.WEATHER_SERVICE,
             cache_ttl_seconds=cache_ttl_seconds,
+            endpoint_url=api_url,
+            limitations=(
+                "Aggregates global numerical weather models (ECMWF, GFS, DWD). "
+                "Rate limit ~10,000 req/day."
+            ),
+            initial_status=SourceStatus.AVAILABLE,
         )
         self.api_url = api_url
         # Grid cache for alerts: {(round(lat, 2), round(lon, 2)): (alerts, expire_datetime)}
@@ -128,7 +168,7 @@ class OpenMeteoAdapter(BaseAlertAdapter):
         target_lon: float,
         client: httpx.AsyncClient | None = None,
     ) -> tuple[dict[str, Any] | None, float, str | None]:
-        """Query Open-Meteo API for complete environmental, hourly, and daily metrics."""
+        """Query Open-Meteo API for complete environmental, hourly, and daily metrics with retry."""
         start_time = time.perf_counter()
         params = {
             "latitude": target_lat,
@@ -136,11 +176,11 @@ class OpenMeteoAdapter(BaseAlertAdapter):
             "current": (
                 "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,"
                 "rain,showers,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,"
-                "wind_direction_10m,uv_index,visibility,is_day"
+                "wind_direction_10m,uv_index,visibility,is_day,cape"
             ),
             "hourly": (
-                "temperature_2m,precipitation_probability,precipitation,weather_code,"
-                "wind_speed_10m,relative_humidity_2m,uv_index"
+                "temperature_2m,precipitation_probability,precipitation,rain,showers,"
+                "weather_code,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,uv_index,cape"
             ),
             "daily": (
                 "sunrise,sunset,temperature_2m_max,temperature_2m_min,"
@@ -150,27 +190,39 @@ class OpenMeteoAdapter(BaseAlertAdapter):
             "timezone": "auto",
         }
 
-        try:
-            if client is not None:
-                response = await client.get(
-                    self.api_url, params=params, timeout=DEFAULT_TIMEOUT_SECONDS
+        # Bounded retry with backoff (up to 2 attempts)
+        max_attempts = 2
+        last_error = None
+
+        for attempt in range(max_attempts):
+            try:
+                if client is not None:
+                    response = await client.get(
+                        self.api_url, params=params, timeout=DEFAULT_TIMEOUT_SECONDS
+                    )
+                else:
+                    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SECONDS) as http:
+                        response = await http.get(self.api_url, params=params)
+
+                latency_ms = (time.perf_counter() - start_time) * 1000.0
+
+                if response.status_code == 200:
+                    return response.json(), latency_ms, None
+
+                logger.warning(
+                    f"Open-Meteo API attempt {attempt + 1} returned HTTP {response.status_code}"
                 )
-            else:
-                async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SECONDS) as http:
-                    response = await http.get(self.api_url, params=params)
+                last_error = f"HTTP {response.status_code}"
 
-            latency_ms = (time.perf_counter() - start_time) * 1000.0
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Open-Meteo attempt {attempt + 1} failed: {e}")
 
-            if response.status_code == 200:
-                return response.json(), latency_ms, None
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(0.15 * (attempt + 1))
 
-            logger.warning(f"Open-Meteo API returned HTTP {response.status_code}")
-            return None, latency_ms, f"HTTP {response.status_code}"
-
-        except Exception as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000.0
-            logger.warning(f"Failed to fetch Open-Meteo telemetry: {e}")
-            return None, latency_ms, str(e)
+        latency_ms = (time.perf_counter() - start_time) * 1000.0
+        return None, latency_ms, last_error
 
     async def fetch_weather_intelligence(
         self,
@@ -212,15 +264,21 @@ class OpenMeteoAdapter(BaseAlertAdapter):
                 condition="Telemetry Reconnecting",
                 weather_code=0,
                 precipitation=0.0,
+                rain=0.0,
+                showers=0.0,
                 precipitation_probability=0,
                 humidity=50,
                 wind_speed=5.0,
                 wind_direction=0.0,
                 wind_gusts=5.0,
+                wind_gust=5.0,
                 visibility_km=10.0,
                 uv_index=0.0,
                 is_day=1,
+                thunderstorm_risk=ThunderstormRisk.NONE,
+                is_thunderstorm_derived=True,
                 observed_at=now_iso,
+                forecast_updated_at=now_iso,
                 source="Open-Meteo Weather Service",
                 provenance=AlertProvenance.FALLBACK,
                 summary="Weather feeds are temporarily reconnecting. Standby for live updates.",
@@ -255,7 +313,9 @@ class OpenMeteoAdapter(BaseAlertAdapter):
         )
         weather_code = int(current.get("weather_code") or 0)
         is_day = int(current.get("is_day") if current.get("is_day") is not None else 1)
-        precip = float(current.get("precipitation") or current.get("rain") or 0.0)
+        precip = float(current.get("precipitation") or 0.0)
+        rain_val = float(current.get("rain") or 0.0)
+        showers_val = float(current.get("showers") or 0.0)
         humidity = int(round(float(current.get("relative_humidity_2m") or 50.0)))
         wind_speed = float(current.get("wind_speed_10m") or 0.0)
         wind_gusts = float(current.get("wind_gusts_10m") or wind_speed)
@@ -263,6 +323,7 @@ class OpenMeteoAdapter(BaseAlertAdapter):
         uv_index = float(current.get("uv_index") or 0.0)
         vis_meters = float(current.get("visibility") or 10000.0)
         vis_km = round(vis_meters / 1000.0, 1)
+        cape_val = float(current["cape"]) if current.get("cape") is not None else None
 
         condition_text = wmo_code_to_condition(weather_code, is_day)
 
@@ -363,23 +424,38 @@ class OpenMeteoAdapter(BaseAlertAdapter):
             visibility_km=vis_km,
         )
 
+        ts_risk, is_derived = evaluate_thunderstorm_risk(
+            code=weather_code,
+            cape=cape_val,
+            precip_prob=current_precip_prob,
+            wind_gusts=wind_gusts,
+        )
+
         weather_condition = WeatherCondition(
             temperature=round(temp, 1),
             feels_like=round(feels_like, 1),
             condition=condition_text,
             weather_code=weather_code,
             precipitation=round(precip, 1),
+            rain=round(rain_val, 1),
+            showers=round(showers_val, 1),
             precipitation_probability=current_precip_prob,
             humidity=humidity,
             wind_speed=round(wind_speed, 1),
             wind_direction=round(wind_dir, 1),
             wind_gusts=round(wind_gusts, 1),
+            wind_gust=round(wind_gusts, 1),
+            thunderstorm_risk=ts_risk,
+            is_thunderstorm_derived=is_derived,
+            cape=cape_val,
             visibility_km=vis_km,
+            visibility=vis_meters,
             uv_index=round(uv_index, 1),
             is_day=is_day,
             sunrise=daily_summary.sunrise if daily_summary else None,
             sunset=daily_summary.sunset if daily_summary else None,
             observed_at=now_iso,
+            forecast_updated_at=now_iso,
             source="Open-Meteo Weather Service",
             provenance=AlertProvenance.LIVE,
             summary=summary_text,

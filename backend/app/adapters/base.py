@@ -1,4 +1,4 @@
-"""Base Abstract Adapter for External Disaster Alert Providers (Phase 2)."""
+"""Base Abstract Adapter for External Disaster Alert Providers (Phase 1 & Phase 2)."""
 
 from __future__ import annotations
 
@@ -25,22 +25,29 @@ class BaseAlertAdapter(ABC):
         source_name: str,
         source_type: SourceType,
         cache_ttl_seconds: int = 300,
+        endpoint_url: str | None = None,
+        limitations: str | None = None,
+        initial_status: SourceStatus = SourceStatus.AVAILABLE,
     ):
         self.source_id = source_id
         self.source_name = source_name
         self.source_type = source_type
         self.cache_ttl_seconds = cache_ttl_seconds
+        self.endpoint_url = endpoint_url
+        self.limitations = limitations
 
         self._health = SourceHealthReport(
             source_id=source_id,
             source_name=source_name,
             source_type=source_type,
-            status=SourceStatus.AVAILABLE,
+            status=initial_status,
             last_fetched_at=None,
             last_successful_at=None,
             last_error=None,
             latency_ms=None,
             active_alerts_count=0,
+            endpoint_url=endpoint_url,
+            limitations=limitations,
         )
 
     def get_health(self) -> SourceHealthReport:
@@ -49,7 +56,11 @@ class BaseAlertAdapter(ABC):
 
     def clear_cache(self) -> None:
         """Reset cached state and restore healthy status."""
-        self._health.status = SourceStatus.AVAILABLE
+        self._health.status = (
+            SourceStatus.AVAILABLE
+            if self.source_id not in ("osdma_satark", "odisha_flood")
+            else SourceStatus.UNAVAILABLE
+        )
         self._health.last_error = None
 
     def update_health(

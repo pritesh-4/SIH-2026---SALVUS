@@ -8,12 +8,16 @@ Endpoints:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Query
 
 from app.db import get_database
 from app.models import (
+    AlertStatus,
     AreaSafetyResponse,
     HazardListResponse,
+    HazardSeverity,
     IncidentClusterListResponse,
     SituationSummaryResponse,
     WeatherIntelligenceResponse,
@@ -24,6 +28,7 @@ from app.services import (
     incident_service,
     situation_service,
 )
+from app.services.alert_context_service import generate_deterministic_briefing
 
 router = APIRouter(tags=["disaster_intelligence"])
 
@@ -49,16 +54,52 @@ async def list_hazards(
     ),
 ):
     """Retrieve normalized active disaster signals with optional location filtering."""
+    now_iso = datetime.now(UTC).isoformat()
     hazards = await hazard_service.get_active_hazards(
         lat=lat,
         lon=lon,
         max_distance_km=max_distance_km,
         include_simulation=include_simulation,
     )
+    data_quality = hazard_service.compute_data_quality()
+
+    # Weather telemetry if coordinates are provided
+    weather_cond = None
+    if lat is not None and lon is not None:
+        try:
+            weather_resp = await hazard_service.get_weather_intelligence(lat=lat, lon=lon)
+            weather_cond = weather_resp.current
+        except Exception:
+            pass
+
+    active_warnings = sum(
+        1 for h in hazards if h.severity in (HazardSeverity.CRITICAL, HazardSeverity.WARNING)
+    )
+    upcoming_risks = sum(
+        1
+        for h in hazards
+        if h.severity in (HazardSeverity.WATCH, HazardSeverity.ADVISORY)
+        or h.status == AlertStatus.UPCOMING
+    )
+
+    summary_text = generate_deterministic_briefing(
+        active_alerts=hazards,
+        weather=weather_cond,
+        data_quality=data_quality,
+    )
+
     return HazardListResponse(
         data=hazards,
         count=len(hazards),
-        source_summary=("SACHET NDMA, GDACS, USGS Earthquakes, Open-Meteo Weather Service"),
+        data_quality=data_quality,
+        current_conditions_summary=summary_text,
+        active_local_warnings_count=active_warnings,
+        upcoming_risks_count=upcoming_risks,
+        last_updated=now_iso,
+        source_summary=(
+            "Open-Meteo Weather, IMD Warnings, OSDMA SATARK, Odisha Flood Authority, "
+            "USGS Earthquakes, SACHET NDMA, GDACS"
+        ),
         sources=hazard_service.get_source_statuses(),
         sources_health=hazard_service.get_source_health_reports(),
     )

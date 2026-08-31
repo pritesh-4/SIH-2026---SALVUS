@@ -3,6 +3,7 @@ import { useLocation } from '../hooks/useLocation'
 import { AlertContext } from './alertContextDef'
 import { fetchHazards, fetchRecommendedShelters, fetchWeatherIntelligence } from '../services/api'
 import { fetchAreaSafetyStatus } from '../services/locationIntelligenceService'
+import { getSocket } from '../lib/realtime/socket'
 import {
   normalizeAlert,
   deduplicateAlertsList,
@@ -331,6 +332,67 @@ export const AlertProvider = ({ children }) => {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleWindowFocus)
+    }
+  }, [refreshAlerts])
+
+  // Realtime Socket.IO subscriptions for verified disaster alert lifecycle
+  useEffect(() => {
+    let socket = null
+    try {
+      socket = getSocket()
+    } catch {
+      return
+    }
+
+    if (!socket) return
+
+    const handleAlertCreated = (data) => {
+      if (!data || !data.id) return
+      setRawHazards((prev) => {
+        const exists = prev.some((a) => a.id === data.id)
+        if (exists) {
+          return prev.map((a) => (a.id === data.id ? { ...a, ...data } : a))
+        }
+        return [data, ...prev]
+      })
+      setLastFetchedAt(new Date().toISOString())
+    }
+
+    const handleAlertUpdated = (data) => {
+      if (!data || !data.id) return
+      setRawHazards((prev) => prev.map((a) => (a.id === data.id ? { ...a, ...data } : a)))
+      setLastFetchedAt(new Date().toISOString())
+    }
+
+    const handleAlertExpired = (data) => {
+      const expiredId = data?.id || data?.alert_id
+      if (!expiredId) return
+      setRawHazards((prev) => prev.filter((a) => a.id !== expiredId))
+      setLastFetchedAt(new Date().toISOString())
+    }
+
+    const handleRefreshRequested = () => {
+      refreshAlerts(true)
+    }
+
+    socket.on('hazard.alert_created', handleAlertCreated)
+    socket.on('hazard:alert_created', handleAlertCreated)
+    socket.on('hazard.alert_updated', handleAlertUpdated)
+    socket.on('hazard:alert_updated', handleAlertUpdated)
+    socket.on('hazard.alert_expired', handleAlertExpired)
+    socket.on('hazard:alert_expired', handleAlertExpired)
+    socket.on('hazard.refresh_requested', handleRefreshRequested)
+    socket.on('hazard:refresh_requested', handleRefreshRequested)
+
+    return () => {
+      socket.off('hazard.alert_created', handleAlertCreated)
+      socket.off('hazard:alert_created', handleAlertCreated)
+      socket.off('hazard.alert_updated', handleAlertUpdated)
+      socket.off('hazard:alert_updated', handleAlertUpdated)
+      socket.off('hazard.alert_expired', handleAlertExpired)
+      socket.off('hazard:alert_expired', handleAlertExpired)
+      socket.off('hazard.refresh_requested', handleRefreshRequested)
+      socket.off('hazard:refresh_requested', handleRefreshRequested)
     }
   }, [refreshAlerts])
 

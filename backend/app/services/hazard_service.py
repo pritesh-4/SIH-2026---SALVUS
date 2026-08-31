@@ -22,7 +22,10 @@ import httpx
 
 from app.adapters import (
     GDACSAdapter,
+    IMDAdapter,
+    OdishaFloodAdapter,
     OpenMeteoAdapter,
+    OSDMAAdapter,
     SachetAdapter,
     USGSAdapter,
 )
@@ -30,6 +33,7 @@ from app.models import (
     AlertProvenance,
     AreaSafetyLevel,
     AreaSafetyResponse,
+    DataQualityState,
     HazardSeverity,
     HazardType,
     NormalizedAlert,
@@ -44,11 +48,22 @@ from app.services.geo_service import (
     format_relative_time,
     haversine_distance_km,
 )
+from app.services.risk_engine import (
+    build_local_context_label,
+    classify_signal_type,
+    consolidate_multi_source_alerts,
+    generate_actionable_guidance,
+    get_source_authority_tier,
+    rank_alerts_by_priority,
+)
 
 logger = logging.getLogger("salvus.hazards")
 
-# Adapter instances
+# Provider Adapter instances
 sachet_adapter = SachetAdapter()
+imd_adapter = IMDAdapter()
+osdma_adapter = OSDMAAdapter()
+odisha_flood_adapter = OdishaFloodAdapter()
 gdacs_adapter = GDACSAdapter()
 usgs_adapter = USGSAdapter()
 open_meteo_adapter = OpenMeteoAdapter()
@@ -62,6 +77,9 @@ def clear_hazard_cache() -> None:
     global _hazard_grid_cache
     _hazard_grid_cache.clear()
     sachet_adapter.clear_cache()
+    imd_adapter.clear_cache()
+    osdma_adapter.clear_cache()
+    odisha_flood_adapter.clear_cache()
     gdacs_adapter.clear_cache()
     usgs_adapter.clear_cache()
     open_meteo_adapter.clear_cache()
@@ -78,6 +96,9 @@ def get_source_statuses() -> dict[str, SourceStatus]:
     """Retrieve operational status dictionary for all external alert sources."""
     return {
         sachet_adapter.source_id: sachet_adapter.get_health().status,
+        imd_adapter.source_id: imd_adapter.get_health().status,
+        osdma_adapter.source_id: osdma_adapter.get_health().status,
+        odisha_flood_adapter.source_id: odisha_flood_adapter.get_health().status,
         gdacs_adapter.source_id: gdacs_adapter.get_health().status,
         usgs_adapter.source_id: usgs_adapter.get_health().status,
         open_meteo_adapter.source_id: open_meteo_adapter.get_health().status,
@@ -88,6 +109,9 @@ def get_source_health_reports() -> list[SourceHealthReport]:
     """Retrieve comprehensive source health telemetry reports across all adapters."""
     return [
         sachet_adapter.get_health(),
+        imd_adapter.get_health(),
+        osdma_adapter.get_health(),
+        odisha_flood_adapter.get_health(),
         gdacs_adapter.get_health(),
         usgs_adapter.get_health(),
         open_meteo_adapter.get_health(),
@@ -257,6 +281,30 @@ def get_simulated_hazards(lat: float = 22.5726, lon: float = 88.3639) -> list[No
     ]
 
 
+def compute_data_quality() -> DataQualityState:
+    """Compute overall DataQualityState based on active provider adapter health telemetry."""
+    health_reports = get_source_health_reports()
+    core_reports = [
+        r
+        for r in health_reports
+        if r.source_id in ("sachet_ndma", "imd_india", "gdacs", "usgs_earthquake", "open_meteo")
+    ]
+    if not core_reports:
+        return DataQualityState.LIVE
+
+    available_count = sum(1 for r in core_reports if r.status == SourceStatus.AVAILABLE)
+    stale_count = sum(1 for r in core_reports if r.status == SourceStatus.STALE)
+    total_active = len(core_reports)
+
+    if available_count == total_active:
+        return DataQualityState.LIVE
+    if available_count > 0:
+        return DataQualityState.PARTIAL
+    if stale_count > 0:
+        return DataQualityState.STALE
+    return DataQualityState.UNAVAILABLE
+
+
 async def get_active_hazards(
     lat: float | None = None,
     lon: float | None = None,
@@ -271,9 +319,12 @@ async def get_active_hazards(
     now = datetime.now(UTC)
     now_iso = now.isoformat()
 
-    # Ingest in parallel with fault isolation across all 4 adapters
+    # Ingest in parallel with fault isolation across all 7 adapters
     results = await asyncio.gather(
         sachet_adapter.fetch_alerts(lat=lat, lon=lon, client=client),
+        imd_adapter.fetch_alerts(lat=lat, lon=lon, client=client),
+        osdma_adapter.fetch_alerts(lat=lat, lon=lon, client=client),
+        odisha_flood_adapter.fetch_alerts(lat=lat, lon=lon, client=client),
         gdacs_adapter.fetch_alerts(lat=lat, lon=lon, client=client),
         usgs_adapter.fetch_alerts(lat=lat, lon=lon, client=client),
         open_meteo_adapter.fetch_alerts(lat=lat, lon=lon, client=client),
@@ -288,23 +339,41 @@ async def get_active_hazards(
     elif isinstance(results[0], Exception):
         logger.warning(f"SACHET adapter execution error: {results[0]}")
 
-    # Check GDACS
+    # Check IMD
     if isinstance(results[1], tuple):
         raw_alerts.extend(results[1][0])
     elif isinstance(results[1], Exception):
-        logger.warning(f"GDACS adapter execution error: {results[1]}")
+        logger.warning(f"IMD adapter execution error: {results[1]}")
 
-    # Check USGS
+    # Check OSDMA
     if isinstance(results[2], tuple):
         raw_alerts.extend(results[2][0])
     elif isinstance(results[2], Exception):
-        logger.warning(f"USGS adapter execution error: {results[2]}")
+        logger.warning(f"OSDMA adapter execution error: {results[2]}")
 
-    # Check Open-Meteo
+    # Check Odisha Flood
     if isinstance(results[3], tuple):
         raw_alerts.extend(results[3][0])
     elif isinstance(results[3], Exception):
-        logger.warning(f"Open-Meteo adapter execution error: {results[3]}")
+        logger.warning(f"Odisha Flood adapter execution error: {results[3]}")
+
+    # Check GDACS
+    if isinstance(results[4], tuple):
+        raw_alerts.extend(results[4][0])
+    elif isinstance(results[4], Exception):
+        logger.warning(f"GDACS adapter execution error: {results[4]}")
+
+    # Check USGS
+    if isinstance(results[5], tuple):
+        raw_alerts.extend(results[5][0])
+    elif isinstance(results[5], Exception):
+        logger.warning(f"USGS adapter execution error: {results[5]}")
+
+    # Check Open-Meteo
+    if isinstance(results[6], tuple):
+        raw_alerts.extend(results[6][0])
+    elif isinstance(results[6], Exception):
+        logger.warning(f"Open-Meteo adapter execution error: {results[6]}")
 
     # Also check legacy cache if populated in tests
     if lat is not None and lon is not None:
@@ -318,8 +387,20 @@ async def get_active_hazards(
             if now < expire_dt:
                 raw_alerts.extend(cached_list)
 
-    # Deduplicate across all active feeds
-    authentic_alerts = deduplicate_alerts(raw_alerts)
+    # Standardize signal types and authority tiers on ingested alerts
+    prepared_raw: list[NormalizedAlert] = []
+    for a in raw_alerts:
+        auth_tier = get_source_authority_tier(a.source, a.source_type)
+        sig_type = a.signal_type or classify_signal_type(
+            hazard_type=a.hazard_type,
+            raw_type=a.raw_type,
+        )
+        if a.authority_tier != auth_tier or a.signal_type != sig_type:
+            a = a.model_copy(update={"authority_tier": auth_tier, "signal_type": sig_type})
+        prepared_raw.append(a)
+
+    # Multi-Source Consensus Consolidation & Deduplication (Phase 2)
+    authentic_alerts = consolidate_multi_source_alerts(prepared_raw)
 
     # Strict isolation: Only append simulation alerts if explicitly requested
     all_hazards: list[NormalizedAlert] = list(authentic_alerts)
@@ -337,7 +418,7 @@ async def get_active_hazards(
             continue
         active_hazards.append(h)
 
-    # Geo-Relevance Enrichment & Spatial Filtering (Phase 3)
+    # Geo-Relevance Enrichment & Spatial Filtering (Phase 3 & 2)
     enriched_hazards: list[NormalizedAlert] = []
     for hz in active_hazards:
         rel_level, dist_km, is_inside = evaluate_alert_relevance(hz, lat, lon)
@@ -351,53 +432,52 @@ async def get_active_hazards(
                 if rel_level != RelevanceLevel.CRITICAL:
                     continue
 
+        local_context, direction_label = build_local_context_label(
+            user_lat=lat,
+            user_lon=lon,
+            alert_lat=hz.latitude,
+            alert_lon=hz.longitude,
+            distance_km=dist_km,
+            is_inside=is_inside,
+            affected_area=hz.affected_area,
+        )
+
+        sig_type = hz.signal_type or classify_signal_type(hz.hazard_type, hz.raw_type)
+        why, what_do, what_avoid = generate_actionable_guidance(
+            signal_type=sig_type,
+            severity=hz.severity,
+            affected_area=hz.affected_area,
+            is_derived=hz.is_derived,
+        )
+
         hz_dict = hz.model_dump()
         hz_dict["relevance_level"] = rel_level
         hz_dict["distance_km"] = dist_km
         hz_dict["distance_formatted"] = format_distance(dist_km) if dist_km is not None else None
+        hz_dict["direction_label"] = direction_label
+        hz_dict["local_context"] = local_context
         hz_dict["is_within_affected_area"] = is_inside
         hz_dict["is_inside_geometry"] = is_inside
         hz_dict["relative_time_label"] = rel_time
+        hz_dict["signal_type"] = sig_type
+        if not hz_dict.get("why_it_matters"):
+            hz_dict["why_it_matters"] = why
+        if not hz_dict.get("what_to_do"):
+            hz_dict["what_to_do"] = what_do
+        if not hz_dict.get("what_to_avoid"):
+            hz_dict["what_to_avoid"] = what_avoid
         if not hz_dict.get("sources_matched"):
             hz_dict["sources_matched"] = [hz.source]
 
         enriched_hazards.append(NormalizedAlert.model_validate(hz_dict))
 
-    # Priority Sorting (Phase 3):
-    # 1. Immediate life safety (Inside affected area + CRITICAL severity) -> Rank 0
-    # 2. Relevance Level (CRITICAL -> 0, HIGH -> 1, MODERATE -> 2, LOW -> 3)
-    # 3. Hazard Severity (CRITICAL -> 0, WARNING -> 1, WATCH -> 2, ADVISORY -> 3, INFO -> 4)
-    # 4. Distance (closest first)
-    # 5. Recency (descending observed_at)
-    relevance_rank = {
-        RelevanceLevel.CRITICAL: 0,
-        RelevanceLevel.HIGH: 1,
-        RelevanceLevel.MODERATE: 2,
-        RelevanceLevel.LOW: 3,
-        RelevanceLevel.IRRELEVANT: 4,
-    }
-    severity_rank = {
-        HazardSeverity.CRITICAL: 0,
-        HazardSeverity.WARNING: 1,
-        HazardSeverity.WATCH: 2,
-        HazardSeverity.ADVISORY: 3,
-        HazardSeverity.INFO: 4,
-    }
-
-    def sort_key(alert: NormalizedAlert):
-        life_safety = (
-            0
-            if (alert.is_within_affected_area and alert.severity == HazardSeverity.CRITICAL)
-            else 1
-        )
-        rel_score = relevance_rank.get(alert.relevance_level or RelevanceLevel.LOW, 3)
-        sev_score = severity_rank.get(alert.severity, 4)
-        dist_score = alert.distance_km if alert.distance_km is not None else 9999.0
-        time_score = alert.observed_at or ""
-        return (life_safety, rel_score, sev_score, dist_score, time_score)
-
-    enriched_hazards.sort(key=sort_key)
-    return enriched_hazards
+    # Priority Ranking (Phase 2):
+    # 1. Critical official warnings
+    # 2. High-risk local warnings
+    # 3. Moderate advisories
+    # 4. Forecast risks
+    # 5. Normal weather context
+    return rank_alerts_by_priority(enriched_hazards)
 
 
 async def evaluate_area_safety(

@@ -1,6 +1,6 @@
 import { Badge } from '../ui/Badge'
 import { formatRelativeFreshness } from '../../services/locationIntelligenceService'
-import { getWeatherIcon, getUvLabel } from '../../lib/weather'
+import { getWeatherIcon } from '../../lib/weather'
 
 /**
  * LocalConditionsBar Component
@@ -13,6 +13,7 @@ export const LocalConditionsBar = ({
   location,
   isLoading = false,
   isLocationOff = false,
+  activeWarningsCount = 0,
   onRequestLocation,
   onSelectLandmark,
   landmarks = [],
@@ -156,25 +157,25 @@ export const LocalConditionsBar = ({
       ) : (
         /* Primary Metrics Cluster: Responsive Horizontal Grid / Scrolling Row */
         <div className="p-4 sm:p-5">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4 items-stretch">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-3.5 items-stretch">
             {/* 1. Primary Temperature & Condition */}
-            <div className="col-span-2 sm:col-span-1 md:col-span-2 p-3 rounded-xl bg-salvus-surface border border-salvus-border/80 flex items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-3xl sm:text-4xl shrink-0" aria-hidden="true">
+            <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border/80 flex items-center justify-between gap-2.5 shadow-xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="text-2xl sm:text-3xl shrink-0" aria-hidden="true">
                   {getWeatherIcon(current.condition, current.weather_code, current.is_day)}
                 </span>
                 <div className="min-w-0">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-2xl sm:text-3xl font-extrabold text-salvus-text-primary tracking-tight">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl sm:text-2xl font-extrabold text-salvus-text-primary tracking-tight">
                       {Math.round(current.temperature)}°C
                     </span>
                     {current.feels_like !== undefined && (
-                      <span className="text-xs font-medium text-salvus-text-muted">
+                      <span className="text-[11px] font-medium text-salvus-text-muted">
                         Feels {Math.round(current.feels_like)}°
                       </span>
                     )}
                   </div>
-                  <span className="text-xs font-bold text-salvus-text-secondary block truncate mt-0.5">
+                  <span className="text-[11px] font-bold text-salvus-text-secondary block truncate mt-0.5">
                     {current.condition}
                   </span>
                 </div>
@@ -183,37 +184,37 @@ export const LocalConditionsBar = ({
 
             {/* 2. Precipitation / Rain */}
             <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border/80 flex flex-col justify-between shadow-xs">
-              <div className="flex items-center justify-between text-salvus-text-muted text-[11px] font-semibold uppercase tracking-wider">
+              <div className="flex items-center justify-between text-salvus-text-muted text-[10px] font-bold uppercase tracking-wider">
                 <span>Rain / Precip</span>
                 <span>💧</span>
               </div>
-              <div className="mt-1.5">
+              <div className="mt-1">
                 <span className="text-base sm:text-lg font-bold text-salvus-text-primary block">
                   {current.precipitation_probability > 0
                     ? `${current.precipitation_probability}%`
                     : current.precipitation > 0
                       ? `${current.precipitation} mm`
-                      : '0% Rain'}
+                      : '0%'}
                 </span>
-                <span className="text-[11px] text-salvus-text-muted block truncate mt-0.5">
+                <span className="text-[10px] text-salvus-text-muted block truncate mt-0.5">
                   {current.precipitation > 0
                     ? `${current.precipitation} mm/h rate`
-                    : 'No active rain'}
+                    : 'No rain active'}
                 </span>
               </div>
             </div>
 
             {/* 3. Wind */}
             <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border/80 flex flex-col justify-between shadow-xs">
-              <div className="flex items-center justify-between text-salvus-text-muted text-[11px] font-semibold uppercase tracking-wider">
-                <span>Wind</span>
+              <div className="flex items-center justify-between text-salvus-text-muted text-[10px] font-bold uppercase tracking-wider">
+                <span>Wind Speed</span>
                 <span>💨</span>
               </div>
-              <div className="mt-1.5">
+              <div className="mt-1">
                 <span className="text-base sm:text-lg font-bold text-salvus-text-primary block">
                   {Math.round(current.wind_speed)} km/h
                 </span>
-                <span className="text-[11px] text-salvus-text-muted block truncate mt-0.5">
+                <span className="text-[10px] text-salvus-text-muted block truncate mt-0.5">
                   {current.wind_gusts > current.wind_speed
                     ? `Gusts ${Math.round(current.wind_gusts)} km/h`
                     : 'Normal breeze'}
@@ -221,36 +222,65 @@ export const LocalConditionsBar = ({
               </div>
             </div>
 
-            {/* 4. Humidity */}
+            {/* 4. Thunderstorm State */}
             <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border/80 flex flex-col justify-between shadow-xs">
-              <div className="flex items-center justify-between text-salvus-text-muted text-[11px] font-semibold uppercase tracking-wider">
-                <span>Humidity</span>
-                <span>💧</span>
+              <div className="flex items-center justify-between text-salvus-text-muted text-[10px] font-bold uppercase tracking-wider">
+                <span>Thunderstorm</span>
+                <span>⚡</span>
               </div>
-              <div className="mt-1.5">
-                <span className="text-base sm:text-lg font-bold text-salvus-text-primary block">
-                  {current.humidity}%
+              <div className="mt-1">
+                <span
+                  className={`text-sm sm:text-base font-bold block truncate ${
+                    current.thunderstorm_risk === 'ACTIVE' ||
+                    current.thunderstorm_risk === 'OBSERVED'
+                      ? 'text-rose-400'
+                      : current.thunderstorm_risk === 'LIKELY'
+                        ? 'text-amber-300'
+                        : current.thunderstorm_risk === 'POSSIBLE'
+                          ? 'text-sky-300'
+                          : 'text-salvus-text-primary'
+                  }`}
+                >
+                  {current.thunderstorm_risk || (current.weather_code >= 95 ? 'Active' : 'None')}
                 </span>
-                <span className="text-[11px] text-salvus-text-muted block truncate mt-0.5">
-                  {current.humidity > 80 ? 'High moisture' : 'Moderate'}
+                <span className="text-[10px] text-salvus-text-muted block truncate mt-0.5">
+                  {current.is_thunderstorm_derived ? 'Derived (CAPE/Wind)' : 'Open-Meteo'}
                 </span>
               </div>
             </div>
 
-            {/* 5. UV Index / Visibility */}
+            {/* 5. Active Warnings Count */}
             <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border/80 flex flex-col justify-between shadow-xs">
-              <div className="flex items-center justify-between text-salvus-text-muted text-[11px] font-semibold uppercase tracking-wider">
-                <span>UV / Visibility</span>
-                <span>☀️</span>
+              <div className="flex items-center justify-between text-salvus-text-muted text-[10px] font-bold uppercase tracking-wider">
+                <span>Warnings</span>
+                <span>🛡️</span>
               </div>
-              <div className="mt-1.5">
-                <span className="text-base sm:text-lg font-bold text-salvus-text-primary block truncate">
-                  {current.uv_index > 0
-                    ? getUvLabel(current.uv_index)
-                    : `${current.visibility_km} km`}
+              <div className="mt-1">
+                <span
+                  className={`text-base sm:text-lg font-bold block ${
+                    activeWarningsCount > 0 ? 'text-salvus-warning' : 'text-emerald-400'
+                  }`}
+                >
+                  {activeWarningsCount > 0 ? `${activeWarningsCount} Active` : '0 Active'}
                 </span>
-                <span className="text-[11px] text-salvus-text-muted block truncate mt-0.5">
-                  {current.visibility_km ? `Vis: ${current.visibility_km} km` : 'Normal range'}
+                <span className="text-[10px] text-salvus-text-muted block truncate mt-0.5">
+                  {activeWarningsCount > 0 ? 'Local Advisories' : 'Normal Conditions'}
+                </span>
+              </div>
+            </div>
+
+            {/* 6. Last Updated */}
+            <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border/80 flex flex-col justify-between shadow-xs">
+              <div className="flex items-center justify-between text-salvus-text-muted text-[10px] font-bold uppercase tracking-wider">
+                <span>Last Updated</span>
+                <span>⏱️</span>
+              </div>
+              <div className="mt-1">
+                <span className="text-xs sm:text-sm font-bold text-salvus-text-primary block truncate">
+                  {observedAt ? formatRelativeFreshness(observedAt) : 'Just now'}
+                </span>
+                <span className="text-[10px] text-salvus-text-muted block truncate mt-0.5">
+                  {status === 'AVAILABLE' ? 'Verified Telemetry' : status}
                 </span>
               </div>
             </div>

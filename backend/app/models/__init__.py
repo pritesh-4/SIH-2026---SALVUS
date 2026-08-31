@@ -979,13 +979,72 @@ class RelevanceLevel(StrEnum):
     IRRELEVANT = "IRRELEVANT"
 
 
+class SignalType(StrEnum):
+    """Normalized granular disaster intelligence signal categories."""
+
+    NORMAL_WEATHER = "NORMAL_WEATHER"
+    WEATHER_ADVISORY = "WEATHER_ADVISORY"
+    THUNDERSTORM = "THUNDERSTORM"
+    HEAVY_RAIN = "HEAVY_RAIN"
+    EXTREME_WIND = "EXTREME_WIND"
+    EXTREME_HEAT = "EXTREME_HEAT"
+    EXTREME_COLD = "EXTREME_COLD"
+    FLOOD = "FLOOD"
+    CYCLONE = "CYCLONE"
+    LIGHTNING = "LIGHTNING"
+    EARTHQUAKE = "EARTHQUAKE"
+    OTHER_OFFICIAL_WARNING = "OTHER_OFFICIAL_WARNING"
+
+
+class DataQualityState(StrEnum):
+    """Overall multi-source feed quality state."""
+
+    LIVE = "LIVE"
+    PARTIAL = "PARTIAL"
+    STALE = "STALE"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+class SourceAuthorityTier(StrEnum):
+    """Hierarchical source authority weighting for multi-source consensus."""
+
+    OFFICIAL_GOVERNMENT = "OFFICIAL_GOVERNMENT"
+    STATE_DISASTER_AUTHORITY = "STATE_DISASTER_AUTHORITY"
+    GLOBAL_NETWORK = "GLOBAL_NETWORK"
+    FORECAST_MODEL = "FORECAST_MODEL"
+    SALVUS_DERIVED = "SALVUS_DERIVED"
+
+
+class AlertStatus(StrEnum):
+    """Lifecycle status of a disaster alert."""
+
+    ACTIVE = "ACTIVE"
+    UPCOMING = "UPCOMING"
+    EXPIRED = "EXPIRED"
+    CANCELLED = "CANCELLED"
+    UNKNOWN = "UNKNOWN"
+
+
+class ThunderstormRisk(StrEnum):
+    """Categorical thunderstorm risk classification based on meteorological indicators."""
+
+    NONE = "NONE"
+    POSSIBLE = "POSSIBLE"
+    LIKELY = "LIKELY"
+    ACTIVE = "ACTIVE"
+    OBSERVED = "OBSERVED"
+
+
 class SourceStatus(StrEnum):
     """Operational status of external disaster intelligence feeds."""
 
     AVAILABLE = "AVAILABLE"
+    DEGRADED = "DEGRADED"
     STALE = "STALE"
     FAILED = "FAILED"
     DISABLED = "DISABLED"
+    STANDBY = "STANDBY"
+    UNAVAILABLE = "UNAVAILABLE"
 
 
 class SourceType(StrEnum):
@@ -998,6 +1057,7 @@ class SourceType(StrEnum):
     SIMULATION_ENGINE = "SIMULATION_ENGINE"
     FALLBACK_MODEL = "FALLBACK_MODEL"
     GEOSPATIAL_PROVIDER = "GEOSPATIAL_PROVIDER"
+    HYDROLOGICAL_SERVICE = "HYDROLOGICAL_SERVICE"
 
 
 class SourceHealthReport(BaseModel):
@@ -1012,6 +1072,8 @@ class SourceHealthReport(BaseModel):
     last_error: str | None = None
     latency_ms: float | None = None
     active_alerts_count: int = 0
+    endpoint_url: str | None = None
+    limitations: str | None = None
 
 
 class NormalizedAlert(BaseModel):
@@ -1023,33 +1085,49 @@ class NormalizedAlert(BaseModel):
         default="generic-evt", description="Upstream raw source event or sensor ID"
     )
     source_type: SourceType = Field(default=SourceType.WEATHER_SERVICE)
+    authority_tier: SourceAuthorityTier = Field(default=SourceAuthorityTier.FORECAST_MODEL)
     hazard_type: HazardType
+    signal_type: SignalType | None = None
+    type: str | None = None
+    raw_type: str | None = None
     severity: HazardSeverity
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     title: str
     description: str
     why_it_matters: str | None = None
     recommended_action: str
+    recommended_actions: list[str] = Field(default_factory=list)
+    what_to_do: str | None = None
+    what_to_avoid: str | None = None
+    actionable: bool = True
     latitude: float = Field(ge=-90.0, le=90.0)
     longitude: float = Field(ge=-180.0, le=180.0)
     affected_area: str | None = None
     radius_km: float = Field(default=2.5, gt=0.0)
     observed_at: str
     issued_at: str
+    updated_at: str | None = None
+    starts_at: str | None = None
     expires_at: str
     fetched_at: str
+    status: AlertStatus = AlertStatus.ACTIVE
     source_url: str | None = None
     provenance: AlertProvenance = AlertProvenance.LIVE
-    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     is_active: bool = True
+    is_derived: bool = False
+    derived_classification: str | None = None
 
     # Spatial & Geo-Relevance enrichment fields (Phase 3)
     distance_km: float | None = None
     distance_formatted: str | None = None
+    direction_label: str | None = None
+    local_context: str | None = None
     is_within_affected_area: bool = False
     geometry: list[list[float]] | None = None
     is_inside_geometry: bool = False
     relevance_level: RelevanceLevel | None = None
     sources_matched: list[str] = Field(default_factory=list)
+    evidence_sources: list[dict[str, Any]] = Field(default_factory=list)
     relative_time_label: str | None = None
 
     # Backward compatibility aliases for existing domain consumers
@@ -1067,6 +1145,12 @@ class NormalizedAlert(BaseModel):
                 obj["id"] = obj["hazard_id"]
             elif "id" in obj and "hazard_id" not in obj:
                 obj["hazard_id"] = obj["id"]
+
+            if "type" in obj and "hazard_type" not in obj:
+                obj["hazard_type"] = obj["type"]
+            elif "hazard_type" in obj and "type" not in obj:
+                ht = obj["hazard_type"]
+                obj["type"] = str(ht.value if hasattr(ht, "value") else ht)
 
             if "affected_radius_km" in obj and "radius_km" not in obj:
                 obj["radius_km"] = obj["affected_radius_km"]
@@ -1091,13 +1175,39 @@ class NormalizedAlert(BaseModel):
             if "observed_at" in obj and "issued_at" not in obj:
                 obj["issued_at"] = obj["observed_at"]
 
+            if "recommended_action" in obj and not obj.get("recommended_actions"):
+                obj["recommended_actions"] = [obj["recommended_action"]]
+            elif obj.get("recommended_actions") and not obj.get("recommended_action"):
+                obj["recommended_action"] = obj["recommended_actions"][0]
+
+            if "what_to_do" not in obj and "recommended_action" in obj:
+                obj["what_to_do"] = obj["recommended_action"]
+            elif "what_to_do" in obj and "recommended_action" not in obj:
+                obj["recommended_action"] = obj["what_to_do"]
+
+            if "starts_at" not in obj and "issued_at" in obj:
+                obj["starts_at"] = obj["issued_at"]
+            if "updated_at" not in obj and "fetched_at" in obj:
+                obj["updated_at"] = obj["fetched_at"]
+
         res = super().model_validate(obj, *args, **kwargs)
         if not res.hazard_id:
             object.__setattr__(res, "hazard_id", res.id)
+        if not res.type:
+            ht = res.hazard_type
+            object.__setattr__(res, "type", str(ht.value if hasattr(ht, "value") else ht))
         if not res.affected_radius_km:
             object.__setattr__(res, "affected_radius_km", res.radius_km)
         if not res.source_timestamp:
             object.__setattr__(res, "source_timestamp", res.issued_at)
+        if not res.starts_at:
+            object.__setattr__(res, "starts_at", res.issued_at)
+        if not res.updated_at:
+            object.__setattr__(res, "updated_at", res.fetched_at)
+        if not res.recommended_actions and res.recommended_action:
+            object.__setattr__(res, "recommended_actions", [res.recommended_action])
+        if not res.what_to_do and res.recommended_action:
+            object.__setattr__(res, "what_to_do", res.recommended_action)
         if not res.data_provenance:
             prov_str = str(
                 res.provenance.value if hasattr(res.provenance, "value") else res.provenance
@@ -1110,6 +1220,12 @@ class NormalizedAlert(BaseModel):
             data["id"] = data["hazard_id"]
         elif "id" in data and "hazard_id" not in data:
             data["hazard_id"] = data["id"]
+
+        if "type" in data and "hazard_type" not in data:
+            data["hazard_type"] = data["type"]
+        elif "hazard_type" in data and "type" not in data:
+            ht = data["hazard_type"]
+            data["type"] = str(ht.value if hasattr(ht, "value") else ht)
 
         if "affected_radius_km" in data and "radius_km" not in data:
             data["radius_km"] = data["affected_radius_km"]
@@ -1134,13 +1250,39 @@ class NormalizedAlert(BaseModel):
         if "observed_at" in data and "issued_at" not in data:
             data["issued_at"] = data["observed_at"]
 
+        if "recommended_action" in data and not data.get("recommended_actions"):
+            data["recommended_actions"] = [data["recommended_action"]]
+        elif data.get("recommended_actions") and not data.get("recommended_action"):
+            data["recommended_action"] = data["recommended_actions"][0]
+
+        if "what_to_do" not in data and "recommended_action" in data:
+            data["what_to_do"] = data["recommended_action"]
+        elif "what_to_do" in data and "recommended_action" not in data:
+            data["recommended_action"] = data["what_to_do"]
+
+        if "starts_at" not in data and "issued_at" in data:
+            data["starts_at"] = data["issued_at"]
+        if "updated_at" not in data and "fetched_at" in data:
+            data["updated_at"] = data["fetched_at"]
+
         super().__init__(**data)
         if not self.hazard_id:
             object.__setattr__(self, "hazard_id", self.id)
+        if not self.type:
+            ht = self.hazard_type
+            object.__setattr__(self, "type", str(ht.value if hasattr(ht, "value") else ht))
         if not self.affected_radius_km:
             object.__setattr__(self, "affected_radius_km", self.radius_km)
         if not self.source_timestamp:
             object.__setattr__(self, "source_timestamp", self.issued_at)
+        if not self.starts_at:
+            object.__setattr__(self, "starts_at", self.issued_at)
+        if not self.updated_at:
+            object.__setattr__(self, "updated_at", self.fetched_at)
+        if not self.recommended_actions and self.recommended_action:
+            object.__setattr__(self, "recommended_actions", [self.recommended_action])
+        if not self.what_to_do and self.recommended_action:
+            object.__setattr__(self, "what_to_do", self.recommended_action)
         if not self.data_provenance:
             prov_str = str(
                 self.provenance.value if hasattr(self.provenance, "value") else self.provenance
@@ -1158,6 +1300,11 @@ class HazardListResponse(BaseModel):
     success: bool = True
     data: list[NormalizedAlert]
     count: int
+    data_quality: DataQualityState = DataQualityState.LIVE
+    current_conditions_summary: str | None = None
+    active_local_warnings_count: int = 0
+    upcoming_risks_count: int = 0
+    last_updated: str | None = None
     source_summary: str = "Multi-Source Normalized Feed"
     sources: dict[str, SourceStatus] = Field(default_factory=dict)
     sources_health: list[SourceHealthReport] = Field(default_factory=list)
@@ -1323,6 +1470,8 @@ class WeatherCondition(BaseModel):
     condition: str = Field(description="Human-friendly weather condition text")
     weather_code: int = Field(description="Standard WMO weather code")
     precipitation: float = Field(default=0.0, description="Precipitation rate in mm/h")
+    rain: float = Field(default=0.0, description="Rain amount in mm/h")
+    showers: float = Field(default=0.0, description="Showers amount in mm/h")
     precipitation_probability: int = Field(
         default=0, ge=0, le=100, description="Precipitation probability percentage"
     )
@@ -1330,12 +1479,18 @@ class WeatherCondition(BaseModel):
     wind_speed: float = Field(default=0.0, description="Wind speed in km/h")
     wind_direction: float = Field(default=0.0, description="Wind direction in degrees")
     wind_gusts: float = Field(default=0.0, description="Wind gusts in km/h")
+    wind_gust: float | None = None
+    thunderstorm_risk: ThunderstormRisk = ThunderstormRisk.NONE
+    is_thunderstorm_derived: bool = True
+    cape: float | None = None
     visibility_km: float = Field(default=10.0, description="Horizontal visibility in kilometers")
+    visibility: float | None = None
     uv_index: float = Field(default=0.0, description="UV exposure index")
     is_day: int = Field(default=1, description="1 if daytime, 0 if nighttime")
     sunrise: str | None = None
     sunset: str | None = None
     observed_at: str = Field(description="ISO timestamp of observation")
+    forecast_updated_at: str | None = None
     source: str = "Open-Meteo Weather Service"
     provenance: AlertProvenance = AlertProvenance.LIVE
     summary: str = Field(description="Human-centric contextual situation summary")

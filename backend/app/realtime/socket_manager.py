@@ -461,3 +461,29 @@ async def emit_incident_triage_updated(
         f"[Socket.IO] Emitted incident.triage_updated → authorities ({assessment.source_label}) "
         f"+ progress to incident:{incident_id} for {ticket_id or incident_id}"
     )
+
+
+async def emit_hazard_alert_created(alert_data: dict) -> None:
+    """Broadcast newly detected or ingested hazard alert to connected clients."""
+    payload = alert_data if isinstance(alert_data, dict) else alert_data.model_dump()
+    await sio.emit("hazard.alert_created", payload)
+    await sio.emit("hazard:alert_created", payload)
+    print(
+        f"[Socket.IO] Emitted hazard.alert_created → {payload.get('id')} ({payload.get('title')})"
+    )
+
+
+async def emit_hazard_alert_updated(alert_data: dict) -> None:
+    """Broadcast updated hazard alert state."""
+    payload = alert_data if isinstance(alert_data, dict) else alert_data.model_dump()
+    await sio.emit("hazard.alert_updated", payload)
+    await sio.emit("hazard:alert_updated", payload)
+    print(f"[Socket.IO] Emitted hazard.alert_updated → {payload.get('id')}")
+
+
+async def emit_hazard_alert_expired(alert_id: str) -> None:
+    """Broadcast expired hazard alert ID for immediate client eviction."""
+    payload = {"id": alert_id, "alert_id": alert_id, "status": "EXPIRED"}
+    await sio.emit("hazard.alert_expired", payload)
+    await sio.emit("hazard:alert_expired", payload)
+    print(f"[Socket.IO] Emitted hazard.alert_expired → {alert_id}")

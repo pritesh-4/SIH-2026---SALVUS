@@ -261,6 +261,27 @@ export const normalizeAlert = (rawAlert, userLocation = null, nearestSafeShelter
     confidence: typeof rawAlert.confidence === 'number' ? rawAlert.confidence : 1.0,
     verified: provenance === 'LIVE' || provenance === 'CACHED',
     nearestShelter: nearestSafeShelter || rawAlert.nearestShelter || null,
+    is_derived: Boolean(rawAlert.is_derived ?? rawAlert.isDerived ?? false),
+    isDerived: Boolean(rawAlert.is_derived ?? rawAlert.isDerived ?? false),
+    derived_classification:
+      rawAlert.derived_classification || rawAlert.derivedClassification || null,
+    derivedClassification:
+      rawAlert.derived_classification || rawAlert.derivedClassification || null,
+    authority_tier: rawAlert.authority_tier || rawAlert.authorityTier || 'GLOBAL_NETWORK',
+    authorityTier: rawAlert.authority_tier || rawAlert.authorityTier || 'GLOBAL_NETWORK',
+    signal_type: rawAlert.signal_type || rawAlert.signalType || null,
+    signalType: rawAlert.signal_type || rawAlert.signalType || null,
+    what_to_do: rawAlert.what_to_do || rawAlert.whatToDo || actions[0],
+    whatToDo: rawAlert.what_to_do || rawAlert.whatToDo || actions[0],
+    what_to_avoid: rawAlert.what_to_avoid || rawAlert.whatToAvoid || null,
+    whatToAvoid: rawAlert.what_to_avoid || rawAlert.whatToAvoid || null,
+    local_context: rawAlert.local_context || rawAlert.localContext || null,
+    localContext: rawAlert.local_context || rawAlert.localContext || null,
+    direction_label: rawAlert.direction_label || rawAlert.directionLabel || null,
+    directionLabel: rawAlert.direction_label || rawAlert.directionLabel || null,
+    sources_matched: rawAlert.sources_matched || rawAlert.sourcesMatched || [source],
+    evidence_sources: rawAlert.evidence_sources || rawAlert.evidenceSources || [source],
+    evidenceSources: rawAlert.evidence_sources || rawAlert.evidenceSources || [source],
   }
 }
 

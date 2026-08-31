@@ -236,6 +236,7 @@ export const CitizenAlerts = () => {
         location={location}
         isLoading={isWeatherLoading}
         isLocationOff={isLocationOff}
+        activeWarningsCount={warningCount + criticalCount}
         onRequestLocation={() => requestLocation({ timeout: 8000 })}
         onSelectLandmark={(landmarkName) => {
           selectLandmark(landmarkName)
@@ -356,8 +357,8 @@ export const CitizenAlerts = () => {
                 </h3>
               </div>
               <p className="text-xs text-salvus-text-muted max-w-sm">
-                Querying USGS Seismic, GDACS, SACHET NDMA, and Open-Meteo feeds for your
-                coordinates.
+                Querying Open-Meteo Weather, IMD Warnings, OSDMA SATARK, Odisha Flood, USGS Seismic,
+                GDACS, and SACHET NDMA feeds.
               </p>
             </Card>
           ) : (fetchError || status === 'UNAVAILABLE') && alerts.length === 0 ? (
@@ -409,8 +410,12 @@ export const CitizenAlerts = () => {
                   </strong>
                 </div>
                 <div>
-                  <span>Sources active: </span>
-                  <strong className="text-salvus-text-secondary">4 verified networks</strong>
+                  <span>Sources monitored: </span>
+                  <strong className="text-salvus-text-secondary">
+                    {sourcesHealth?.length
+                      ? `${sourcesHealth.length} emergency networks`
+                      : '7 verified networks'}
+                  </strong>
                 </div>
               </div>
 
@@ -463,6 +468,19 @@ export const CitizenAlerts = () => {
                         >
                           {alert.provenance}
                         </span>
+
+                        {alert.is_derived && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded font-mono font-bold uppercase bg-amber-950/70 text-amber-300 border border-amber-500/40">
+                            SALVUS DERIVED
+                          </span>
+                        )}
+
+                        {alert.sources_matched?.length > 1 && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded font-semibold bg-blue-950/60 text-blue-300 border border-blue-500/30">
+                            {alert.sources_matched.length} Verifications
+                          </span>
+                        )}
+
                         <span className="text-xs text-salvus-text-muted">
                           · {alert.observedTime}
                         </span>
@@ -484,14 +502,26 @@ export const CitizenAlerts = () => {
                       {alert.whyItMatters}
                     </p>
 
-                    {/* 3. WHAT TO DO (Direct Action Guidance) */}
-                    <div className="mt-3 bg-salvus-muted/40 border border-salvus-border/80 rounded-xl p-3">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-salvus-text-muted block mb-1">
-                        WHAT TO DO
-                      </span>
-                      <p className="text-xs text-salvus-text-primary font-medium leading-relaxed">
-                        {alert.recommendedAction}
-                      </p>
+                    {/* 3. WHAT TO DO & WHAT TO AVOID */}
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="bg-salvus-muted/40 border border-salvus-border/80 rounded-xl p-3">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-1">
+                          WHAT TO DO
+                        </span>
+                        <p className="text-xs text-salvus-text-primary font-medium leading-relaxed">
+                          {alert.what_to_do || alert.recommendedAction}
+                        </p>
+                      </div>
+                      {alert.what_to_avoid && (
+                        <div className="bg-salvus-muted/40 border border-salvus-border/80 rounded-xl p-3">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block mb-1">
+                            WHAT TO AVOID
+                          </span>
+                          <p className="text-xs text-salvus-text-primary font-medium leading-relaxed">
+                            {alert.what_to_avoid}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {/* Secondary Meta: Source & Read More CTA */}
@@ -523,10 +553,10 @@ export const CitizenAlerts = () => {
       >
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
           <span className="text-xs font-bold text-salvus-text-muted uppercase tracking-wider">
-            Verified Source Status
+            Verified Monitoring Networks
           </span>
           <span className="text-[11px] text-salvus-text-muted">
-            Continuous background validation
+            Continuous multi-source validation · Real coordinates
           </span>
         </div>
 
@@ -535,6 +565,14 @@ export const CitizenAlerts = () => {
             <div>
               <strong className="text-salvus-text-primary block">Open-Meteo</strong>
               <span className="text-[11px] text-salvus-text-muted">Weather Telemetry</span>
+            </div>
+            <span className="h-2 w-2 rounded-full bg-emerald-400" title="Operational" />
+          </div>
+
+          <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border flex items-center justify-between">
+            <div>
+              <strong className="text-salvus-text-primary block">IMD Mausam</strong>
+              <span className="text-[11px] text-salvus-text-muted">Govt Meteorological</span>
             </div>
             <span className="h-2 w-2 rounded-full bg-emerald-400" title="Operational" />
           </div>
@@ -561,6 +599,22 @@ export const CitizenAlerts = () => {
               <span className="text-[11px] text-salvus-text-muted">India Civil Defense</span>
             </div>
             <span className="h-2 w-2 rounded-full bg-emerald-400" title="Operational" />
+          </div>
+
+          <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border flex items-center justify-between">
+            <div>
+              <strong className="text-salvus-text-primary block">OSDMA SATARK</strong>
+              <span className="text-[11px] text-salvus-text-muted">Odisha State Portal</span>
+            </div>
+            <span className="h-2 w-2 rounded-full bg-slate-500" title="Standby / Uncredentialed" />
+          </div>
+
+          <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border flex items-center justify-between">
+            <div>
+              <strong className="text-salvus-text-primary block">Odisha Flood / WRD</strong>
+              <span className="text-[11px] text-salvus-text-muted">River Hydrology</span>
+            </div>
+            <span className="h-2 w-2 rounded-full bg-slate-500" title="Standby / Uncredentialed" />
           </div>
         </div>
       </footer>
@@ -627,36 +681,88 @@ export const CitizenAlerts = () => {
               <p className="text-xs sm:text-sm text-salvus-text-secondary leading-relaxed">
                 {activeAlertDetail.whyItMatters}
               </p>
-              {activeAlertDetail.affectedArea && (
-                <div className="mt-2 pt-2 border-t border-salvus-border/60 text-xs text-salvus-text-muted">
-                  <span>Affected Sector: </span>
+              <div className="mt-2.5 pt-2 border-t border-salvus-border/60 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-salvus-text-muted">
+                <div>
+                  <span>Issued: </span>
                   <strong className="text-salvus-text-secondary">
-                    {activeAlertDetail.affectedArea}
+                    {activeAlertDetail.observedTime || 'Recent'}
                   </strong>
-                  {activeAlertDetail.radiusKm && (
-                    <span> · {activeAlertDetail.radiusKm} km radius</span>
-                  )}
+                </div>
+                <div>
+                  <span>Valid Until: </span>
+                  <strong className="text-salvus-text-secondary">
+                    {activeAlertDetail.expires_at ||
+                      activeAlertDetail.valid_to ||
+                      'Active Monitoring'}
+                  </strong>
+                </div>
+                {activeAlertDetail.affectedArea && (
+                  <div className="sm:col-span-2">
+                    <span>Affected Sector: </span>
+                    <strong className="text-salvus-text-secondary">
+                      {activeAlertDetail.affectedArea}
+                    </strong>
+                    {activeAlertDetail.radiusKm && (
+                      <span> · {activeAlertDetail.radiusKm} km radius</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 3. WHAT TO DO & WHAT TO AVOID */}
+            <div className="mt-4 space-y-3">
+              <div>
+                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block mb-2">
+                  What You Should Do
+                </span>
+                <div className="space-y-2">
+                  {(activeAlertDetail.actions?.length > 0
+                    ? activeAlertDetail.actions
+                    : [activeAlertDetail.what_to_do || activeAlertDetail.recommendedAction]
+                  ).map((act, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-salvus-safe-bg border border-salvus-safe-border rounded-xl p-3 flex items-start gap-2.5 text-xs text-salvus-safe-text"
+                    >
+                      <span className="font-bold shrink-0">{idx + 1}.</span>
+                      <span className="font-medium leading-relaxed">{act}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {activeAlertDetail.what_to_avoid && (
+                <div>
+                  <span className="text-[11px] font-bold text-rose-400 uppercase tracking-wider block mb-2">
+                    What To Avoid
+                  </span>
+                  <div className="bg-rose-950/20 border border-rose-500/30 rounded-xl p-3 text-xs text-rose-200 leading-relaxed">
+                    🚫 {activeAlertDetail.what_to_avoid}
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* 3. WHAT TO DO (Safety Actions) */}
-            <div className="mt-4">
-              <span className="text-[11px] font-bold text-salvus-text-primary uppercase tracking-wider block mb-2">
-                What You Should Do
-              </span>
-              <div className="space-y-2">
-                {activeAlertDetail.actions?.map((act, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-salvus-safe-bg border border-salvus-safe-border rounded-xl p-3 flex items-start gap-2.5 text-xs text-salvus-safe-text"
-                  >
-                    <span className="font-bold shrink-0">{idx + 1}.</span>
-                    <span className="font-medium leading-relaxed">{act}</span>
-                  </div>
-                ))}
+            {/* 4. Multi-Source Evidence Agreement */}
+            {activeAlertDetail.sources_matched?.length > 1 && (
+              <div className="mt-4 p-3 bg-blue-950/20 border border-blue-500/30 rounded-xl">
+                <span className="text-[10px] font-bold text-blue-300 uppercase tracking-wider block mb-1.5">
+                  Multi-Source Network Consensus ({activeAlertDetail.sources_matched.length}{' '}
+                  Contributing Feeds)
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeAlertDetail.sources_matched.map((src, idx) => (
+                    <span
+                      key={idx}
+                      className="text-[10px] px-2 py-0.5 rounded bg-blue-900/40 text-blue-200 border border-blue-500/30 font-medium"
+                    >
+                      {src}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Legitimate Safe Destination (Only shown if authentic shelter is verified) */}
             {activeAlertDetail.nearestShelter && (
