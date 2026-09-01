@@ -38,8 +38,12 @@ class SachetAdapter(BaseAlertAdapter):
         super().__init__(
             source_id="sachet_ndma",
             source_name="SACHET / NDMA India",
+            display_name="SACHET",
             source_type=SourceType.CIVIL_DEFENSE,
             cache_ttl_seconds=cache_ttl_seconds,
+            initial_status=SourceStatus.AVAILABLE,
+            initial_status_label="LIVE",
+            initial_is_live=True,
         )
         self.feed_url = feed_url
         self._etag: str | None = None
@@ -265,9 +269,19 @@ class SachetAdapter(BaseAlertAdapter):
             )
             affected_area = str(raw_area).strip() if raw_area else None
 
+            # Extract administrative districts and state (Phase 2C)
+            from app.services.geo_service import parse_administrative_area
+
+            affected_districts, state = parse_administrative_area(affected_area)
+            if rec.get("state"):
+                state = str(rec["state"]).strip()
+            if isinstance(rec.get("affected_districts"), list):
+                affected_districts = [str(d).strip() for d in rec["affected_districts"]]
+
             # 7. Coordinates & Centroid Parsing
             # CRITICAL: SACHET centroid is "longitude,latitude" (LON,LAT)
             # Must convert correctly to: latitude=LAT, longitude=LON
+            # Do NOT fabricate coordinates if missing!
             lat: float | None = None
             lon: float | None = None
             radius_km: float = 20.0
@@ -404,6 +418,8 @@ class SachetAdapter(BaseAlertAdapter):
                 latitude=lat,
                 longitude=lon,
                 affected_area=affected_area,
+                affected_districts=affected_districts,
+                state=state,
                 radius_km=radius_km,
                 observed_at=observed_at,
                 issued_at=issued_at or observed_at,

@@ -48,9 +48,11 @@ class OdishaFloodAdapter(BaseAlertAdapter):
         cache_ttl_seconds: int = 600,
     ):
         initial_status = SourceStatus.AVAILABLE if api_key else SourceStatus.UNAVAILABLE
+        initial_label = "LIVE" if api_key else "CONFIGURATION REQUIRED"
         super().__init__(
             source_id="odisha_flood",
             source_name="Odisha Water Resources & Flood Authority",
+            display_name="WRD",
             source_type=SourceType.HYDROLOGICAL_SERVICE,
             cache_ttl_seconds=cache_ttl_seconds,
             endpoint_url=api_url,
@@ -60,6 +62,8 @@ class OdishaFloodAdapter(BaseAlertAdapter):
                 "Standby mode active when uncredentialed."
             ),
             initial_status=initial_status,
+            initial_status_label=initial_label,
+            initial_is_live=bool(api_key),
         )
         self.api_url = api_url
         self.api_key = api_key
@@ -73,6 +77,8 @@ class OdishaFloodAdapter(BaseAlertAdapter):
         self._last_fetch_time = None
         if not self.api_key:
             self._health.status = SourceStatus.UNAVAILABLE
+            self._health.status_label = "CONFIGURATION REQUIRED"
+            self._health.is_live = False
 
     async def fetch_alerts(
         self,

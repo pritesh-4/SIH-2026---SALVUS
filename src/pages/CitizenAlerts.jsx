@@ -11,7 +11,7 @@ import { StatusIndicator } from '../components/ui/StatusIndicator'
 import { LocalConditionsBar } from '../components/citizen/LocalConditionsBar'
 import { ShortTermForecast } from '../components/citizen/ShortTermForecast'
 import { LocalStatusBanner } from '../components/citizen/LocalStatusBanner'
-import { AlertInteractionStatus } from '../lib/alertNormalization'
+import { AlertInteractionStatus, formatAlertDistance } from '../lib/alertNormalization'
 
 export const CitizenAlerts = () => {
   const navigate = useNavigate()
@@ -28,7 +28,6 @@ export const CitizenAlerts = () => {
     fetchError,
     lastFetchedAt,
     sourcesHealth,
-    sourceSummary,
     weatherData,
     isWeatherLoading,
     areaSafety,
@@ -87,11 +86,58 @@ export const CitizenAlerts = () => {
     }
   }
 
+  const CANONICAL_SOURCES = [
+    { id: 'sachet_ndma', name: 'SACHET', defaultStatus: 'LIVE', isLive: true },
+    {
+      id: 'imd_india',
+      name: 'IMD Direct',
+      defaultStatus: 'UNAVAILABLE / VIA SACHET',
+      isLive: false,
+    },
+    { id: 'osdma_satark', name: 'OSDMA', defaultStatus: 'CONFIGURATION REQUIRED', isLive: false },
+    { id: 'odisha_flood', name: 'WRD', defaultStatus: 'CONFIGURATION REQUIRED', isLive: false },
+    { id: 'gdacs', name: 'GDACS', defaultStatus: 'LIVE', isLive: true },
+    { id: 'usgs_earthquake', name: 'USGS', defaultStatus: 'LIVE', isLive: true },
+    { id: 'open_meteo', name: 'Open-Meteo', defaultStatus: 'LIVE', isLive: true },
+  ]
+
+  const getSourceHealthDisplay = (src) => {
+    const match = (sourcesHealth || []).find(
+      (s) =>
+        s.source_id === src.id ||
+        s.sourceId === src.id ||
+        s.display_name === src.name ||
+        s.displayName === src.name ||
+        (s.source_name && s.source_name.toLowerCase().includes(src.name.toLowerCase()))
+    )
+    if (match) {
+      const isLive =
+        match.is_live ??
+        match.isLive ??
+        (match.status === 'AVAILABLE' && (match.status_label === 'LIVE' || !match.status_label))
+      const label =
+        match.status_label ||
+        match.statusLabel ||
+        (isLive ? 'LIVE' : match.status === 'UNAVAILABLE' ? src.defaultStatus : match.status)
+      return {
+        name: match.display_name || match.displayName || src.name,
+        label,
+        isLive: Boolean(isLive),
+      }
+    }
+    return { name: src.name, label: src.defaultStatus, isLive: src.isLive }
+  }
+
   // Check if any external telemetry sources are degraded
   const degradedSources = sourcesHealth.filter(
-    (s) => s.status === 'DEGRADED' || s.status === 'UNAVAILABLE' || s.status === 'ERROR'
+    (s) =>
+      s.status === 'DEGRADED' ||
+      s.status === 'UNAVAILABLE' ||
+      s.status === 'ERROR' ||
+      s.status === 'FAILED'
   )
   const hasDegradedSources = degradedSources.length > 0
+  const isPartialCoverage = hasDegradedSources || status === 'PARTIAL'
 
   // Filter alerts by severity tab
   const filteredAlerts = alerts.filter((a) => {
@@ -270,19 +316,56 @@ export const CitizenAlerts = () => {
         />
       )}
 
-      {/* Source Health Degradation Notice */}
-      {hasDegradedSources && (
-        <aside
-          aria-label="Source status notice"
-          className="mb-6 p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 text-amber-200/90 text-xs flex items-center gap-2"
-        >
-          <span>ℹ️</span>
-          <span>
-            Some telemetry feeds are temporarily degraded. Active emergency channels continue
-            monitoring.
+      {/* =========================================================================
+          OPERATIONAL FEED HEALTH MATRIX (Phase 2D Truthful Source Status)
+          ========================================================================= */}
+      <section
+        aria-label="Provider Health Telemetry"
+        className="mb-6 p-3 sm:p-4 rounded-2xl bg-salvus-surface-elevated border border-salvus-border shadow-xs"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5 pb-2 border-b border-salvus-border">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-salvus-text-muted">
+              Live Feed Health Telemetry
+            </span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded font-semibold bg-salvus-muted text-salvus-text-secondary">
+              Actual Provider Status
+            </span>
+          </div>
+          <span className="text-[11px] text-salvus-text-muted">
+            Configured credentials ≠ Live streaming
           </span>
-        </aside>
-      )}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {CANONICAL_SOURCES.map((src) => {
+            const h = getSourceHealthDisplay(src)
+            return (
+              <div
+                key={src.id}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-salvus-surface border border-salvus-border text-xs shadow-xs"
+                title={`${h.name}: ${h.label}`}
+              >
+                <span className="font-bold text-salvus-text-primary">{h.name}</span>
+                <span
+                  className={`text-xs font-bold leading-none ${
+                    h.isLive ? 'text-emerald-400' : 'text-amber-400/90'
+                  }`}
+                >
+                  {h.isLive ? '●' : '○'}
+                </span>
+                <span
+                  className={`text-[11px] font-mono font-bold tracking-tight ${
+                    h.isLive ? 'text-emerald-400' : 'text-salvus-text-muted'
+                  }`}
+                >
+                  {h.label}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </section>
 
       {/* =========================================================================
           LAYER 4 & 5: LOCAL HAZARDS & ACTIONABLE ALERTS FEED
@@ -386,40 +469,51 @@ export const CitizenAlerts = () => {
               </Button>
             </Card>
           ) : filteredAlerts.length === 0 ? (
-            /* Honest, context-rich calm state */
+            /* Honest, context-rich calm or partial state */
             <Card
               padding="lg"
               className="text-center py-12 sm:py-14 flex flex-col items-center justify-center"
             >
               <span className="text-3xl sm:text-4xl mb-3" aria-hidden="true">
-                🛡️
+                {isPartialCoverage ? '⚠️' : '🛡️'}
               </span>
               <h3 className="text-lg sm:text-xl font-bold text-salvus-text-primary">
-                No active hazard advisories in your sector.
+                {isPartialCoverage ? 'Partial warning coverage' : 'No active local warnings'}
               </h3>
               <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1.5 max-w-md leading-relaxed">
-                Seismic, flood, cyclone, and severe meteorological feeds report normal conditions
-                around your coordinates.
+                {isPartialCoverage
+                  ? 'Some emergency telemetry feeds are currently unreachable or require configuration. No active hazard advisories detected on reachable networks in your district.'
+                  : 'All reachable civil defense, seismic, flood, and meteorological feeds report calm conditions in your district.'}
               </p>
 
-              <div className="mt-5 pt-4 border-t border-salvus-border w-full max-w-md flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-salvus-text-muted">
-                <div>
-                  <span>Last checked: </span>
-                  <strong className="text-salvus-text-secondary">
-                    {lastFetchedAt ? formatRelativeFreshness(lastFetchedAt) : 'Just now'}
-                  </strong>
+              <div className="mt-5 pt-4 border-t border-salvus-border w-full max-w-lg">
+                <div className="text-[11px] uppercase tracking-wider text-salvus-text-muted font-bold mb-3 text-center">
+                  Provider Health Telemetry (Actual Status)
                 </div>
-                <div>
-                  <span>Sources monitored: </span>
-                  <strong className="text-salvus-text-secondary">
-                    {sourcesHealth?.length
-                      ? `${sourcesHealth.length} emergency networks`
-                      : '7 verified networks'}
-                  </strong>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
+                  {CANONICAL_SOURCES.map((src) => {
+                    const h = getSourceHealthDisplay(src)
+                    return (
+                      <div
+                        key={src.id}
+                        className="flex items-center justify-between px-3 py-2 rounded-xl bg-salvus-surface border border-salvus-border text-xs"
+                      >
+                        <span className="font-semibold text-salvus-text-primary">{h.name}</span>
+                        <span className="flex items-center gap-1.5 font-mono text-[11px] font-bold">
+                          <span className={h.isLive ? 'text-emerald-400' : 'text-amber-400'}>
+                            {h.isLive ? '●' : '○'}
+                          </span>
+                          <span
+                            className={h.isLive ? 'text-emerald-400' : 'text-salvus-text-muted'}
+                          >
+                            {h.label}
+                          </span>
+                        </span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
-
-              <div className="mt-2 text-[11px] text-salvus-text-muted">{sourceSummary}</div>
 
               {!isDemoMode && (
                 <button
@@ -432,11 +526,45 @@ export const CitizenAlerts = () => {
               )}
             </Card>
           ) : (
-            /* Real Actionable Alert Cards: 3-Part Hierarchy */
+            /* Real Actionable Alert Cards: Phase 2D Categorization & Scope */
             filteredAlerts.map((alert) => {
               const isUnseen =
                 !userInteractions[alert.id] ||
                 userInteractions[alert.id]?.status === AlertInteractionStatus.UNSEEN
+
+              const classification =
+                alert.alert_classification ||
+                alert.alertClassification ||
+                (alert.is_derived
+                  ? 'SALVUS DERIVED'
+                  : alert.source_type === 'WEATHER_SERVICE' ||
+                      alert.sourceType === 'WEATHER_SERVICE'
+                    ? 'FORECAST'
+                    : 'OFFICIAL WARNING')
+
+              const isOfficial = classification === 'OFFICIAL WARNING'
+              const isForecast = classification === 'FORECAST'
+              const isDerived = classification === 'SALVUS DERIVED'
+
+              const relevance = alert.relevanceLevel || alert.relevance_level || 'LOCAL'
+              const isLocal =
+                relevance === 'IMMEDIATE' ||
+                relevance === 'LOCAL' ||
+                relevance === 'CRITICAL' ||
+                relevance === 'HIGH' ||
+                alert.isWithinAffectedArea
+              const isRegional =
+                relevance === 'REGIONAL' || relevance === 'MODERATE' || relevance === 'LOW'
+
+              // Distance & Area Warning Display: Do NOT show fake point distance if none exists
+              const hasPointDistance =
+                typeof alert.distanceKm === 'number' && alert.distanceKm !== null
+              const distanceDisplay = hasPointDistance
+                ? alert.distanceFormatted || formatAlertDistance(alert.distanceKm)
+                : alert.distanceFormatted ||
+                  (isRegional ? 'Regional warning' : 'Applicable to your district')
+
+              const affectedAreaText = alert.affectedArea || alert.affected_area || null
 
               return (
                 <article key={alert.id}>
@@ -446,32 +574,44 @@ export const CitizenAlerts = () => {
                     onClick={() => handleOpenAlertDetail(alert)}
                     className="cursor-pointer transition-all hover:border-salvus-border-strong focus-within:ring-2 focus-within:ring-salvus-info relative"
                   >
-                    {/* Header: Severity, Unread Badge, Provenance, Distance & Time */}
+                    {/* Header: Severity, Classification, Relevance Scope, Unread Badge, Distance & Time */}
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2.5">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant={getBadgeVariant(alert.severity)} dot={true}>
                           {alert.severity}
                         </Badge>
+
+                        {/* Tri-Fold Classification: OFFICIAL WARNING vs FORECAST vs SALVUS DERIVED */}
+                        {isOfficial && (
+                          <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider bg-rose-950/80 text-rose-300 border border-rose-500/50 shadow-xs">
+                            OFFICIAL WARNING
+                          </span>
+                        )}
+                        {isForecast && (
+                          <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider bg-sky-950/80 text-sky-300 border border-sky-500/50 shadow-xs">
+                            FORECAST
+                          </span>
+                        )}
+                        {isDerived && (
+                          <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider bg-amber-950/80 text-amber-300 border border-amber-500/50 shadow-xs">
+                            SALVUS DERIVED
+                          </span>
+                        )}
+
+                        {/* Geographic Scope: LOCAL WARNING vs REGIONAL WARNING */}
+                        {isLocal ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded font-bold tracking-wide bg-emerald-950/70 text-emerald-300 border border-emerald-500/40">
+                            LOCAL WARNING
+                          </span>
+                        ) : isRegional ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded font-bold tracking-wide bg-amber-950/70 text-amber-300 border border-amber-500/40">
+                            REGIONAL WARNING
+                          </span>
+                        ) : null}
+
                         {isUnseen && (
                           <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold tracking-wide bg-salvus-critical text-white shadow-xs animate-pulse">
                             NEW
-                          </span>
-                        )}
-                        <span
-                          className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold uppercase border ${
-                            alert.provenance === 'LIVE'
-                              ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40'
-                              : alert.provenance === 'SIMULATED'
-                                ? 'bg-amber-950/70 text-amber-300 border-amber-500/40'
-                                : 'bg-slate-900 text-slate-400 border-slate-700'
-                          }`}
-                        >
-                          {alert.provenance}
-                        </span>
-
-                        {alert.is_derived && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded font-mono font-bold uppercase bg-amber-950/70 text-amber-300 border border-amber-500/40">
-                            SALVUS DERIVED
                           </span>
                         )}
 
@@ -486,19 +626,30 @@ export const CitizenAlerts = () => {
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-1.5 text-xs text-salvus-text-muted">
+                      {/* Distance / Scope Label: Exact Point Distance or District Scope */}
+                      <div className="flex items-center gap-1.5 text-xs text-salvus-text-muted shrink-0">
                         <span>📍</span>
-                        <span>{alert.distance}</span>
+                        <span className="font-semibold text-salvus-text-secondary">
+                          {distanceDisplay}
+                        </span>
                       </div>
                     </div>
 
-                    {/* 1. WHAT HAPPENED */}
+                    {/* 1. WHAT HAPPENED (Title) */}
                     <h3 className="text-base sm:text-lg font-bold text-salvus-text-primary tracking-tight">
                       {alert.title}
                     </h3>
 
+                    {/* Area Warning Scope: "Applicable to: {affected_area}" */}
+                    {affectedAreaText && (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs text-salvus-text-secondary">
+                        <span className="font-medium text-salvus-text-muted">Applicable to:</span>
+                        <strong className="text-salvus-text-primary">{affectedAreaText}</strong>
+                      </div>
+                    )}
+
                     {/* 2. WHY IT MATTERS HERE */}
-                    <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-salvus-text-secondary mt-1.5 leading-relaxed">
                       {alert.whyItMatters}
                     </p>
 
@@ -524,13 +675,23 @@ export const CitizenAlerts = () => {
                       )}
                     </div>
 
-                    {/* Secondary Meta: Source & Read More CTA */}
+                    {/* Secondary Meta: Source, Timestamps & Read More CTA */}
                     <div className="mt-3 pt-2.5 border-t border-salvus-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-salvus-text-muted">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span>Source:</span>
-                        <span className="font-semibold text-salvus-text-secondary truncate max-w-[280px] sm:max-w-md">
-                          {alert.source}
-                        </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1">
+                          <span>Source:</span>
+                          <span className="font-semibold text-salvus-text-secondary">
+                            {alert.source}
+                          </span>
+                        </div>
+                        {alert.expiresAt && (
+                          <div className="flex items-center gap-1 text-[11px]">
+                            <span>· Expires:</span>
+                            <span className="text-salvus-text-secondary">
+                              {formatRelativeFreshness(alert.expiresAt)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <span className="text-salvus-info font-semibold flex items-center gap-1 shrink-0">
                         View alert details & actions →
@@ -561,61 +722,28 @@ export const CitizenAlerts = () => {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-          <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border flex items-center justify-between">
-            <div>
-              <strong className="text-salvus-text-primary block">Open-Meteo</strong>
-              <span className="text-[11px] text-salvus-text-muted">Weather Telemetry</span>
-            </div>
-            <span className="h-2 w-2 rounded-full bg-emerald-400" title="Operational" />
-          </div>
-
-          <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border flex items-center justify-between">
-            <div>
-              <strong className="text-salvus-text-primary block">IMD Mausam</strong>
-              <span className="text-[11px] text-salvus-text-muted">Govt Meteorological</span>
-            </div>
-            <span className="h-2 w-2 rounded-full bg-emerald-400" title="Operational" />
-          </div>
-
-          <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border flex items-center justify-between">
-            <div>
-              <strong className="text-salvus-text-primary block">USGS Seismic</strong>
-              <span className="text-[11px] text-salvus-text-muted">Earthquake Feeds</span>
-            </div>
-            <span className="h-2 w-2 rounded-full bg-emerald-400" title="Operational" />
-          </div>
-
-          <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border flex items-center justify-between">
-            <div>
-              <strong className="text-salvus-text-primary block">GDACS (UN/EU)</strong>
-              <span className="text-[11px] text-salvus-text-muted">Multi-Hazard Global</span>
-            </div>
-            <span className="h-2 w-2 rounded-full bg-emerald-400" title="Operational" />
-          </div>
-
-          <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border flex items-center justify-between">
-            <div>
-              <strong className="text-salvus-text-primary block">SACHET NDMA</strong>
-              <span className="text-[11px] text-salvus-text-muted">India Civil Defense</span>
-            </div>
-            <span className="h-2 w-2 rounded-full bg-emerald-400" title="Operational" />
-          </div>
-
-          <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border flex items-center justify-between">
-            <div>
-              <strong className="text-salvus-text-primary block">OSDMA SATARK</strong>
-              <span className="text-[11px] text-salvus-text-muted">Odisha State Portal</span>
-            </div>
-            <span className="h-2 w-2 rounded-full bg-slate-500" title="Standby / Uncredentialed" />
-          </div>
-
-          <div className="p-3 rounded-xl bg-salvus-surface border border-salvus-border flex items-center justify-between">
-            <div>
-              <strong className="text-salvus-text-primary block">Odisha Flood / WRD</strong>
-              <span className="text-[11px] text-salvus-text-muted">River Hydrology</span>
-            </div>
-            <span className="h-2 w-2 rounded-full bg-slate-500" title="Standby / Uncredentialed" />
-          </div>
+          {CANONICAL_SOURCES.map((src) => {
+            const h = getSourceHealthDisplay(src)
+            return (
+              <div
+                key={src.id}
+                className="p-3 rounded-xl bg-salvus-surface border border-salvus-border flex items-center justify-between"
+              >
+                <div>
+                  <strong className="text-salvus-text-primary block">{h.name}</strong>
+                  <span className="text-[11px] font-mono text-salvus-text-muted">{h.label}</span>
+                </div>
+                <span
+                  className={`text-xs font-bold leading-none ${
+                    h.isLive ? 'text-emerald-400' : 'text-amber-400/90'
+                  }`}
+                  title={h.label}
+                >
+                  {h.isLive ? '●' : '○'}
+                </span>
+              </div>
+            )
+          })}
         </div>
       </footer>
 

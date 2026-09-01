@@ -39,8 +39,12 @@ class GDACSAdapter(BaseAlertAdapter):
         super().__init__(
             source_id="gdacs",
             source_name="GDACS (UN / EU)",
+            display_name="GDACS",
             source_type=SourceType.CIVIL_DEFENSE,
             cache_ttl_seconds=cache_ttl_seconds,
+            initial_status=SourceStatus.AVAILABLE,
+            initial_status_label="LIVE",
+            initial_is_live=True,
         )
         self.feed_url = feed_url
         self._cached_alerts: list[NormalizedAlert] = []

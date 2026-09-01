@@ -146,10 +146,10 @@ def deduplicate_alerts(alerts: list[NormalizedAlert]) -> list[NormalizedAlert]:
     if not alerts:
         return []
 
-    # 1. Primary deduplication by (source, source_event_id)
-    seen_events: dict[tuple[str, str], NormalizedAlert] = {}
+    # 1. Primary deduplication by alert.id or (source, source_event_id)
+    seen_events: dict[str, NormalizedAlert] = {}
     for a in alerts:
-        key = (a.source, a.source_event_id)
+        key = a.id if a.id else f"{a.source}:{a.source_event_id}"
         if key not in seen_events:
             # Initialize sources_matched with primary source
             if not a.sources_matched:
@@ -158,7 +158,7 @@ def deduplicate_alerts(alerts: list[NormalizedAlert]) -> list[NormalizedAlert]:
         else:
             # If duplicate event ID from same provider, retain the higher-confidence one
             existing = seen_events[key]
-            if a.confidence > existing.confidence:
+            if (a.confidence or 0.0) >= (existing.confidence or 0.0):
                 seen_events[key] = a
 
     deduped_primary = list(seen_events.values())
@@ -190,6 +190,12 @@ def deduplicate_alerts(alerts: list[NormalizedAlert]) -> list[NormalizedAlert]:
                     candidate.latitude, candidate.longitude, existing.latitude, existing.longitude
                 )
                 if dist > 5.0:
+                    continue
+            elif candidate.affected_districts and existing.affected_districts:
+                # Match if overlapping districts
+                cand_d = {d.lower() for d in candidate.affected_districts}
+                exist_d = {d.lower() for d in existing.affected_districts}
+                if not cand_d.intersection(exist_d):
                     continue
             elif candidate.affected_area and existing.affected_area:
                 if (
@@ -434,10 +440,35 @@ async def get_active_hazards(
             continue
         active_hazards.append(h)
 
-    # Geo-Relevance Enrichment & Spatial Filtering (Phase 3 & 2)
+    # Determine user's actual district and state from real GPS using existing geocoding system
+    user_district: str | None = None
+    user_state: str | None = None
+    if lat is not None and lon is not None:
+        try:
+            from app.services import places_service
+
+            geo_res = await places_service.reverse_geocode(lat, lon, client=client)
+            if geo_res.get("success"):
+                user_district = geo_res.get("district") or geo_res.get("city")
+                user_state = geo_res.get("state")
+        except Exception as e:
+            logger.debug(f"Failed to reverse-geocode user coordinates ({lat}, {lon}): {e}")
+
+        if not user_district or not user_state:
+            from app.services.geo_service import resolve_district_from_coords
+
+            auto_d, auto_s = resolve_district_from_coords(lat, lon)
+            user_district = user_district or auto_d
+            user_state = user_state or auto_s
+
+    # Geo-Relevance Enrichment & Spatial Filtering (Phase 3 & Phase 2C)
+    from app.services.geo_service import format_alert_distance_label
+
     enriched_hazards: list[NormalizedAlert] = []
     for hz in active_hazards:
-        rel_level, dist_km, is_inside = evaluate_alert_relevance(hz, lat, lon)
+        rel_level, dist_km, is_inside = evaluate_alert_relevance(
+            hz, lat, lon, user_district=user_district, user_state=user_state
+        )
         rel_time = format_relative_time(hz.observed_at)
 
         # In citizen location mode (lat/lon provided), strictly filter out IRRELEVANT alerts
@@ -445,7 +476,7 @@ async def get_active_hazards(
             if rel_level == RelevanceLevel.IRRELEVANT:
                 continue
             if max_distance_km is not None and dist_km is not None and dist_km > max_distance_km:
-                if rel_level != RelevanceLevel.CRITICAL:
+                if rel_level not in (RelevanceLevel.CRITICAL, RelevanceLevel.IMMEDIATE):
                     continue
 
         local_context, direction_label = build_local_context_label(
@@ -466,10 +497,12 @@ async def get_active_hazards(
             is_derived=hz.is_derived,
         )
 
+        dist_formatted = format_alert_distance_label(hz, rel_level, dist_km)
+
         hz_dict = hz.model_dump()
         hz_dict["relevance_level"] = rel_level
         hz_dict["distance_km"] = dist_km
-        hz_dict["distance_formatted"] = format_distance(dist_km) if dist_km is not None else None
+        hz_dict["distance_formatted"] = dist_formatted
         hz_dict["direction_label"] = direction_label
         hz_dict["local_context"] = local_context
         hz_dict["is_within_affected_area"] = is_inside
@@ -539,11 +572,11 @@ async def evaluate_area_safety(
             data_provenance=AlertProvenance.FALLBACK.value,
         )
 
-    # Filter by geo-relevance levels
+    # Filter by geo-relevance levels (Phase 2C tiers)
     crit_hazards = [
         h
         for h in hazards
-        if h.relevance_level == RelevanceLevel.CRITICAL
+        if h.relevance_level in (RelevanceLevel.CRITICAL, RelevanceLevel.IMMEDIATE)
         or (
             h.severity == HazardSeverity.CRITICAL
             and (h.is_within_affected_area or (h.distance_km or 99.0) <= 2.5)
@@ -552,13 +585,17 @@ async def evaluate_area_safety(
     high_hazards = [
         h
         for h in hazards
-        if h.relevance_level == RelevanceLevel.HIGH
+        if h.relevance_level in (RelevanceLevel.HIGH, RelevanceLevel.LOCAL)
         or (
             h.severity == HazardSeverity.WARNING
             and (h.is_within_affected_area or (h.distance_km or 99.0) <= 4.0)
         )
     ]
-    mod_hazards = [h for h in hazards if h.relevance_level == RelevanceLevel.MODERATE]
+    mod_hazards = [
+        h
+        for h in hazards
+        if h.relevance_level in (RelevanceLevel.MODERATE, RelevanceLevel.REGIONAL)
+    ]
 
     # Find nearest recommended shelter if db is provided
     nearest_shelter = None

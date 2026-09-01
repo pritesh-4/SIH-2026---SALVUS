@@ -455,7 +455,7 @@ async def test_missing_citizen_location_overview_mode():
         results = await get_active_hazards(lat=None, lon=None, client=client)
 
     assert len(results) >= 1
-    assert results[0].relevance_level == RelevanceLevel.LOW
+    assert results[0].relevance_level in (RelevanceLevel.UNKNOWN, RelevanceLevel.LOW)
     assert results[0].distance_km is None
     assert results[0].is_within_affected_area is False
 

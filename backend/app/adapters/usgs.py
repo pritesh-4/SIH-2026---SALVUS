@@ -36,8 +36,12 @@ class USGSAdapter(BaseAlertAdapter):
         super().__init__(
             source_id="usgs_earthquake",
             source_name="USGS Earthquake Hazards Program",
+            display_name="USGS",
             source_type=SourceType.SEISMIC_NETWORK,
             cache_ttl_seconds=cache_ttl_seconds,
+            initial_status=SourceStatus.AVAILABLE,
+            initial_status_label="LIVE",
+            initial_is_live=True,
         )
         self.feed_url = feed_url
         self._cached_alerts: list[NormalizedAlert] = []

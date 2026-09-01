@@ -464,6 +464,18 @@ async def reverse_geocode(
             state = addr.get("state", "")
             country = addr.get("country", "")
 
+            from app.services.geo_service import resolve_district_from_coords
+
+            fallback_dist, fallback_state = resolve_district_from_coords(lat, lon)
+            district = (
+                addr.get("state_district")
+                or addr.get("district")
+                or addr.get("county")
+                or fallback_dist
+                or ""
+            )
+            state = state or fallback_state or ""
+
             if suburb and city:
                 area_name = f"{suburb}, {city}"
             elif suburb:
@@ -482,6 +494,7 @@ async def reverse_geocode(
                 "area_name": area_name,
                 "suburb": suburb,
                 "city": city,
+                "district": district,
                 "state": state,
                 "country": country,
                 "display_address": display_address,
@@ -497,18 +510,26 @@ async def reverse_geocode(
     except Exception as exc:
         logger.warning(f"Reverse geocode lookup failed for ({lat}, {lon}): {exc}")
 
-    # Fallback to coarse coordinate area
+    # Fallback to coordinate and offline spatial index
+    from app.services.geo_service import resolve_district_from_coords
+
+    fallback_dist, fallback_state = resolve_district_from_coords(lat, lon)
     fallback_result = {
         "success": True,
-        "area_name": f"{lat:.3f}° N, {lon:.3f}° E",
+        "area_name": (
+            f"{fallback_dist}, {fallback_state}"
+            if fallback_dist and fallback_state
+            else f"{lat:.3f}° N, {lon:.3f}° E"
+        ),
         "suburb": None,
-        "city": None,
-        "state": None,
-        "country": None,
+        "city": fallback_dist,
+        "district": fallback_dist,
+        "state": fallback_state,
+        "country": "India" if fallback_state else None,
         "display_address": f"{lat:.4f}° N, {lon:.4f}° E",
         "latitude": lat,
         "longitude": lon,
-        "source": "Coordinate Fallback",
+        "source": "Spatial Fallback",
         "fetched_at": now.isoformat(),
     }
     return fallback_result

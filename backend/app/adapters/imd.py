@@ -38,14 +38,17 @@ class IMDAdapter(BaseAlertAdapter):
         super().__init__(
             source_id="imd_india",
             source_name="India Meteorological Department (IMD)",
+            display_name="IMD Direct",
             source_type=SourceType.WEATHER_SERVICE,
             cache_ttl_seconds=cache_ttl_seconds,
             endpoint_url=api_url,
             limitations=(
                 "Official IMD district bulletins and CAP advisories. "
-                "Server may enforce rate-limits."
+                "Direct API is secondary; national warnings are actively ingested via SACHET."
             ),
-            initial_status=SourceStatus.AVAILABLE,
+            initial_status=SourceStatus.UNAVAILABLE,
+            initial_status_label="UNAVAILABLE / VIA SACHET",
+            initial_is_live=False,
         )
         self.api_url = api_url
         self._etag: str | None = None
@@ -140,8 +143,14 @@ class IMDAdapter(BaseAlertAdapter):
                 await asyncio.sleep(0.2 * (attempt + 1))
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
-        status = SourceStatus.STALE if self._cached_alerts else SourceStatus.FAILED
-        self.update_health(status=status, latency_ms=latency_ms, error=last_error)
+        status = SourceStatus.STALE if self._cached_alerts else SourceStatus.UNAVAILABLE
+        self.update_health(
+            status=status,
+            latency_ms=latency_ms,
+            error=last_error,
+            status_label="UNAVAILABLE / VIA SACHET",
+            is_live=False,
+        )
         prov = AlertProvenance.CACHED if self._cached_alerts else AlertProvenance.FALLBACK
         return self._cached_alerts, prov
 

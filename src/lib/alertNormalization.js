@@ -190,9 +190,25 @@ export const normalizeAlert = (rawAlert, userLocation = null, nearestSafeShelter
   const expiresAt = rawAlert.expires_at || rawAlert.expiresAt || null
   const fetchedAt = rawAlert.fetched_at || rawAlert.fetchedAt || new Date().toISOString()
 
+  const affectedDistricts = rawAlert.affected_districts || rawAlert.affectedDistricts || []
+  const alertState = rawAlert.state || null
+  const geographicForm = rawAlert.geographic_form || rawAlert.geographicForm || null
+  const isDistrictAlert =
+    geographicForm === 'DISTRICT' ||
+    affectedDistricts.length > 0 ||
+    (lat === null && lon === null && (rawAlert.affected_area || rawAlert.affectedArea))
+
   let distanceFormatted = rawAlert.distance_formatted || rawAlert.distanceFormatted
   if (!distanceFormatted) {
-    if (distanceKm !== null) {
+    if (isDistrictAlert || distanceKm === null) {
+      if (relevanceLevel === 'IMMEDIATE' || relevanceLevel === 'LOCAL' || isWithinArea) {
+        distanceFormatted = 'Applicable to your district'
+      } else if (relevanceLevel === 'REGIONAL') {
+        distanceFormatted = 'Regional warning'
+      } else {
+        distanceFormatted = 'Monitored sector'
+      }
+    } else if (distanceKm !== null) {
       distanceFormatted = formatAlertDistance(distanceKm)
     } else if (radiusKm !== null) {
       distanceFormatted = `${radiusKm} km radius`
@@ -201,6 +217,22 @@ export const normalizeAlert = (rawAlert, userLocation = null, nearestSafeShelter
     } else {
       distanceFormatted = 'Monitored sector'
     }
+  }
+
+  const isDerived = Boolean(rawAlert.is_derived ?? rawAlert.isDerived ?? false)
+  let alertClassification
+  if (isDerived) {
+    alertClassification = 'SALVUS DERIVED'
+  } else if (
+    rawAlert.source_type === 'WEATHER_SERVICE' ||
+    rawAlert.sourceType === 'WEATHER_SERVICE' ||
+    rawAlert.authority_tier === 'FORECAST_MODEL' ||
+    rawAlert.authorityTier === 'FORECAST_MODEL' ||
+    source.toLowerCase().includes('open-meteo')
+  ) {
+    alertClassification = 'FORECAST'
+  } else {
+    alertClassification = 'OFFICIAL WARNING'
   }
 
   return {
@@ -246,6 +278,11 @@ export const normalizeAlert = (rawAlert, userLocation = null, nearestSafeShelter
     longitude: lon,
     affectedArea: rawAlert.affected_area || rawAlert.affectedArea || 'Regional Disaster Corridor',
     affected_area: rawAlert.affected_area || rawAlert.affectedArea || 'Regional Disaster Corridor',
+    affectedDistricts,
+    affected_districts: affectedDistricts,
+    state: alertState,
+    geographicForm,
+    geographic_form: geographicForm,
     radiusKm,
     radius_km: radiusKm,
     distanceKm,
@@ -261,8 +298,10 @@ export const normalizeAlert = (rawAlert, userLocation = null, nearestSafeShelter
     confidence: typeof rawAlert.confidence === 'number' ? rawAlert.confidence : 1.0,
     verified: provenance === 'LIVE' || provenance === 'CACHED',
     nearestShelter: nearestSafeShelter || rawAlert.nearestShelter || null,
-    is_derived: Boolean(rawAlert.is_derived ?? rawAlert.isDerived ?? false),
-    isDerived: Boolean(rawAlert.is_derived ?? rawAlert.isDerived ?? false),
+    is_derived: isDerived,
+    isDerived,
+    alert_classification: alertClassification,
+    alertClassification,
     derived_classification:
       rawAlert.derived_classification || rawAlert.derivedClassification || null,
     derivedClassification:
@@ -482,6 +521,21 @@ export const computeBadgeCount = (activeRelevantAlerts, userInteractions = null)
   for (const alert of activeRelevantAlerts) {
     if (!alert || !alert.id) continue
     if (!isAlertActiveAndUnexpired(alert)) continue
+
+    // Do not count normal weather context or non-actionable info weather in notification badge
+    const sigType = alert.signal_type || alert.signalType
+    const category = (alert.category || alert.hazard_type || '').toUpperCase()
+    const severity = (alert.severity || '').toUpperCase()
+
+    if (
+      sigType === 'NORMAL_WEATHER' ||
+      sigType === 'WEATHER_CONTEXT' ||
+      alert.is_weather_context ||
+      alert.isWeatherContext ||
+      (severity === 'INFO' && (category === 'WEATHER' || category === 'NORMAL_WEATHER'))
+    ) {
+      continue
+    }
 
     const interaction = interactions[alert.id]
     if (interaction) {

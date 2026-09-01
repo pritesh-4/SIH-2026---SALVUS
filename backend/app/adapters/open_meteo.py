@@ -138,6 +138,7 @@ class OpenMeteoAdapter(BaseAlertAdapter):
         super().__init__(
             source_id="open_meteo",
             source_name="Open-Meteo Weather Service",
+            display_name="Open-Meteo",
             source_type=SourceType.WEATHER_SERVICE,
             cache_ttl_seconds=cache_ttl_seconds,
             endpoint_url=api_url,
@@ -146,6 +147,8 @@ class OpenMeteoAdapter(BaseAlertAdapter):
                 "Rate limit ~10,000 req/day."
             ),
             initial_status=SourceStatus.AVAILABLE,
+            initial_status_label="LIVE",
+            initial_is_live=True,
         )
         self.api_url = api_url
         # Grid cache for alerts: {(round(lat, 2), round(lon, 2)): (alerts, expire_datetime)}

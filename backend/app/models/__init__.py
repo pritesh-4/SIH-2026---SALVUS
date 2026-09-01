@@ -969,14 +969,30 @@ class AlertProvenance(StrEnum):
     SIMULATED = "SIMULATED"
 
 
-class RelevanceLevel(StrEnum):
-    """Geographic and situational life-safety relevance tier for a specific citizen location."""
+class GeographicForm(StrEnum):
+    """Geographic form classification of a hazard alert (Phase 2C)."""
 
-    CRITICAL = "CRITICAL"
-    HIGH = "HIGH"
-    MODERATE = "MODERATE"
-    LOW = "LOW"
+    POINT = "POINT"
+    CIRCLE = "CIRCLE"
+    POLYGON = "POLYGON"
+    DISTRICT = "DISTRICT"
+    UNKNOWN = "UNKNOWN"
+
+
+class RelevanceLevel(StrEnum):
+    """Geographic and life-safety relevance tier for a citizen location (Phase 2C)."""
+
+    IMMEDIATE = "IMMEDIATE"
+    LOCAL = "LOCAL"
+    REGIONAL = "REGIONAL"
+    UNKNOWN = "UNKNOWN"
     IRRELEVANT = "IRRELEVANT"
+
+    # Backward compatibility aliases for legacy test suites
+    CRITICAL = "IMMEDIATE"
+    HIGH = "LOCAL"
+    MODERATE = "REGIONAL"
+    LOW = "REGIONAL"
 
 
 class SignalType(StrEnum):
@@ -1065,8 +1081,11 @@ class SourceHealthReport(BaseModel):
 
     source_id: str
     source_name: str
+    display_name: str | None = None
     source_type: SourceType
     status: SourceStatus
+    status_label: str | None = None
+    is_live: bool = False
     last_fetched_at: str | None = None
     last_successful_at: str | None = None
     last_error: str | None = None
@@ -1103,7 +1122,7 @@ class NormalizedAlert(BaseModel):
     latitude: float | None = Field(default=None, ge=-90.0, le=90.0)
     longitude: float | None = Field(default=None, ge=-180.0, le=180.0)
     affected_area: str | None = None
-    radius_km: float = Field(default=2.5, gt=0.0)
+    radius_km: float | None = Field(default=2.5, ge=0.0)
     observed_at: str | None = None
     issued_at: str | None = None
     updated_at: str | None = None
@@ -1129,6 +1148,11 @@ class NormalizedAlert(BaseModel):
     sources_matched: list[str] = Field(default_factory=list)
     evidence_sources: list[dict[str, Any]] = Field(default_factory=list)
     relative_time_label: str | None = None
+
+    # Geographic form & Administrative boundary fields (Phase 2C)
+    geographic_form: GeographicForm | None = None
+    affected_districts: list[str] = Field(default_factory=list)
+    state: str | None = None
 
     # Backward compatibility aliases for existing domain consumers
     hazard_id: str | None = None
@@ -1175,7 +1199,7 @@ class NormalizedAlert(BaseModel):
             if "observed_at" in obj and "issued_at" not in obj:
                 obj["issued_at"] = obj["observed_at"]
 
-            if "recommended_action" in obj and not obj.get("recommended_actions"):
+            if obj.get("recommended_action") and not obj.get("recommended_actions"):
                 obj["recommended_actions"] = [obj["recommended_action"]]
             elif obj.get("recommended_actions") and not obj.get("recommended_action"):
                 obj["recommended_action"] = obj["recommended_actions"][0]
@@ -1250,7 +1274,7 @@ class NormalizedAlert(BaseModel):
         if "observed_at" in data and "issued_at" not in data:
             data["issued_at"] = data["observed_at"]
 
-        if "recommended_action" in data and not data.get("recommended_actions"):
+        if data.get("recommended_action") and not data.get("recommended_actions"):
             data["recommended_actions"] = [data["recommended_action"]]
         elif data.get("recommended_actions") and not data.get("recommended_action"):
             data["recommended_action"] = data["recommended_actions"][0]
