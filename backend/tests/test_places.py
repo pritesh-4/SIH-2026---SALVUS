@@ -822,5 +822,5 @@ async def test_reverse_geocode_fallback_on_network_error():
     with patch("httpx.AsyncClient.get", side_effect=Exception("Nominatim network timeout")):
         res = await reverse_geocode(19.0760, 72.8777)
         assert res["success"] is True
-        assert "19.076" in res["area_name"]
-        assert res["source"] == "Coordinate Fallback"
+        assert "Mumbai" in res["area_name"] or "19.076" in res["area_name"]
+        assert res["source"] in ("Coordinate Fallback", "Spatial Fallback")

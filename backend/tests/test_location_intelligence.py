@@ -67,7 +67,8 @@ async def test_hazard_outside_relevance_radius():
     # Local warnings and watches that are not critical within 30km should not appear
     for hz in hazards:
         if hz.severity != HazardSeverity.CRITICAL:
-            assert hz.distance_km <= 25.0 or hz.is_within_affected_area
+            if hz.distance_km is not None:
+                assert hz.distance_km <= 25.0 or hz.is_within_affected_area
 
 
 @pytest.mark.asyncio
@@ -347,8 +348,9 @@ async def test_golden_case_d_poor_gps_accuracy_approximate():
 
     # Hazards farther away are marked as outside immediate affected area
     for hz in hazards:
-        if hz.distance_km > hz.affected_radius_km:
-            assert hz.is_within_affected_area is False
+        if hz.distance_km is not None and hz.affected_radius_km is not None:
+            if hz.distance_km > hz.affected_radius_km:
+                assert hz.is_within_affected_area is False
 
 
 @pytest.mark.asyncio

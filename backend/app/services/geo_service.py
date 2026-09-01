@@ -41,6 +41,43 @@ def normalize_district_name(name: str | None) -> str:
     return " ".join(s.split())
 
 
+_KNOWN_INDIAN_STATES: set[str] = {
+    "andhra pradesh",
+    "arunachal pradesh",
+    "assam",
+    "bihar",
+    "chhattisgarh",
+    "goa",
+    "gujarat",
+    "haryana",
+    "himachal pradesh",
+    "jharkhand",
+    "karnataka",
+    "kerala",
+    "madhya pradesh",
+    "maharashtra",
+    "manipur",
+    "meghalaya",
+    "mizoram",
+    "nagaland",
+    "odisha",
+    "punjab",
+    "rajasthan",
+    "sikkim",
+    "tamil nadu",
+    "telangana",
+    "tripura",
+    "uttar pradesh",
+    "uttarakhand",
+    "west bengal",
+    "delhi",
+    "jammu and kashmir",
+    "ladakh",
+    "puducherry",
+    "chandigarh",
+}
+
+
 def parse_administrative_area(area_str: str | None) -> tuple[list[str], str | None]:
     """Parse raw area description into independent affected districts and optional state.
 
@@ -73,6 +110,12 @@ def parse_administrative_area(area_str: str | None) -> tuple[list[str], str | No
         clean = " ".join(p.split()).strip(" ,.-")
         if clean:
             districts.append(clean)
+
+    if not state and districts:
+        for idx in range(len(districts) - 1, -1, -1):
+            if districts[idx].strip().lower() in _KNOWN_INDIAN_STATES:
+                state = districts.pop(idx)
+                break
 
     return districts, state
 
@@ -434,6 +477,15 @@ def evaluate_alert_relevance(
         if alert.affected_districts:
             districts = list(alert.affected_districts)
             state = alert.state
+            if not state and alert.affected_area:
+                _, parsed_state = parse_administrative_area(alert.affected_area)
+                if parsed_state:
+                    state = parsed_state
+            if not state:
+                for d in districts:
+                    if d.strip().lower() in _KNOWN_INDIAN_STATES:
+                        state = d.strip()
+                        break
         else:
             districts, state = parse_administrative_area(alert.affected_area)
             if alert.state:

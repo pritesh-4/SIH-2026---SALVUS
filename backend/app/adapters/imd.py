@@ -143,7 +143,7 @@ class IMDAdapter(BaseAlertAdapter):
                 await asyncio.sleep(0.2 * (attempt + 1))
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
-        status = SourceStatus.STALE if self._cached_alerts else SourceStatus.UNAVAILABLE
+        status = SourceStatus.STALE if self._cached_alerts else SourceStatus.FAILED
         self.update_health(
             status=status,
             latency_ms=latency_ms,

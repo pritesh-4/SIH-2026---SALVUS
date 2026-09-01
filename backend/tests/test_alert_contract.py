@@ -336,11 +336,20 @@ async def test_no_fictional_baseline_alerts_in_production():
         # None of the old hardcoded fake IDs must exist
         assert hz.id not in ("hz-kol-flood-01", "hz-kol-power-02", "hz-kol-cyclone-03")
         # Every alert must originate from an authentic integration
-        assert hz.source in (
-            "Open-Meteo Weather Service",
-            "USGS Earthquake Hazards Program",
-            "SACHET / NDMA India",
-            "GDACS (UN / EU)",
+        assert (
+            hz.id.startswith("alt-sachet-")
+            or hz.source
+            in (
+                "Open-Meteo Weather Service",
+                "USGS Earthquake Hazards Program",
+                "SACHET / NDMA India",
+                "GDACS (UN / EU)",
+                "CWC",
+                "IMD",
+                "IMD Bhubaneswar",
+            )
+            or "SACHET" in hz.source
+            or "SDMA" in hz.source
         )
         assert hz.provenance in (AlertProvenance.LIVE, AlertProvenance.CACHED)
 

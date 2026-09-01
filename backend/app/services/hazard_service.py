@@ -478,6 +478,13 @@ async def get_active_hazards(
             if max_distance_km is not None and dist_km is not None and dist_km > max_distance_km:
                 if rel_level not in (RelevanceLevel.CRITICAL, RelevanceLevel.IMMEDIATE):
                     continue
+            if max_distance_km is not None and dist_km is None:
+                if max_distance_km <= 5.0 and rel_level not in (
+                    RelevanceLevel.CRITICAL,
+                    RelevanceLevel.IMMEDIATE,
+                    RelevanceLevel.LOCAL,
+                ):
+                    continue
 
         local_context, direction_label = build_local_context_label(
             user_lat=lat,

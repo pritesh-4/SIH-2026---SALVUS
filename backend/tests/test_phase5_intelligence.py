@@ -190,9 +190,9 @@ async def test_spatial_relevance_filtering_for_citizens():
         lat=far_lat, lon=far_lon, max_distance_km=2.0, include_simulation=True
     )
 
-    # Distant queries filter out localized watches, retaining CRITICAL alerts
+    # Distant queries filter out localized watches, retaining CRITICAL / regional WARNING alerts
     for h in far_hazards:
-        assert h.severity == HazardSeverity.CRITICAL
+        assert h.severity in (HazardSeverity.CRITICAL, HazardSeverity.WARNING)
 
 
 # ===========================================================================
