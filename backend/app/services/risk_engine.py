@@ -234,8 +234,8 @@ def compute_cardinal_direction(
 def build_local_context_label(
     user_lat: float | None,
     user_lon: float | None,
-    alert_lat: float,
-    alert_lon: float,
+    alert_lat: float | None,
+    alert_lon: float | None,
     distance_km: float | None,
     is_inside: bool,
     affected_area: str | None = None,
@@ -249,7 +249,7 @@ def build_local_context_label(
         area_str = f" in {affected_area}" if affected_area else ""
         return f"Affecting your immediate location{area_str}.", None
 
-    if distance_km is not None:
+    if distance_km is not None and alert_lat is not None and alert_lon is not None:
         direction = compute_cardinal_direction(user_lat, user_lon, alert_lat, alert_lon)
         dist_round = round(distance_km, 1)
         area_suffix = f" near {affected_area}" if affected_area else ""
@@ -509,13 +509,25 @@ def consolidate_multi_source_alerts(
                 continue
 
             # Spatial distance check
-            dist = (
-                math.hypot(
-                    primary.latitude - candidate.latitude, primary.longitude - candidate.longitude
+            if (
+                primary.latitude is not None
+                and candidate.latitude is not None
+                and primary.longitude is not None
+                and candidate.longitude is not None
+            ):
+                dist = (
+                    math.hypot(
+                        primary.latitude - candidate.latitude,
+                        primary.longitude - candidate.longitude,
+                    )
+                    * 111.0
                 )
-                * 111.0
-            )
-            if dist > max_cluster_distance_km:
+                if dist > max_cluster_distance_km:
+                    continue
+            elif primary.affected_area and candidate.affected_area:
+                if primary.affected_area.lower() != candidate.affected_area.lower():
+                    continue
+            else:
                 continue
 
             # Time proximity check (within 2 hours)
@@ -536,7 +548,7 @@ def consolidate_multi_source_alerts(
             primary.evidence_sources = [
                 {
                     "source": primary.source,
-                    "severity": primary.severity.value,
+                    "severity": primary.severity.value if primary.severity else None,
                     "observed_at": primary.observed_at,
                     "confidence": primary.confidence,
                     "authority_tier": primary.authority_tier.value,
@@ -550,7 +562,7 @@ def consolidate_multi_source_alerts(
             evidence_sources = [
                 {
                     "source": a.source,
-                    "severity": a.severity.value,
+                    "severity": a.severity.value if a.severity else None,
                     "observed_at": a.observed_at,
                     "confidence": a.confidence,
                     "authority_tier": a.authority_tier.value,

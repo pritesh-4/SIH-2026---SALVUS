@@ -180,21 +180,37 @@ def deduplicate_alerts(alerts: list[NormalizedAlert]) -> list[NormalizedAlert]:
                 continue
 
             # Check spatial distance (within 5km)
-            dist = haversine_distance_km(
-                candidate.latitude, candidate.longitude, existing.latitude, existing.longitude
-            )
-            if dist > 5.0:
+            if (
+                candidate.latitude is not None
+                and candidate.longitude is not None
+                and existing.latitude is not None
+                and existing.longitude is not None
+            ):
+                dist = haversine_distance_km(
+                    candidate.latitude, candidate.longitude, existing.latitude, existing.longitude
+                )
+                if dist > 5.0:
+                    continue
+            elif candidate.affected_area and existing.affected_area:
+                if (
+                    candidate.affected_area.strip().lower()
+                    != existing.affected_area.strip().lower()
+                ):
+                    continue
+            else:
                 continue
 
             # Check time threshold (within 1 hour / 3600s)
-            try:
-                obs1 = candidate.observed_at.replace("Z", "+00:00")
-                obs2 = existing.observed_at.replace("Z", "+00:00")
-                t1 = datetime.fromisoformat(obs1).timestamp()
-                t2 = datetime.fromisoformat(obs2).timestamp()
-                time_diff = abs(t1 - t2)
-            except Exception:
-                time_diff = 0
+            time_diff = 0
+            if candidate.observed_at and existing.observed_at:
+                try:
+                    obs1 = candidate.observed_at.replace("Z", "+00:00")
+                    obs2 = existing.observed_at.replace("Z", "+00:00")
+                    t1 = datetime.fromisoformat(obs1).timestamp()
+                    t2 = datetime.fromisoformat(obs2).timestamp()
+                    time_diff = abs(t1 - t2)
+                except Exception:
+                    time_diff = 0
 
             if time_diff <= 3600:
                 # Merge multi-source report preserving composite provenance

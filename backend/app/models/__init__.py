@@ -1090,26 +1090,26 @@ class NormalizedAlert(BaseModel):
     signal_type: SignalType | None = None
     type: str | None = None
     raw_type: str | None = None
-    severity: HazardSeverity
+    severity: HazardSeverity | None = None
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
-    title: str
-    description: str
+    title: str | None = None
+    description: str | None = None
     why_it_matters: str | None = None
-    recommended_action: str
+    recommended_action: str | None = None
     recommended_actions: list[str] = Field(default_factory=list)
     what_to_do: str | None = None
     what_to_avoid: str | None = None
     actionable: bool = True
-    latitude: float = Field(ge=-90.0, le=90.0)
-    longitude: float = Field(ge=-180.0, le=180.0)
+    latitude: float | None = Field(default=None, ge=-90.0, le=90.0)
+    longitude: float | None = Field(default=None, ge=-180.0, le=180.0)
     affected_area: str | None = None
     radius_km: float = Field(default=2.5, gt=0.0)
-    observed_at: str
-    issued_at: str
+    observed_at: str | None = None
+    issued_at: str | None = None
     updated_at: str | None = None
     starts_at: str | None = None
-    expires_at: str
-    fetched_at: str
+    expires_at: str | None = None
+    fetched_at: str | None = None
     status: AlertStatus = AlertStatus.ACTIVE
     source_url: str | None = None
     provenance: AlertProvenance = AlertProvenance.LIVE

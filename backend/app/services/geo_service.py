@@ -159,9 +159,11 @@ def evaluate_alert_relevance(
         dist_km = (
             0.0 if is_inside else distance_point_to_polygon_km(lat, lon, alert.geometry)  # type: ignore[arg-type]
         )
-    else:
+    elif alert.latitude is not None and alert.longitude is not None:
         dist_km = haversine_distance_km(lat, lon, alert.latitude, alert.longitude)
         is_inside = dist_km <= alert.radius_km
+    else:
+        return RelevanceLevel.LOW, None, False
 
     sev = alert.severity
     ht = alert.hazard_type
